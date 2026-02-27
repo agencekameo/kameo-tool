@@ -31,7 +31,7 @@ interface Project {
   assignees: ProjectUser[]
 }
 
-const STATUS_ORDER = ['BRIEF', 'MAQUETTE', 'DEVELOPPEMENT', 'REVIEW', 'LIVRAISON', 'MAINTENANCE', 'ARCHIVE']
+const STATUS_ORDER = ['BRIEF', 'REDACTION', 'MAQUETTE', 'DEVELOPPEMENT', 'REVIEW', 'LIVRAISON', 'MAINTENANCE', 'ARCHIVE']
 
 export default function ProjectDetailPage() {
   const { id } = useParams()

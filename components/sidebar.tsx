@@ -14,143 +14,190 @@ import {
   LogOut,
   ChevronRight,
   ShieldCheck,
-  UserCircle,
   Wrench,
   TrendingUp,
   ListTodo,
   Wallet,
+  User,
+  ChevronUp,
+  Mail,
 } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { cn, ROLE_LABELS } from '@/lib/utils'
+import { useState, useRef, useEffect } from 'react'
 
-const navItems = [
-  { href: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/projects', label: 'Projets', icon: FolderKanban },
-  { href: '/tasks', label: 'Tâches', icon: CheckSquare },
-  { href: '/aysha', label: 'Tâches Aysha', icon: ListTodo },
-  { href: '/clients', label: 'Clients', icon: Users },
-  { href: '/maintenances', label: 'Maintenances', icon: Wrench },
-  { href: '/commercial', label: 'Commercial', icon: TrendingUp },
-  { href: '/finances', label: 'Finances', icon: Wallet },
-  { href: '/wiki', label: 'Wiki & Ressources', icon: BookOpen },
-  { href: '/audit', label: 'Audit', icon: Search },
+const sections = [
+  {
+    label: 'Suivi',
+    items: [
+      { href: '/', label: 'Dashboard', icon: LayoutDashboard },
+      { href: '/projects', label: 'Projets', icon: FolderKanban },
+      { href: '/clients', label: 'Clients', icon: Users },
+    ],
+  },
+  {
+    label: 'Production',
+    items: [
+      { href: '/tasks', label: 'Tâches', icon: CheckSquare },
+      { href: '/aysha', label: 'Tâches Aysha', icon: ListTodo },
+    ],
+  },
+  {
+    label: 'Commercial',
+    items: [
+      { href: '/commercial', label: 'Commercial', icon: TrendingUp },
+      { href: '/maintenances', label: 'Maintenances', icon: Wrench },
+    ],
+  },
+  {
+    label: 'Finances',
+    items: [
+      { href: '/finances', label: 'Finances', icon: Wallet },
+    ],
+  },
+  {
+    label: 'Ressources',
+    items: [
+      { href: '/wiki', label: 'Wiki & Ressources', icon: BookOpen },
+      { href: '/audit', label: 'Audit SEO', icon: Search },
+    ],
+  },
 ]
-
-const ROLE_LABELS: Record<string, string> = {
-  ADMIN: 'Admin',
-  DEVELOPER: 'Développeur',
-  REDACTEUR: 'Rédacteur',
-  DESIGNER: 'Designer',
-  MEMBER: 'Membre',
-}
 
 export function Sidebar() {
   const pathname = usePathname()
   const { data: session } = useSession()
   const isAdmin = (session?.user as { role?: string })?.role === 'ADMIN'
+  const [dropdownOpen, setDropdownOpen] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  const role = (session?.user as { role?: string })?.role ?? ''
+  const avatar = (session?.user as { avatar?: string })?.avatar
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  function isActive(href: string) {
+    return href === '/' ? pathname === '/' : pathname.startsWith(href)
+  }
 
   return (
     <aside className="fixed left-0 top-0 h-screen w-60 bg-[#0d0d14] border-r border-slate-800/60 flex flex-col z-40">
       {/* Logo */}
-      <div className="p-5 border-b border-slate-800/60">
+      <div className="px-4 py-4 border-b border-slate-800/60">
         <div className="flex items-center gap-2.5">
-          <Image
-            src="/kameo-logo.svg"
-            alt="Kameo"
-            width={28}
-            height={25}
-            className="flex-shrink-0"
-          />
+          <Image src="/kameo-logo.svg" alt="Agence Kameo" width={26} height={23} className="flex-shrink-0" />
           <div>
-            <span className="text-white font-semibold text-sm">Kameo</span>
+            <span className="text-white font-semibold text-sm">Agence Kameo</span>
             <p className="text-slate-500 text-xs">Outil interne</p>
           </div>
         </div>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
-        {navItems.map(({ href, label, icon: Icon }) => {
-          const active = href === '/' ? pathname === '/' : pathname.startsWith(href)
-          return (
-            <Link
-              key={href}
-              href={href}
-              className={cn(
-                'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 group',
-                active
-                  ? 'bg-[#E14B89]/10 text-[#E14B89] border border-[#E14B89]/20'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
-              )}
-            >
-              <Icon size={17} className="flex-shrink-0" />
-              <span className="flex-1">{label}</span>
-              {active && <ChevronRight size={14} className="text-[#E14B89]/60" />}
-            </Link>
-          )
-        })}
-
-        {/* Admin section */}
-        {isAdmin && (
-          <>
-            <div className="pt-3 pb-1">
-              <p className="px-3 text-[10px] font-semibold text-slate-600 uppercase tracking-wider">
-                Administration
-              </p>
+      <nav className="flex-1 px-2 py-3 overflow-y-auto space-y-4">
+        {sections.map(section => (
+          <div key={section.label}>
+            <p className="px-3 mb-1 text-[10px] font-semibold text-slate-600 uppercase tracking-wider">
+              {section.label}
+            </p>
+            <div className="space-y-0.5">
+              {section.items.map(({ href, label, icon: Icon }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  className={cn(
+                    'flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-150',
+                    isActive(href)
+                      ? 'bg-[#E14B89]/10 text-[#E14B89] border border-[#E14B89]/20'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                  )}
+                >
+                  <Icon size={16} className="flex-shrink-0" />
+                  <span className="flex-1 truncate">{label}</span>
+                  {isActive(href) && <ChevronRight size={13} className="text-[#E14B89]/60 flex-shrink-0" />}
+                </Link>
+              ))}
             </div>
-            <Link
-              href="/users"
-              className={cn(
-                'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 group',
-                pathname.startsWith('/users')
-                  ? 'bg-[#E14B89]/10 text-[#E14B89] border border-[#E14B89]/20'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
-              )}
-            >
-              <ShieldCheck size={17} className="flex-shrink-0" />
-              <span className="flex-1">Utilisateurs</span>
-              {pathname.startsWith('/users') && <ChevronRight size={14} className="text-[#E14B89]/60" />}
-            </Link>
-          </>
+          </div>
+        ))}
+
+        {/* Équipe — admin only */}
+        {isAdmin && (
+          <div>
+            <p className="px-3 mb-1 text-[10px] font-semibold text-slate-600 uppercase tracking-wider">Équipe</p>
+            <div className="space-y-0.5">
+              <Link href="/users"
+                className={cn(
+                  'flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-150',
+                  pathname.startsWith('/users')
+                    ? 'bg-[#E14B89]/10 text-[#E14B89] border border-[#E14B89]/20'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                )}>
+                <ShieldCheck size={16} className="flex-shrink-0" />
+                <span className="flex-1">Utilisateurs</span>
+                {pathname.startsWith('/users') && <ChevronRight size={13} className="text-[#E14B89]/60 flex-shrink-0" />}
+              </Link>
+            </div>
+          </div>
         )}
       </nav>
 
-      {/* User */}
-      <div className="p-3 border-t border-slate-800/60 space-y-1">
-        <Link
-          href="/profile"
+      {/* User dropdown */}
+      <div className="p-2 border-t border-slate-800/60" ref={dropdownRef}>
+        {/* Dropdown menu */}
+        {dropdownOpen && (
+          <div className="mb-2 bg-[#111118] border border-slate-700 rounded-xl overflow-hidden shadow-xl">
+            <Link href="/profile" onClick={() => setDropdownOpen(false)}
+              className="flex items-center gap-2.5 px-4 py-2.5 text-slate-300 hover:text-white hover:bg-slate-800/50 transition-colors text-sm">
+              <User size={14} />
+              Mon profil
+            </Link>
+            <Link href="/email" onClick={() => setDropdownOpen(false)}
+              className="flex items-center gap-2.5 px-4 py-2.5 text-slate-300 hover:text-white hover:bg-slate-800/50 transition-colors text-sm">
+              <Mail size={14} />
+              Composer un email
+            </Link>
+            <div className="border-t border-slate-800" />
+            <button onClick={() => signOut({ callbackUrl: '/login' })}
+              className="w-full flex items-center gap-2.5 px-4 py-2.5 text-red-400 hover:text-red-300 hover:bg-red-400/5 transition-colors text-sm">
+              <LogOut size={14} />
+              Se déconnecter
+            </button>
+          </div>
+        )}
+
+        {/* User button */}
+        <button
+          onClick={() => setDropdownOpen(!dropdownOpen)}
           className={cn(
-            'flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all group w-full',
-            pathname === '/profile'
-              ? 'bg-[#E14B89]/10 border border-[#E14B89]/20'
-              : 'hover:bg-slate-800/50'
+            'flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all w-full group',
+            dropdownOpen ? 'bg-slate-800/70' : 'hover:bg-slate-800/50'
           )}
         >
-          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#E14B89] to-[#F8903C] flex items-center justify-center flex-shrink-0">
-            <span className="text-white font-semibold text-xs">
-              {session?.user?.name?.[0]?.toUpperCase() ?? '?'}
-            </span>
+          <div className="w-7 h-7 rounded-full flex-shrink-0 overflow-hidden">
+            {avatar ? (
+              <img src={avatar} alt={session?.user?.name ?? ''} className="w-full h-full object-cover" />
+            ) : (
+              <div className="w-full h-full bg-gradient-to-br from-[#E14B89] to-[#F8903C] flex items-center justify-center">
+                <span className="text-white font-semibold text-xs">
+                  {session?.user?.name?.[0]?.toUpperCase() ?? '?'}
+                </span>
+              </div>
+            )}
           </div>
-          <div className="flex-1 min-w-0">
-            <p className={cn(
-              'text-xs font-medium truncate',
-              pathname === '/profile' ? 'text-[#F8903C]' : 'text-white group-hover:text-white'
-            )}>
-              {session?.user?.name}
-            </p>
-            <p className="text-slate-500 text-xs truncate">
-              {ROLE_LABELS[(session?.user as { role?: string })?.role ?? ''] ?? (session?.user as { role?: string })?.role}
-            </p>
+          <div className="flex-1 min-w-0 text-left">
+            <p className="text-xs font-medium text-white truncate">{session?.user?.name}</p>
+            <p className="text-slate-500 text-xs truncate">{ROLE_LABELS[role] ?? role}</p>
           </div>
-          <UserCircle size={14} className={cn(
-            pathname === '/profile' ? 'text-[#E14B89]' : 'text-slate-600 group-hover:text-slate-400'
-          )} />
-        </Link>
-        <button
-          onClick={() => signOut({ callbackUrl: '/login' })}
-          className="flex items-center gap-3 px-3 py-2 rounded-xl text-slate-500 hover:text-red-400 hover:bg-red-400/5 transition-colors w-full text-sm"
-        >
-          <LogOut size={15} />
-          <span>Déconnexion</span>
+          <ChevronUp size={13} className={cn('text-slate-600 flex-shrink-0 transition-transform', dropdownOpen ? 'rotate-0' : 'rotate-180')} />
         </button>
       </div>
     </aside>

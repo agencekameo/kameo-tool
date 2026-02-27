@@ -24,6 +24,7 @@ enum ProjectType {
 
 enum ProjectStatus {
   BRIEF
+  REDACTION
   MAQUETTE
   DEVELOPPEMENT
   REVIEW
@@ -54,14 +55,12 @@ enum MaintenancePlan {
 }
 
 enum ResourceCategory {
-  PROMPT
+  PROCESS
+  CAHIER_CHARGES
   PLUGIN
   GUIDE
-  TEMPLATE
-  OUTIL
+  PROMPT
   SEO
-  DESIGN
-  DEVELOPPEMENT
   AUTRE
 }
 

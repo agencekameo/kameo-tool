@@ -24,6 +24,7 @@ export function formatCurrency(amount: number | null | undefined): string {
 
 export const PROJECT_STATUS_LABELS: Record<string, string> = {
   BRIEF: 'Brief',
+  REDACTION: 'Rédaction',
   MAQUETTE: 'Maquette',
   DEVELOPPEMENT: 'Développement',
   REVIEW: 'Review',
@@ -34,6 +35,7 @@ export const PROJECT_STATUS_LABELS: Record<string, string> = {
 
 export const PROJECT_STATUS_COLORS: Record<string, string> = {
   BRIEF: 'bg-slate-100 text-slate-700',
+  REDACTION: 'bg-amber-100 text-amber-700',
   MAQUETTE: 'bg-purple-100 text-purple-700',
   DEVELOPPEMENT: 'bg-blue-100 text-blue-700',
   REVIEW: 'bg-orange-100 text-orange-700',
@@ -85,27 +87,23 @@ export const MAINTENANCE_LABELS: Record<string, string> = {
 }
 
 export const RESOURCE_CATEGORY_LABELS: Record<string, string> = {
-  PROMPT: 'Prompt',
-  PLUGIN: 'Plugin',
+  PROCESS: 'Process',
+  CAHIER_CHARGES: 'Cahier des charges',
+  PLUGIN: 'Plugins',
   GUIDE: 'Guide',
-  TEMPLATE: 'Template',
-  OUTIL: 'Outil',
+  PROMPT: 'Prompt',
   SEO: 'SEO',
-  DESIGN: 'Design',
-  DEVELOPPEMENT: 'Développement',
-  AUTRE: 'Autre',
+  AUTRE: 'Autres',
 }
 
 export const RESOURCE_CATEGORY_COLORS: Record<string, string> = {
+  PROCESS: 'bg-blue-500/15 text-blue-400',
+  CAHIER_CHARGES: 'bg-purple-500/15 text-purple-400',
+  PLUGIN: 'bg-green-500/15 text-green-400',
+  GUIDE: 'bg-teal-500/15 text-teal-400',
   PROMPT: 'bg-[#E14B89]/15 text-[#E14B89]',
-  PLUGIN: 'bg-green-100 text-green-700',
-  GUIDE: 'bg-blue-100 text-blue-700',
-  TEMPLATE: 'bg-orange-100 text-orange-700',
-  OUTIL: 'bg-teal-100 text-teal-700',
-  SEO: 'bg-yellow-100 text-yellow-700',
-  DESIGN: 'bg-pink-100 text-pink-700',
-  DEVELOPPEMENT: 'bg-cyan-100 text-cyan-700',
-  AUTRE: 'bg-gray-100 text-gray-700',
+  SEO: 'bg-yellow-500/15 text-yellow-400',
+  AUTRE: 'bg-slate-500/15 text-slate-400',
 }
 
 export const ROLE_LABELS: Record<string, string> = {

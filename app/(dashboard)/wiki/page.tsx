@@ -15,7 +15,7 @@ interface Resource {
   updatedAt: string
 }
 
-const CATEGORIES = ['PROMPT', 'PLUGIN', 'GUIDE', 'TEMPLATE', 'OUTIL', 'SEO', 'DESIGN', 'DEVELOPPEMENT', 'AUTRE']
+const CATEGORIES = ['PROCESS', 'CAHIER_CHARGES', 'PLUGIN', 'GUIDE', 'PROMPT', 'SEO', 'AUTRE']
 
 export default function WikiPage() {
   const [resources, setResources] = useState<Resource[]>([])
@@ -25,7 +25,7 @@ export default function WikiPage() {
   const [showModal, setShowModal] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [selected, setSelected] = useState<Resource | null>(null)
-  const [form, setForm] = useState({ title: '', content: '', category: 'GUIDE', tags: '', pinned: false })
+  const [form, setForm] = useState({ title: '', content: '', category: 'PROCESS', tags: '', pinned: false })
 
   useEffect(() => {
     fetch('/api/resources').then(r => r.json()).then(setResources).finally(() => setLoading(false))
@@ -87,7 +87,7 @@ export default function WikiPage() {
           <h1 className="text-2xl font-semibold text-white">Wiki & Ressources</h1>
           <p className="text-slate-400 text-sm mt-1">{resources.length} ressource{resources.length > 1 ? 's' : ''}</p>
         </div>
-        <button onClick={() => { setEditingId(null); setForm({ title: '', content: '', category: 'GUIDE', tags: '', pinned: false }); setShowModal(true) }}
+        <button onClick={() => { setEditingId(null); setForm({ title: '', content: '', category: 'PROCESS', tags: '', pinned: false }); setShowModal(true) }}
           className="flex items-center gap-2 bg-[#E14B89] hover:opacity-90 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-colors">
           <Plus size={16} /> Nouvelle ressource
         </button>
