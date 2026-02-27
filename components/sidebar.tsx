@@ -21,6 +21,8 @@ import {
   User,
   ChevronUp,
   Mail,
+  Target,
+  Activity,
 } from 'lucide-react'
 import { cn, ROLE_LABELS } from '@/lib/utils'
 import { useState, useRef, useEffect } from 'react'
@@ -52,6 +54,7 @@ const sections = [
     label: 'Finances',
     items: [
       { href: '/finances', label: 'Finances', icon: Wallet },
+      { href: '/objectifs', label: 'Objectifs', icon: Target },
     ],
   },
   {
@@ -73,7 +76,6 @@ export function Sidebar() {
   const role = (session?.user as { role?: string })?.role ?? ''
   const avatar = (session?.user as { avatar?: string })?.avatar
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
@@ -142,8 +144,19 @@ export function Sidebar() {
                     : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
                 )}>
                 <ShieldCheck size={16} className="flex-shrink-0" />
-                <span className="flex-1">Utilisateurs</span>
+                <span className="flex-1">Équipe</span>
                 {pathname.startsWith('/users') && <ChevronRight size={13} className="text-[#E14B89]/60 flex-shrink-0" />}
+              </Link>
+              <Link href="/logs"
+                className={cn(
+                  'flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-150',
+                  pathname.startsWith('/logs')
+                    ? 'bg-[#E14B89]/10 text-[#E14B89] border border-[#E14B89]/20'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                )}>
+                <Activity size={16} className="flex-shrink-0" />
+                <span className="flex-1">Logs</span>
+                {pathname.startsWith('/logs') && <ChevronRight size={13} className="text-[#E14B89]/60 flex-shrink-0" />}
               </Link>
             </div>
           </div>
@@ -152,7 +165,6 @@ export function Sidebar() {
 
       {/* User dropdown */}
       <div className="p-2 border-t border-slate-800/60" ref={dropdownRef}>
-        {/* Dropdown menu */}
         {dropdownOpen && (
           <div className="mb-2 bg-[#111118] border border-slate-700 rounded-xl overflow-hidden shadow-xl">
             <Link href="/profile" onClick={() => setDropdownOpen(false)}
@@ -174,7 +186,6 @@ export function Sidebar() {
           </div>
         )}
 
-        {/* User button */}
         <button
           onClick={() => setDropdownOpen(!dropdownOpen)}
           className={cn(

@@ -84,7 +84,7 @@ export default function UsersPage() {
     <div className="p-8">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-semibold text-white">Utilisateurs</h1>
+          <h1 className="text-2xl font-semibold text-white">Équipe</h1>
           <p className="text-slate-400 text-sm mt-1">{users.length} membre{users.length > 1 ? 's' : ''} dans l&apos;équipe</p>
         </div>
         {isAdmin && (

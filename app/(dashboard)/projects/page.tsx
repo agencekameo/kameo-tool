@@ -20,13 +20,15 @@ interface Project {
 interface Client { id: string; name: string }
 
 const STATUS_ORDER = ['BRIEF', 'REDACTION', 'MAQUETTE', 'DEVELOPPEMENT', 'REVIEW', 'LIVRAISON', 'MAINTENANCE']
+const IN_PROGRESS_STATUSES = ['BRIEF', 'REDACTION', 'MAQUETTE', 'DEVELOPPEMENT', 'REVIEW']
+const DONE_STATUSES = ['LIVRAISON', 'MAINTENANCE', 'ARCHIVE']
 const SERVICES = ['SEO', 'Google Ads', 'Meta Ads', 'Réseaux sociaux', 'Identité visuelle', 'Google Business', 'Rédaction', 'Maintenance']
 
 export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([])
   const [clients, setClients] = useState<Client[]>([])
   const [search, setSearch] = useState('')
-  const [filterStatus, setFilterStatus] = useState('ALL')
+  const [filterStatus, setFilterStatus] = useState('EN_COURS')
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [form, setForm] = useState({
@@ -44,9 +46,13 @@ export default function ProjectsPage() {
   const filtered = projects.filter(p => {
     const matchSearch = p.name.toLowerCase().includes(search.toLowerCase()) ||
       p.client.name.toLowerCase().includes(search.toLowerCase())
-    const matchStatus = filterStatus === 'ALL' || p.status === filterStatus
-    return matchSearch && matchStatus
+    if (filterStatus === 'EN_COURS') return matchSearch && IN_PROGRESS_STATUSES.includes(p.status)
+    if (filterStatus === 'TERMINES') return matchSearch && DONE_STATUSES.includes(p.status)
+    return matchSearch && p.status === filterStatus
   })
+
+  const inProgressCount = projects.filter(p => IN_PROGRESS_STATUSES.includes(p.status)).length
+  const doneCount = projects.filter(p => DONE_STATUSES.includes(p.status)).length
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
@@ -83,17 +89,36 @@ export default function ProjectsPage() {
         </button>
       </div>
 
+      {/* Tabs En cours / Terminés + search + statut */}
       <div className="flex gap-3 mb-6 flex-wrap">
+        {/* Vue toggle */}
+        <div className="flex items-center bg-[#111118] border border-slate-800 rounded-xl p-1">
+          <button onClick={() => setFilterStatus('EN_COURS')}
+            className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-colors ${filterStatus === 'EN_COURS' ? 'bg-[#E14B89] text-white' : 'text-slate-400 hover:text-white'}`}>
+            En cours <span className="ml-1 opacity-70">{inProgressCount}</span>
+          </button>
+          <button onClick={() => setFilterStatus('TERMINES')}
+            className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-colors ${filterStatus === 'TERMINES' ? 'bg-[#E14B89] text-white' : 'text-slate-400 hover:text-white'}`}>
+            Terminés <span className="ml-1 opacity-70">{doneCount}</span>
+          </button>
+        </div>
+
         <div className="relative">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher..."
-            className="bg-[#111118] border border-slate-800 rounded-xl pl-9 pr-4 py-2 text-white text-sm placeholder:text-slate-600 focus:outline-none focus:border-[#E14B89] transition-colors w-56" />
+            className="bg-[#111118] border border-slate-800 rounded-xl pl-9 pr-4 py-2 text-white text-sm placeholder:text-slate-600 focus:outline-none focus:border-[#E14B89] transition-colors w-52" />
         </div>
+
+        {/* Filtre par statut précis */}
         <div className="flex items-center gap-1 bg-[#111118] border border-slate-800 rounded-xl p-1 flex-wrap">
-          {['ALL', ...STATUS_ORDER].map(s => (
+          <button onClick={() => setFilterStatus('EN_COURS')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filterStatus === 'EN_COURS' ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-white'}`}>
+            Tous
+          </button>
+          {(filterStatus === 'TERMINES' ? DONE_STATUSES : IN_PROGRESS_STATUSES).map(s => (
             <button key={s} onClick={() => setFilterStatus(s)}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filterStatus === s ? 'bg-[#E14B89] text-white' : 'text-slate-400 hover:text-white'}`}>
-              {s === 'ALL' ? 'Tous' : PROJECT_STATUS_LABELS[s]}
+              {PROJECT_STATUS_LABELS[s]}
             </button>
           ))}
         </div>

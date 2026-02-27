@@ -76,6 +76,7 @@ export default function AuditPage() {
   const [loadingHistory, setLoadingHistory] = useState(true)
   const [currentAudit, setCurrentAudit] = useState<Audit | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [auditError, setAuditError] = useState<string | null>(null)
 
   useEffect(() => {
     Promise.all([
@@ -88,17 +89,22 @@ export default function AuditPage() {
     e.preventDefault()
     setLoading(true)
     setCurrentAudit(null)
+    setAuditError(null)
     try {
       const res = await fetch('/api/audit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url, projectId: projectId || null }),
       })
-      const audit = await res.json()
-      setCurrentAudit(audit)
-      setAudits(prev => [audit, ...prev])
+      const data = await res.json()
+      if (!res.ok) {
+        setAuditError(data.error ?? 'Erreur lors de l\'audit')
+      } else {
+        setCurrentAudit(data)
+        setAudits(prev => [data, ...prev])
+      }
     } catch {
-      alert('Erreur lors de l\'audit. Vérifiez l\'URL et réessayez.')
+      setAuditError('Impossible de joindre l\'API PageSpeed. Vérifiez l\'URL et réessayez.')
     } finally {
       setLoading(false)
     }
@@ -131,6 +137,11 @@ export default function AuditPage() {
             {loading ? <><Loader2 size={16} className="animate-spin" /> Analyse...</> : <><Search size={16} /> Lancer l&apos;audit</>}
           </button>
         </form>
+        {auditError && (
+          <div className="mt-4 px-4 py-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm">
+            ⚠ {auditError}
+          </div>
+        )}
       </div>
 
       {/* Results */}

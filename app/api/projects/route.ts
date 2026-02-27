@@ -1,5 +1,6 @@
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { createLog } from '@/lib/log'
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function GET() {
@@ -20,5 +21,6 @@ export async function POST(req: NextRequest) {
     data: { ...body, createdById: session.user.id },
     include: { client: true, tasks: true },
   })
+  await createLog(session.user.id, 'CRÉÉ', 'Projet', project.id, project.name)
   return NextResponse.json(project)
 }
