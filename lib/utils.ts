@@ -109,11 +109,10 @@ export const RESOURCE_CATEGORY_COLORS: Record<string, string> = {
 }
 
 export const ROLE_LABELS: Record<string, string> = {
-  ADMIN: 'Admin',
+  ADMIN: 'Président',
   DEVELOPER: 'Développeur',
   REDACTEUR: 'Rédacteur',
   DESIGNER: 'Designer',
-  MEMBER: 'Membre',
 }
 
 export const ROLE_COLORS: Record<string, string> = {
@@ -121,7 +120,6 @@ export const ROLE_COLORS: Record<string, string> = {
   DEVELOPER: 'bg-blue-500/15 text-blue-400 border-blue-500/20',
   REDACTEUR: 'bg-amber-500/15 text-amber-400 border-amber-500/20',
   DESIGNER: 'bg-pink-500/15 text-pink-400 border-pink-500/20',
-  MEMBER: 'bg-slate-500/15 text-slate-400 border-slate-500/20',
 }
 
 export const ROLE_AVATAR_COLORS: Record<string, string> = {
@@ -129,5 +127,4 @@ export const ROLE_AVATAR_COLORS: Record<string, string> = {
   DEVELOPER: 'from-blue-400 to-blue-600',
   REDACTEUR: 'from-amber-400 to-amber-600',
   DESIGNER: 'from-pink-400 to-pink-600',
-  MEMBER: 'from-slate-400 to-slate-600',
 }

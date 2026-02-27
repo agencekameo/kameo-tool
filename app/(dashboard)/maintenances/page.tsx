@@ -24,6 +24,8 @@ interface Maintenance {
   active: boolean
 }
 
+interface Client { id: string; name: string; company?: string }
+
 const TABS = [
   { key: 'WEB', label: 'Web', icon: Globe },
   { key: 'GOOGLE', label: 'Google', icon: Search },
@@ -51,10 +53,14 @@ export default function MaintenancesPage() {
   const [editItem, setEditItem] = useState<Maintenance | null>(null)
   const [form, setForm] = useState<Record<string, string | boolean>>(emptyForm)
   const [copied, setCopied] = useState<string | null>(null)
+  const [clients, setClients] = useState<Client[]>([])
   const [showCreds, setShowCreds] = useState<string | null>(null)
 
   useEffect(() => {
-    fetch('/api/maintenances').then(r => r.json()).then(setMaintenances).finally(() => setLoading(false))
+    Promise.all([
+      fetch('/api/maintenances').then(r => r.json()),
+      fetch('/api/clients').then(r => r.json()),
+    ]).then(([m, c]) => { setMaintenances(m); setClients(c) }).finally(() => setLoading(false))
   }, [])
 
   const filtered = maintenances.filter(m => m.type === activeTab)
@@ -275,8 +281,13 @@ export default function MaintenancesPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-slate-400 text-xs mb-1.5">Client *</label>
-                  <input required value={form.clientName as string} onChange={e => setForm({ ...form, clientName: e.target.value })}
-                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+                  <select required value={form.clientName as string} onChange={e => setForm({ ...form, clientName: e.target.value })}
+                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors">
+                    <option value="">Sélectionner un client</option>
+                    {clients.map(c => (
+                      <option key={c.id} value={c.name}>{c.name}{c.company ? ` — ${c.company}` : ''}</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-slate-400 text-xs mb-1.5">Type</label>

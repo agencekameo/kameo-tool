@@ -15,7 +15,7 @@ interface User {
   createdAt: string
 }
 
-const ROLES = ['ADMIN', 'DEVELOPER', 'REDACTEUR', 'DESIGNER', 'MEMBER']
+const ROLES = ['ADMIN', 'DEVELOPER', 'REDACTEUR', 'DESIGNER']
 
 function timeAgo(date?: string) {
   if (!date) return 'Jamais connecté'

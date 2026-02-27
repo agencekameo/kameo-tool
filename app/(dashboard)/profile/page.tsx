@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useSession } from 'next-auth/react'
-import { Save, Camera, Lock, User } from 'lucide-react'
+import { Save, Camera, Lock, User, Upload } from 'lucide-react'
 import { ROLE_LABELS, ROLE_AVATAR_COLORS } from '@/lib/utils'
 
 export default function ProfilePage() {
@@ -13,12 +13,49 @@ export default function ProfilePage() {
   const [savingPw, setSavingPw] = useState(false)
   const [msg, setMsg] = useState('')
   const [msgPw, setMsgPw] = useState('')
+  const [uploading, setUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (session?.user) {
-      setForm({ name: session.user.name ?? '', email: session.user.email ?? '', avatar: (session.user as { avatar?: string }).avatar ?? '' })
+      setForm({
+        name: session.user.name ?? '',
+        email: session.user.email ?? '',
+        avatar: (session.user as { avatar?: string }).avatar ?? '',
+      })
     }
   }, [session])
+
+  function handlePhotoClick() {
+    fileInputRef.current?.click()
+  }
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!file.type.startsWith('image/')) { setMsg('Fichier invalide — choisissez une image'); return }
+    if (file.size > 2 * 1024 * 1024) { setMsg('Image trop lourde (max 2 Mo)'); return }
+    setUploading(true)
+    const reader = new FileReader()
+    reader.onload = async () => {
+      const base64 = reader.result as string
+      setForm(prev => ({ ...prev, avatar: base64 }))
+      // Auto-save avatar immediately
+      const res = await fetch('/api/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ avatar: base64 }),
+      })
+      if (res.ok) {
+        await update({})
+        setMsg('Photo mise à jour ✓')
+      } else {
+        setMsg('Erreur lors de l\'upload')
+      }
+      setUploading(false)
+    }
+    reader.readAsDataURL(file)
+  }
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
@@ -71,16 +108,23 @@ export default function ProfilePage() {
 
       {/* Avatar + role */}
       <div className="bg-[#111118] border border-slate-800 rounded-2xl p-6 mb-6 flex items-center gap-5">
-        <div className="relative">
+        <div className="relative group cursor-pointer" onClick={handlePhotoClick}>
           {form.avatar ? (
-            <img src={form.avatar} alt={form.name} className="w-16 h-16 rounded-full object-cover" />
+            <img src={form.avatar} alt={form.name} className="w-20 h-20 rounded-full object-cover ring-2 ring-slate-700 group-hover:ring-[#E14B89] transition-all" />
           ) : (
-            <div className={`w-16 h-16 rounded-full bg-gradient-to-br ${avatarGradient} flex items-center justify-center`}>
-              <span className="text-white font-bold text-xl">{initial}</span>
+            <div className={`w-20 h-20 rounded-full bg-gradient-to-br ${avatarGradient} flex items-center justify-center ring-2 ring-slate-700 group-hover:ring-[#E14B89] transition-all`}>
+              <span className="text-white font-bold text-2xl">{initial}</span>
             </div>
           )}
-          <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-[#E14B89] rounded-full flex items-center justify-center">
-            <Camera size={11} className="text-white" />
+          <div className={`absolute inset-0 rounded-full bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity ${uploading ? 'opacity-100' : ''}`}>
+            {uploading ? (
+              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <Camera size={18} className="text-white" />
+            )}
+          </div>
+          <div className="absolute -bottom-1 -right-1 w-7 h-7 bg-[#E14B89] rounded-full flex items-center justify-center border-2 border-[#0d0d14]">
+            <Upload size={12} className="text-white" />
           </div>
         </div>
         <div>
@@ -88,7 +132,15 @@ export default function ProfilePage() {
           <span className="text-xs px-2.5 py-1 rounded-full bg-[#E14B89]/10 text-[#E14B89] border border-[#E14B89]/20">
             {ROLE_LABELS[role] ?? role}
           </span>
+          <p className="text-slate-500 text-xs mt-2">Cliquez sur la photo pour en changer</p>
         </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={handleFileChange}
+        />
       </div>
 
       {/* Profile form */}
@@ -107,11 +159,6 @@ export default function ProfilePage() {
             <label className="block text-slate-400 text-xs mb-1.5">Email</label>
             <input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} required
               className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
-          </div>
-          <div>
-            <label className="block text-slate-400 text-xs mb-1.5">URL avatar (optionnel)</label>
-            <input value={form.avatar} onChange={e => setForm({ ...form, avatar: e.target.value })} placeholder="https://..."
-              className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-4 py-3 text-white text-sm placeholder:text-slate-600 focus:outline-none focus:border-[#E14B89] transition-colors" />
           </div>
           {msg && (
             <p className={`text-sm px-4 py-3 rounded-xl border ${msg.includes('✓') ? 'text-green-400 bg-green-400/10 border-green-400/20' : 'text-red-400 bg-red-400/10 border-red-400/20'}`}>{msg}</p>
