@@ -1,0 +1,165 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  MEMBER
+}
+
+enum ProjectType {
+  WORDPRESS
+  FRAMER
+  CUSTOM
+  ECOMMERCE
+}
+
+enum ProjectStatus {
+  BRIEF
+  MAQUETTE
+  DEVELOPPEMENT
+  REVIEW
+  LIVRAISON
+  MAINTENANCE
+  ARCHIVE
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  REVIEW
+  DONE
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum MaintenancePlan {
+  NONE
+  ESSENTIELLE
+  DEVELOPPEMENT
+  SEO
+}
+
+enum ResourceCategory {
+  PROMPT
+  PLUGIN
+  GUIDE
+  TEMPLATE
+  OUTIL
+  SEO
+  DESIGN
+  DEVELOPPEMENT
+  AUTRE
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      Role     @default(MEMBER)
+  avatar    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  assignedTasks   Task[]    @relation("TaskAssignee")
+  createdProjects Project[] @relation("ProjectCreator")
+  audits          Audit[]
+}
+
+model Client {
+  id              String          @id @default(cuid())
+  name            String
+  email           String?
+  phone           String?
+  company         String?
+  website         String?
+  address         String?
+  notes           String?
+  maintenancePlan MaintenancePlan @default(NONE)
+  maintenancePrice Float?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  projects Project[]
+}
+
+model Project {
+  id          String        @id @default(cuid())
+  name        String
+  clientId    String
+  type        ProjectType
+  status      ProjectStatus @default(BRIEF)
+  price       Float?
+  services    String[]
+  deadline    DateTime?
+  startDate   DateTime?
+  notes       String?
+  createdById String
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  client    Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  createdBy User   @relation("ProjectCreator", fields: [createdById], references: [id])
+  tasks     Task[]
+  audits    Audit[]
+}
+
+model Task {
+  id          String       @id @default(cuid())
+  title       String
+  description String?
+  status      TaskStatus   @default(TODO)
+  priority    TaskPriority @default(MEDIUM)
+  projectId   String
+  assigneeId  String?
+  dueDate     DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  project  Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignee User?   @relation("TaskAssignee", fields: [assigneeId], references: [id])
+}
+
+model Resource {
+  id          String           @id @default(cuid())
+  title       String
+  content     String
+  category    ResourceCategory
+  tags        String[]
+  pinned      Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+model Audit {
+  id                 String   @id @default(cuid())
+  url                String
+  projectId          String?
+  createdById        String
+  performanceMobile  Float?
+  performanceDesktop Float?
+  seoScore           Float?
+  uxScore            Float?
+  responsiveScore    Float?
+  globalScore        Float?
+  technology         String?
+  traffic            String?
+  keywords           String?
+  details            Json?
+  improvements       Json?
+  createdAt          DateTime @default(now())
+
+  project   Project? @relation(fields: [projectId], references: [id])
+  createdBy User     @relation(fields: [createdById], references: [id])
+}
