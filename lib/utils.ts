@@ -51,7 +51,7 @@ export const PROJECT_TYPE_LABELS: Record<string, string> = {
 
 export const PROJECT_TYPE_COLORS: Record<string, string> = {
   WORDPRESS: 'bg-blue-50 text-blue-600',
-  FRAMER: 'bg-violet-50 text-violet-600',
+  FRAMER: 'bg-[#E14B89]/10 text-[#E14B89]',
   CUSTOM: 'bg-amber-50 text-amber-600',
   ECOMMERCE: 'bg-green-50 text-green-600',
 }
@@ -97,7 +97,7 @@ export const RESOURCE_CATEGORY_LABELS: Record<string, string> = {
 }
 
 export const RESOURCE_CATEGORY_COLORS: Record<string, string> = {
-  PROMPT: 'bg-violet-100 text-violet-700',
+  PROMPT: 'bg-[#E14B89]/15 text-[#E14B89]',
   PLUGIN: 'bg-green-100 text-green-700',
   GUIDE: 'bg-blue-100 text-blue-700',
   TEMPLATE: 'bg-orange-100 text-orange-700',
@@ -106,4 +106,28 @@ export const RESOURCE_CATEGORY_COLORS: Record<string, string> = {
   DESIGN: 'bg-pink-100 text-pink-700',
   DEVELOPPEMENT: 'bg-cyan-100 text-cyan-700',
   AUTRE: 'bg-gray-100 text-gray-700',
+}
+
+export const ROLE_LABELS: Record<string, string> = {
+  ADMIN: 'Admin',
+  DEVELOPER: 'Développeur',
+  REDACTEUR: 'Rédacteur',
+  DESIGNER: 'Designer',
+  MEMBER: 'Membre',
+}
+
+export const ROLE_COLORS: Record<string, string> = {
+  ADMIN: 'bg-[#E14B89]/10 text-[#E14B89] border-[#E14B89]/20',
+  DEVELOPER: 'bg-blue-500/15 text-blue-400 border-blue-500/20',
+  REDACTEUR: 'bg-amber-500/15 text-amber-400 border-amber-500/20',
+  DESIGNER: 'bg-pink-500/15 text-pink-400 border-pink-500/20',
+  MEMBER: 'bg-slate-500/15 text-slate-400 border-slate-500/20',
+}
+
+export const ROLE_AVATAR_COLORS: Record<string, string> = {
+  ADMIN: 'from-[#E14B89] to-[#F8903C]',
+  DEVELOPER: 'from-blue-400 to-blue-600',
+  REDACTEUR: 'from-amber-400 to-amber-600',
+  DESIGNER: 'from-pink-400 to-pink-600',
+  MEMBER: 'from-slate-400 to-slate-600',
 }

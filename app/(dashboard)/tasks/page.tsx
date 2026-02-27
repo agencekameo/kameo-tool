@@ -65,7 +65,7 @@ export default function TasksPage() {
           <p className="text-slate-400 text-sm mt-1">{tasks.filter(t => t.status !== 'DONE').length} en cours</p>
         </div>
         <button onClick={() => setShowModal(true)}
-          className="flex items-center gap-2 bg-violet-600 hover:bg-violet-500 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-colors">
+          className="flex items-center gap-2 bg-[#E14B89] hover:opacity-90 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-colors">
           <Plus size={16} /> Nouvelle tâche
         </button>
       </div>
@@ -87,11 +87,11 @@ export default function TasksPage() {
                         <button onClick={() => updateStatus(task.id, task.status === 'DONE' ? 'TODO' : 'DONE')} className="mt-0.5 flex-shrink-0">
                           {task.status === 'DONE'
                             ? <CheckCircle2 size={15} className="text-green-400" />
-                            : <Circle size={15} className="text-slate-600 hover:text-violet-400 transition-colors" />}
+                            : <Circle size={15} className="text-slate-600 hover:text-[#E14B89] transition-colors" />}
                         </button>
                         <p className={`text-sm font-medium leading-snug ${task.status === 'DONE' ? 'line-through text-slate-500' : 'text-white'}`}>{task.title}</p>
                       </div>
-                      <Link href={`/projects/${task.project.id}`} className="text-slate-500 text-xs hover:text-violet-400 transition-colors block mb-2">
+                      <Link href={`/projects/${task.project.id}`} className="text-slate-500 text-xs hover:text-[#E14B89] transition-colors block mb-2">
                         {task.project.client.name} · {task.project.name}
                       </Link>
                       <div className="flex items-center justify-between">
@@ -121,12 +121,12 @@ export default function TasksPage() {
               <div>
                 <label className="block text-slate-400 text-xs mb-1.5">Titre *</label>
                 <input required value={form.title} onChange={e => setForm({ ...form, title: e.target.value })}
-                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-violet-500 transition-colors" />
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
               </div>
               <div>
                 <label className="block text-slate-400 text-xs mb-1.5">Projet *</label>
                 <select required value={form.projectId} onChange={e => setForm({ ...form, projectId: e.target.value })}
-                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-violet-500 transition-colors">
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors">
                   <option value="">Sélectionner</option>
                   {projects.map(p => <option key={p.id} value={p.id}>{p.client.name} · {p.name}</option>)}
                 </select>
@@ -135,7 +135,7 @@ export default function TasksPage() {
                 <div>
                   <label className="block text-slate-400 text-xs mb-1.5">Priorité</label>
                   <select value={form.priority} onChange={e => setForm({ ...form, priority: e.target.value })}
-                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-violet-500 transition-colors">
+                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors">
                     <option value="LOW">Faible</option>
                     <option value="MEDIUM">Normale</option>
                     <option value="HIGH">Haute</option>
@@ -145,7 +145,7 @@ export default function TasksPage() {
                 <div>
                   <label className="block text-slate-400 text-xs mb-1.5">Assigné à</label>
                   <select value={form.assigneeId} onChange={e => setForm({ ...form, assigneeId: e.target.value })}
-                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-violet-500 transition-colors">
+                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors">
                     <option value="">Non assigné</option>
                     {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                   </select>
@@ -154,17 +154,17 @@ export default function TasksPage() {
               <div>
                 <label className="block text-slate-400 text-xs mb-1.5">Échéance</label>
                 <input type="date" value={form.dueDate} onChange={e => setForm({ ...form, dueDate: e.target.value })}
-                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-violet-500 transition-colors" />
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
               </div>
               <div>
                 <label className="block text-slate-400 text-xs mb-1.5">Description</label>
                 <textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} rows={3}
-                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-violet-500 transition-colors resize-none" />
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors resize-none" />
               </div>
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setShowModal(false)}
                   className="flex-1 border border-slate-700 text-slate-400 hover:text-white py-2.5 rounded-xl text-sm transition-colors">Annuler</button>
-                <button type="submit" className="flex-1 bg-violet-600 hover:bg-violet-500 text-white py-2.5 rounded-xl text-sm font-medium transition-colors">Créer</button>
+                <button type="submit" className="flex-1 bg-[#E14B89] hover:opacity-90 text-white py-2.5 rounded-xl text-sm font-medium transition-colors">Créer</button>
               </div>
             </form>
           </div>

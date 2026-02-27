@@ -2,68 +2,69 @@
 
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import { useSession } from 'next-auth/react'
 import Link from 'next/link'
-import { ArrowLeft, Plus, Trash2, CheckCircle2, Circle, Save, Pencil, ExternalLink } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, CheckCircle2, Circle, Save, Pencil, ExternalLink, FileText, UserPlus, X } from 'lucide-react'
 import {
   PROJECT_STATUS_COLORS, PROJECT_STATUS_LABELS, PROJECT_TYPE_COLORS, PROJECT_TYPE_LABELS,
   TASK_PRIORITY_COLORS, TASK_PRIORITY_LABELS, TASK_STATUS_LABELS,
+  ROLE_AVATAR_COLORS, ROLE_LABELS,
   formatCurrency, formatDate
 } from '@/lib/utils'
 
 interface Task {
-  id: string
-  title: string
-  description?: string
-  status: string
-  priority: string
-  dueDate?: string
-  assignee?: { id: string; name: string }
+  id: string; title: string; description?: string; status: string; priority: string
+  dueDate?: string; assignee?: { id: string; name: string }
 }
-
+interface Invoice {
+  id: string; filename: string; fileUrl: string; amount?: number; notes?: string
+  createdAt: string; uploader: { id: string; name: string }
+}
+interface ProjectUser {
+  id: string; name: string; role: string; avatar?: string
+}
 interface Project {
-  id: string
-  name: string
-  type: string
-  status: string
-  price?: number
-  deadline?: string
-  startDate?: string
-  services: string[]
-  notes?: string
+  id: string; name: string; type: string; status: string; price?: number
+  deadline?: string; startDate?: string; services: string[]; notes?: string
   client: { id: string; name: string; company?: string; website?: string }
-  tasks: Task[]
-  createdBy: { id: string; name: string }
+  tasks: Task[]; createdBy: { id: string; name: string }
+  assignees: ProjectUser[]
 }
-
-interface User { id: string; name: string }
 
 const STATUS_ORDER = ['BRIEF', 'MAQUETTE', 'DEVELOPPEMENT', 'REVIEW', 'LIVRAISON', 'MAINTENANCE', 'ARCHIVE']
 
 export default function ProjectDetailPage() {
   const { id } = useParams()
   const router = useRouter()
+  const { data: session } = useSession()
   const [project, setProject] = useState<Project | null>(null)
-  const [users, setUsers] = useState<User[]>([])
+  const [users, setUsers] = useState<ProjectUser[]>([])
+  const [invoices, setInvoices] = useState<Invoice[]>([])
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState<Partial<Project & { price: string; deadline: string }>>({})
   const [showTaskModal, setShowTaskModal] = useState(false)
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false)
   const [taskForm, setTaskForm] = useState({ title: '', priority: 'MEDIUM', assigneeId: '', dueDate: '', description: '' })
+  const [invoiceForm, setInvoiceForm] = useState({ filename: '', fileUrl: '', amount: '', notes: '' })
+
+  const isAdmin = (session?.user as { role?: string })?.role === 'ADMIN'
 
   useEffect(() => {
     Promise.all([
       fetch(`/api/projects/${id}`).then(r => r.json()),
       fetch('/api/users').then(r => r.json()),
-    ]).then(([p, u]) => {
+      fetch(`/api/projects/${id}/invoices`).then(r => r.json()),
+    ]).then(([p, u, inv]) => {
       setProject(p)
       setForm({ ...p, price: p.price?.toString() ?? '', deadline: p.deadline ? p.deadline.split('T')[0] : '' })
       setUsers(u)
+      setInvoices(inv)
     })
   }, [id])
 
   async function handleSave() {
     const res = await fetch(`/api/projects/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...form, price: form.price ? parseFloat(form.price as string) : null, deadline: (form.deadline as string) || null }),
     })
     const updated = await res.json()
@@ -80,8 +81,7 @@ export default function ProjectDetailPage() {
   async function handleCreateTask(e: React.FormEvent) {
     e.preventDefault()
     const res = await fetch('/api/tasks', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...taskForm, projectId: id, assigneeId: taskForm.assigneeId || null, dueDate: taskForm.dueDate || null }),
     })
     const task = await res.json()
@@ -101,10 +101,41 @@ export default function ProjectDetailPage() {
     setProject(prev => prev ? { ...prev, tasks: prev.tasks.filter(t => t.id !== taskId) } : prev)
   }
 
+  async function handleAddAssignee(userId: string) {
+    await fetch(`/api/projects/${id}/assignees`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId }),
+    })
+    const user = users.find(u => u.id === userId)
+    if (user) setProject(prev => prev ? { ...prev, assignees: [...prev.assignees, user] } : prev)
+  }
+
+  async function handleRemoveAssignee(userId: string) {
+    await fetch(`/api/projects/${id}/assignees`, {
+      method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId }),
+    })
+    setProject(prev => prev ? { ...prev, assignees: prev.assignees.filter(a => a.id !== userId) } : prev)
+  }
+
+  async function handleCreateInvoice(e: React.FormEvent) {
+    e.preventDefault()
+    const res = await fetch(`/api/projects/${id}/invoices`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...invoiceForm,
+        amount: invoiceForm.amount ? parseFloat(invoiceForm.amount) : null,
+      }),
+    })
+    const invoice = await res.json()
+    setInvoices(prev => [invoice, ...prev])
+    setShowInvoiceModal(false)
+    setInvoiceForm({ filename: '', fileUrl: '', amount: '', notes: '' })
+  }
+
   if (!project) return <div className="p-8 text-slate-500">Chargement...</div>
 
   const doneTasks = project.tasks.filter(t => t.status === 'DONE').length
   const progress = project.tasks.length ? Math.round((doneTasks / project.tasks.length) * 100) : 0
+  const unassignedUsers = users.filter(u => !project.assignees.find(a => a.id === u.id))
 
   return (
     <div className="p-8 max-w-5xl">
@@ -121,13 +152,13 @@ export default function ProjectDetailPage() {
               {PROJECT_TYPE_LABELS[project.type]}
             </span>
           </div>
-          <Link href={`/clients/${project.client.id}`} className="text-slate-400 hover:text-violet-400 transition-colors text-sm">
+          <Link href={`/clients/${project.client.id}`} className="text-slate-400 hover:text-[#E14B89] transition-colors text-sm">
             {project.client.name}{project.client.company ? ` · ${project.client.company}` : ''}
           </Link>
         </div>
         <div className="flex gap-2">
           {editing ? (
-            <button onClick={handleSave} className="flex items-center gap-2 bg-violet-600 hover:bg-violet-500 text-white px-4 py-2 rounded-xl text-sm transition-colors">
+            <button onClick={handleSave} className="flex items-center gap-2 bg-[#E14B89] hover:opacity-90 text-white px-4 py-2 rounded-xl text-sm transition-colors">
               <Save size={14} /> Sauvegarder
             </button>
           ) : (
@@ -152,11 +183,11 @@ export default function ProjectDetailPage() {
             return (
               <div key={s} className="flex items-center flex-1">
                 <button onClick={() => editing && setForm({ ...form, status: s })}
-                  className={`flex-1 text-center py-2 px-1 rounded-lg text-xs font-medium transition-colors ${isActive ? 'bg-violet-600 text-white' : isDone ? 'bg-violet-600/20 text-violet-400' : 'text-slate-500 hover:text-slate-300'} ${editing ? 'cursor-pointer' : 'cursor-default'}`}>
+                  className={`flex-1 text-center py-2 px-1 rounded-lg text-xs font-medium transition-colors ${isActive ? 'bg-[#E14B89] text-white' : isDone ? 'bg-[#E14B89]/20 text-[#E14B89]' : 'text-slate-500 hover:text-slate-300'} ${editing ? 'cursor-pointer' : 'cursor-default'}`}>
                   {PROJECT_STATUS_LABELS[s]}
                 </button>
                 {i < STATUS_ORDER.filter(s => s !== 'ARCHIVE').length - 1 && (
-                  <div className={`h-px w-2 mx-0.5 ${isDone ? 'bg-violet-500' : 'bg-slate-700'}`} />
+                  <div className={`h-px w-2 mx-0.5 ${isDone ? 'bg-[#E14B89]' : 'bg-slate-700'}`} />
                 )}
               </div>
             )
@@ -166,7 +197,7 @@ export default function ProjectDetailPage() {
 
       <div className="grid grid-cols-3 gap-6">
         {/* Tasks */}
-        <div className="col-span-2">
+        <div className="col-span-2 space-y-4">
           <div className="bg-[#111118] border border-slate-800 rounded-2xl p-5">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
@@ -174,14 +205,14 @@ export default function ProjectDetailPage() {
                 {project.tasks.length > 0 && (
                   <div className="flex items-center gap-2">
                     <div className="w-20 h-1.5 bg-slate-800 rounded-full">
-                      <div className="h-full bg-violet-500 rounded-full" style={{ width: `${progress}%` }} />
+                      <div className="h-full bg-[#E14B89] rounded-full" style={{ width: `${progress}%` }} />
                     </div>
                     <span className="text-slate-400 text-xs">{doneTasks}/{project.tasks.length}</span>
                   </div>
                 )}
               </div>
               <button onClick={() => setShowTaskModal(true)}
-                className="flex items-center gap-1.5 text-violet-400 hover:text-violet-300 text-sm transition-colors">
+                className="flex items-center gap-1.5 text-[#E14B89] hover:text-[#F8903C] text-sm transition-colors">
                 <Plus size={15} /> Ajouter
               </button>
             </div>
@@ -192,7 +223,7 @@ export default function ProjectDetailPage() {
                   <button onClick={() => toggleTaskStatus(task)} className="mt-0.5 flex-shrink-0">
                     {task.status === 'DONE'
                       ? <CheckCircle2 size={16} className="text-green-400" />
-                      : <Circle size={16} className="text-slate-600 hover:text-violet-400 transition-colors" />}
+                      : <Circle size={16} className="text-slate-600 hover:text-[#E14B89] transition-colors" />}
                   </button>
                   <div className="flex-1 min-w-0">
                     <p className={`text-sm ${task.status === 'DONE' ? 'line-through text-slate-500' : 'text-white'}`}>{task.title}</p>
@@ -212,6 +243,39 @@ export default function ProjectDetailPage() {
               ))}
             </div>
           </div>
+
+          {/* Invoices section */}
+          <div className="bg-[#111118] border border-slate-800 rounded-2xl p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-white font-medium">Factures</h2>
+              <button onClick={() => setShowInvoiceModal(true)}
+                className="flex items-center gap-1.5 text-[#E14B89] hover:text-[#F8903C] text-sm transition-colors">
+                <Plus size={15} /> Ajouter
+              </button>
+            </div>
+            {invoices.length === 0 ? (
+              <p className="text-slate-500 text-sm">Aucune facture</p>
+            ) : (
+              <div className="space-y-2">
+                {invoices.map(inv => (
+                  <div key={inv.id} className="flex items-center gap-3 p-3 rounded-xl hover:bg-slate-800/30">
+                    <FileText size={16} className="text-slate-500 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <a href={inv.fileUrl} target="_blank" rel="noopener noreferrer"
+                        className="text-white text-sm hover:text-[#E14B89] transition-colors flex items-center gap-1">
+                        {inv.filename}
+                        <ExternalLink size={11} className="text-slate-500" />
+                      </a>
+                      <p className="text-slate-500 text-xs mt-0.5">
+                        Par {inv.uploader.name} · {formatDate(inv.createdAt)}
+                        {inv.amount ? ` · ${formatCurrency(inv.amount)}` : ''}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Info sidebar */}
@@ -223,17 +287,17 @@ export default function ProjectDetailPage() {
                 <div>
                   <label className="block text-slate-400 text-xs mb-1">Prix (€)</label>
                   <input type="number" value={(form.price as unknown as string) ?? ''} onChange={e => setForm({ ...form, price: e.target.value as unknown as undefined })}
-                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-violet-500 transition-colors" />
+                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
                 </div>
                 <div>
                   <label className="block text-slate-400 text-xs mb-1">Deadline</label>
                   <input type="date" value={form.deadline as string ?? ''} onChange={e => setForm({ ...form, deadline: e.target.value })}
-                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-violet-500 transition-colors" />
+                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
                 </div>
                 <div>
                   <label className="block text-slate-400 text-xs mb-1">Notes</label>
                   <textarea value={form.notes ?? ''} rows={4} onChange={e => setForm({ ...form, notes: e.target.value })}
-                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-violet-500 transition-colors resize-none" />
+                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors resize-none" />
                 </div>
               </div>
             ) : (
@@ -268,13 +332,54 @@ export default function ProjectDetailPage() {
                 )}
                 {project.client.website && (
                   <a href={project.client.website} target="_blank" rel="noopener noreferrer"
-                    className="flex items-center gap-2 text-violet-400 hover:text-violet-300 transition-colors text-xs">
+                    className="flex items-center gap-2 text-[#E14B89] hover:text-[#F8903C] transition-colors text-xs">
                     <ExternalLink size={12} /> Voir le site client
                   </a>
                 )}
               </div>
             )}
           </div>
+
+          {/* Assignees */}
+          <div className="bg-[#111118] border border-slate-800 rounded-2xl p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-white font-medium">Équipe</h2>
+            </div>
+            <div className="space-y-2 mb-3">
+              {project.assignees.length === 0 && <p className="text-slate-500 text-xs">Aucun membre assigné</p>}
+              {project.assignees.map(a => {
+                const gradient = ROLE_AVATAR_COLORS[a.role] ?? 'from-slate-400 to-slate-600'
+                return (
+                  <div key={a.id} className="flex items-center gap-2.5 group">
+                    <div className={`w-7 h-7 rounded-full bg-gradient-to-br ${gradient} flex items-center justify-center flex-shrink-0`}>
+                      <span className="text-white text-xs font-semibold">{a.name[0]?.toUpperCase()}</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white text-xs font-medium truncate">{a.name}</p>
+                      <p className="text-slate-500 text-xs">{ROLE_LABELS[a.role] ?? a.role}</p>
+                    </div>
+                    {isAdmin && (
+                      <button onClick={() => handleRemoveAssignee(a.id)}
+                        className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 transition-all">
+                        <X size={13} />
+                      </button>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+            {isAdmin && unassignedUsers.length > 0 && (
+              <div>
+                <p className="text-slate-500 text-xs mb-2">Ajouter un membre</p>
+                <select onChange={e => { if (e.target.value) { handleAddAssignee(e.target.value); e.target.value = '' } }}
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-slate-400 text-xs focus:outline-none focus:border-[#E14B89] transition-colors">
+                  <option value="">Sélectionner...</option>
+                  {unassignedUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                </select>
+              </div>
+            )}
+          </div>
+
           <div className="bg-[#111118] border border-slate-800 rounded-2xl p-5">
             <p className="text-slate-400 text-xs">Créé par</p>
             <p className="text-white text-sm mt-1">{project.createdBy.name}</p>
@@ -291,13 +396,13 @@ export default function ProjectDetailPage() {
               <div>
                 <label className="block text-slate-400 text-xs mb-1.5">Titre *</label>
                 <input required value={taskForm.title} onChange={e => setTaskForm({ ...taskForm, title: e.target.value })}
-                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-violet-500 transition-colors" />
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-slate-400 text-xs mb-1.5">Priorité</label>
                   <select value={taskForm.priority} onChange={e => setTaskForm({ ...taskForm, priority: e.target.value })}
-                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-violet-500 transition-colors">
+                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors">
                     <option value="LOW">Faible</option>
                     <option value="MEDIUM">Normale</option>
                     <option value="HIGH">Haute</option>
@@ -307,7 +412,7 @@ export default function ProjectDetailPage() {
                 <div>
                   <label className="block text-slate-400 text-xs mb-1.5">Assigné à</label>
                   <select value={taskForm.assigneeId} onChange={e => setTaskForm({ ...taskForm, assigneeId: e.target.value })}
-                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-violet-500 transition-colors">
+                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors">
                     <option value="">Non assigné</option>
                     {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                   </select>
@@ -316,17 +421,55 @@ export default function ProjectDetailPage() {
               <div>
                 <label className="block text-slate-400 text-xs mb-1.5">Échéance</label>
                 <input type="date" value={taskForm.dueDate} onChange={e => setTaskForm({ ...taskForm, dueDate: e.target.value })}
-                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-violet-500 transition-colors" />
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
               </div>
               <div>
                 <label className="block text-slate-400 text-xs mb-1.5">Description</label>
                 <textarea value={taskForm.description} onChange={e => setTaskForm({ ...taskForm, description: e.target.value })} rows={3}
-                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-violet-500 transition-colors resize-none" />
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors resize-none" />
               </div>
               <div className="flex gap-3">
                 <button type="button" onClick={() => setShowTaskModal(false)}
                   className="flex-1 border border-slate-700 text-slate-400 hover:text-white py-2.5 rounded-xl text-sm transition-colors">Annuler</button>
-                <button type="submit" className="flex-1 bg-violet-600 hover:bg-violet-500 text-white py-2.5 rounded-xl text-sm font-medium transition-colors">Créer</button>
+                <button type="submit" className="flex-1 bg-[#E14B89] hover:opacity-90 text-white py-2.5 rounded-xl text-sm font-medium transition-colors">Créer</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Invoice modal */}
+      {showInvoiceModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#111118] border border-slate-800 rounded-2xl p-6 w-full max-w-md">
+            <h2 className="text-white font-semibold text-lg mb-5">Ajouter une facture</h2>
+            <form onSubmit={handleCreateInvoice} className="space-y-4">
+              <div>
+                <label className="block text-slate-400 text-xs mb-1.5">Nom du fichier *</label>
+                <input required value={invoiceForm.filename} onChange={e => setInvoiceForm({ ...invoiceForm, filename: e.target.value })}
+                  placeholder="Facture-2024-01.pdf"
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+              </div>
+              <div>
+                <label className="block text-slate-400 text-xs mb-1.5">Lien Google Drive *</label>
+                <input required value={invoiceForm.fileUrl} onChange={e => setInvoiceForm({ ...invoiceForm, fileUrl: e.target.value })}
+                  placeholder="https://drive.google.com/..."
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+              </div>
+              <div>
+                <label className="block text-slate-400 text-xs mb-1.5">Montant (€)</label>
+                <input type="number" step="0.01" value={invoiceForm.amount} onChange={e => setInvoiceForm({ ...invoiceForm, amount: e.target.value })}
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+              </div>
+              <div>
+                <label className="block text-slate-400 text-xs mb-1.5">Notes</label>
+                <input value={invoiceForm.notes} onChange={e => setInvoiceForm({ ...invoiceForm, notes: e.target.value })}
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+              </div>
+              <div className="flex gap-3">
+                <button type="button" onClick={() => setShowInvoiceModal(false)}
+                  className="flex-1 border border-slate-700 text-slate-400 hover:text-white py-2.5 rounded-xl text-sm transition-colors">Annuler</button>
+                <button type="submit" className="flex-1 bg-[#E14B89] hover:opacity-90 text-white py-2.5 rounded-xl text-sm font-medium transition-colors">Ajouter</button>
               </div>
             </form>
           </div>

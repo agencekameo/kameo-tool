@@ -7,18 +7,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { id } = await params
   const data = await req.json()
-  const task = await prisma.task.update({
+  const prospect = await prisma.prospect.update({
     where: { id },
-    data,
-    include: { assignee: { select: { id: true, name: true } }, project: { include: { client: true } } },
+    data: { ...data, assignedTo: data.assignedTo || null },
+    include: { assignee: { select: { id: true, name: true } } },
   })
-  return NextResponse.json(task)
+  return NextResponse.json(prospect)
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { id } = await params
-  await prisma.task.delete({ where: { id } })
+  await prisma.prospect.delete({ where: { id } })
   return NextResponse.json({ ok: true })
 }

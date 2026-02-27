@@ -71,8 +71,8 @@ export default function ClientDetailPage() {
 
       <div className="flex items-start justify-between mb-8">
         <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-500/20 to-violet-700/20 border border-violet-500/20 flex items-center justify-center">
-            <span className="text-violet-400 font-bold text-xl">{client.name[0].toUpperCase()}</span>
+          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-500/20 to-violet-700/20 border border-[#E14B89]/20 flex items-center justify-center">
+            <span className="text-[#E14B89] font-bold text-xl">{client.name[0].toUpperCase()}</span>
           </div>
           <div>
             <h1 className="text-2xl font-semibold text-white">{client.name}</h1>
@@ -81,7 +81,7 @@ export default function ClientDetailPage() {
         </div>
         <div className="flex gap-2">
           {editing ? (
-            <button onClick={handleSave} className="flex items-center gap-2 bg-violet-600 hover:bg-violet-500 text-white px-4 py-2 rounded-xl text-sm transition-colors">
+            <button onClick={handleSave} className="flex items-center gap-2 bg-[#E14B89] hover:opacity-90 text-white px-4 py-2 rounded-xl text-sm transition-colors">
               <Save size={14} /> Sauvegarder
             </button>
           ) : (
@@ -113,13 +113,13 @@ export default function ClientDetailPage() {
                     <label className="block text-slate-400 text-xs mb-1">{label}</label>
                     <input type={type} value={(form as Record<string, string>)[key] ?? ''}
                       onChange={e => setForm({ ...form, [key]: e.target.value })}
-                      className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-violet-500 transition-colors" />
+                      className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
                   </div>
                 ))}
                 <div>
                   <label className="block text-slate-400 text-xs mb-1">Notes</label>
                   <textarea value={form.notes ?? ''} rows={3} onChange={e => setForm({ ...form, notes: e.target.value })}
-                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-violet-500 transition-colors resize-none" />
+                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors resize-none" />
                 </div>
               </div>
             ) : (
@@ -156,7 +156,7 @@ export default function ClientDetailPage() {
                   <Link key={project.id} href={`/projects/${project.id}`}
                     className="flex items-center justify-between p-3 rounded-xl hover:bg-slate-800/40 transition-colors group">
                     <div>
-                      <p className="text-white text-sm group-hover:text-violet-300 transition-colors">{project.name}</p>
+                      <p className="text-white text-sm group-hover:text-[#F8903C] transition-colors">{project.name}</p>
                       <p className="text-slate-500 text-xs mt-0.5">{PROJECT_TYPE_LABELS[project.type]}{project.deadline ? ` · ${formatDate(project.deadline)}` : ''}</p>
                     </div>
                     <div className="flex items-center gap-3">
@@ -180,7 +180,7 @@ export default function ClientDetailPage() {
             {editing ? (
               <div className="space-y-3">
                 <select value={form.maintenancePlan ?? 'NONE'} onChange={e => setForm({ ...form, maintenancePlan: e.target.value })}
-                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-violet-500 transition-colors">
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors">
                   <option value="NONE">Aucune</option>
                   <option value="ESSENTIELLE">Essentielle</option>
                   <option value="DEVELOPPEMENT">Développement</option>
@@ -188,7 +188,7 @@ export default function ClientDetailPage() {
                 </select>
                 <input type="number" value={form.maintenancePrice ?? ''} placeholder="Prix mensuel €"
                   onChange={e => setForm({ ...form, maintenancePrice: parseFloat(e.target.value) })}
-                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-violet-500 transition-colors" />
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
               </div>
             ) : (
               <div>

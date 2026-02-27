@@ -12,6 +12,7 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
       client: true,
       tasks: { include: { assignee: true }, orderBy: { createdAt: 'desc' } },
       createdBy: true,
+      assignees: true,
     },
   })
   if (!project) return NextResponse.json({ error: 'Not found' }, { status: 404 })

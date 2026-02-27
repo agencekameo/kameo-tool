@@ -62,8 +62,8 @@ export default async function DashboardPage() {
             label: 'Projets actifs',
             value: activeProjects,
             icon: FolderKanban,
-            color: 'text-violet-400',
-            bg: 'bg-violet-500/10',
+            color: 'text-[#E14B89]',
+            bg: 'bg-[#E14B89]/10',
             href: '/projects',
           },
           {
@@ -113,7 +113,7 @@ export default async function DashboardPage() {
         <div className="col-span-3 bg-[#111118] border border-slate-800 rounded-2xl p-6">
           <div className="flex items-center justify-between mb-5">
             <h2 className="text-white font-semibold">Projets en cours</h2>
-            <Link href="/projects" className="text-violet-400 text-sm hover:text-violet-300 transition-colors flex items-center gap-1">
+            <Link href="/projects" className="text-[#E14B89] text-sm hover:text-[#F8903C] transition-colors flex items-center gap-1">
               Voir tout <ArrowRight size={13} />
             </Link>
           </div>
@@ -128,7 +128,7 @@ export default async function DashboardPage() {
                 className="flex items-center gap-4 p-3 rounded-xl hover:bg-slate-800/40 transition-colors group"
               >
                 <div className="flex-1 min-w-0">
-                  <p className="text-white text-sm font-medium truncate group-hover:text-violet-300 transition-colors">
+                  <p className="text-white text-sm font-medium truncate group-hover:text-[#F8903C] transition-colors">
                     {project.name}
                   </p>
                   <p className="text-slate-500 text-xs mt-0.5">{project.client.name} · {PROJECT_TYPE_LABELS[project.type]}</p>
@@ -150,7 +150,7 @@ export default async function DashboardPage() {
         <div className="col-span-2 bg-[#111118] border border-slate-800 rounded-2xl p-6">
           <div className="flex items-center justify-between mb-5">
             <h2 className="text-white font-semibold">Mes tâches</h2>
-            <Link href="/tasks" className="text-violet-400 text-sm hover:text-violet-300 transition-colors flex items-center gap-1">
+            <Link href="/tasks" className="text-[#E14B89] text-sm hover:text-[#F8903C] transition-colors flex items-center gap-1">
               Voir tout <ArrowRight size={13} />
             </Link>
           </div>

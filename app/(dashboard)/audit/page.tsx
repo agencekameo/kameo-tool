@@ -40,7 +40,7 @@ const URGENCY_COLORS: Record<string, string> = {
 const COMPLEXITY_COLORS: Record<string, string> = {
   Simple: 'bg-green-500/15 text-green-400',
   Modérée: 'bg-blue-500/15 text-blue-400',
-  Complexe: 'bg-violet-500/15 text-violet-400',
+  Complexe: 'bg-[#E14B89]/10 text-[#E14B89]',
 }
 
 function ScoreRing({ score, label, size = 80 }: { score?: number; label: string; size?: number }) {
@@ -119,15 +119,15 @@ export default function AuditPage() {
           <div className="flex-1 relative">
             <Globe size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
             <input value={url} onChange={e => setUrl(e.target.value)} required placeholder="https://exemple.com"
-              className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl pl-10 pr-4 py-3 text-white text-sm placeholder:text-slate-600 focus:outline-none focus:border-violet-500 transition-colors" />
+              className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl pl-10 pr-4 py-3 text-white text-sm placeholder:text-slate-600 focus:outline-none focus:border-[#E14B89] transition-colors" />
           </div>
           <select value={projectId} onChange={e => setProjectId(e.target.value)}
-            className="bg-[#1a1a24] border border-slate-700 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-violet-500 transition-colors w-48">
+            className="bg-[#1a1a24] border border-slate-700 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors w-48">
             <option value="">Lier à un projet</option>
             {projects.map(p => <option key={p.id} value={p.id}>{p.client.name} · {p.name}</option>)}
           </select>
           <button type="submit" disabled={loading}
-            className="flex items-center gap-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white px-6 py-3 rounded-xl text-sm font-medium transition-colors flex-shrink-0">
+            className="flex items-center gap-2 bg-[#E14B89] hover:opacity-90 disabled:opacity-50 text-white px-6 py-3 rounded-xl text-sm font-medium transition-colors flex-shrink-0">
             {loading ? <><Loader2 size={16} className="animate-spin" /> Analyse...</> : <><Search size={16} /> Lancer l&apos;audit</>}
           </button>
         </form>

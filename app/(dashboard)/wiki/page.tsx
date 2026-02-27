@@ -88,7 +88,7 @@ export default function WikiPage() {
           <p className="text-slate-400 text-sm mt-1">{resources.length} ressource{resources.length > 1 ? 's' : ''}</p>
         </div>
         <button onClick={() => { setEditingId(null); setForm({ title: '', content: '', category: 'GUIDE', tags: '', pinned: false }); setShowModal(true) }}
-          className="flex items-center gap-2 bg-violet-600 hover:bg-violet-500 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-colors">
+          className="flex items-center gap-2 bg-[#E14B89] hover:opacity-90 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-colors">
           <Plus size={16} /> Nouvelle ressource
         </button>
       </div>
@@ -98,14 +98,14 @@ export default function WikiPage() {
         <div className="relative">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher..."
-            className="bg-[#111118] border border-slate-800 rounded-xl pl-9 pr-4 py-2 text-white text-sm placeholder:text-slate-600 focus:outline-none focus:border-violet-500 transition-colors w-56" />
+            className="bg-[#111118] border border-slate-800 rounded-xl pl-9 pr-4 py-2 text-white text-sm placeholder:text-slate-600 focus:outline-none focus:border-[#E14B89] transition-colors w-56" />
         </div>
         <div className="flex items-center gap-1 bg-[#111118] border border-slate-800 rounded-xl p-1 flex-wrap">
-          <button onClick={() => setFilterCat('ALL')} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filterCat === 'ALL' ? 'bg-violet-600 text-white' : 'text-slate-400 hover:text-white'}`}>
+          <button onClick={() => setFilterCat('ALL')} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filterCat === 'ALL' ? 'bg-[#E14B89] text-white' : 'text-slate-400 hover:text-white'}`}>
             Tous
           </button>
           {CATEGORIES.map(c => (
-            <button key={c} onClick={() => setFilterCat(c)} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filterCat === c ? 'bg-violet-600 text-white' : 'text-slate-400 hover:text-white'}`}>
+            <button key={c} onClick={() => setFilterCat(c)} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filterCat === c ? 'bg-[#E14B89] text-white' : 'text-slate-400 hover:text-white'}`}>
               {RESOURCE_CATEGORY_LABELS[c]}
             </button>
           ))}
@@ -120,14 +120,14 @@ export default function WikiPage() {
             filtered.map(resource => (
               <div key={resource.id}
                 onClick={() => setSelected(resource)}
-                className={`p-4 rounded-xl border cursor-pointer transition-colors group ${selected?.id === resource.id ? 'bg-violet-600/10 border-violet-500/30' : 'bg-[#111118] border-slate-800 hover:border-slate-700'}`}>
+                className={`p-4 rounded-xl border cursor-pointer transition-colors group ${selected?.id === resource.id ? 'bg-[#E14B89]/10 border-[#E14B89]/30' : 'bg-[#111118] border-slate-800 hover:border-slate-700'}`}>
                 <div className="flex items-start justify-between gap-2 mb-2">
                   <div className="flex items-center gap-2 flex-1 min-w-0">
-                    {resource.pinned && <Pin size={12} className="text-violet-400 flex-shrink-0" />}
+                    {resource.pinned && <Pin size={12} className="text-[#E14B89] flex-shrink-0" />}
                     <p className="text-white text-sm font-medium truncate">{resource.title}</p>
                   </div>
                   <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                    <button onClick={e => { e.stopPropagation(); startEdit(resource) }} className="text-slate-500 hover:text-violet-400 transition-colors p-0.5">
+                    <button onClick={e => { e.stopPropagation(); startEdit(resource) }} className="text-slate-500 hover:text-[#E14B89] transition-colors p-0.5">
                       <Pencil size={12} />
                     </button>
                     <button onClick={e => { e.stopPropagation(); handleDelete(resource.id) }} className="text-slate-500 hover:text-red-400 transition-colors p-0.5">
@@ -165,13 +165,13 @@ export default function WikiPage() {
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button onClick={() => togglePin(selected)} className={`p-2 rounded-lg transition-colors ${selected.pinned ? 'text-violet-400 bg-violet-500/10' : 'text-slate-500 hover:text-violet-400'}`}>
+                  <button onClick={() => togglePin(selected)} className={`p-2 rounded-lg transition-colors ${selected.pinned ? 'text-[#E14B89] bg-[#E14B89]/10' : 'text-slate-500 hover:text-[#E14B89]'}`}>
                     <Pin size={15} />
                   </button>
                   <button onClick={() => copyContent(selected.content)} className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-lg transition-colors">
                     Copier
                   </button>
-                  <button onClick={() => startEdit(selected)} className="flex items-center gap-1.5 text-xs text-violet-400 hover:text-violet-300 bg-violet-500/10 hover:bg-violet-500/20 px-3 py-1.5 rounded-lg transition-colors">
+                  <button onClick={() => startEdit(selected)} className="flex items-center gap-1.5 text-xs text-[#E14B89] hover:text-[#F8903C] bg-[#E14B89]/10 hover:opacity-90/20 px-3 py-1.5 rounded-lg transition-colors">
                     <Pencil size={12} /> Modifier
                   </button>
                 </div>
@@ -208,12 +208,12 @@ export default function WikiPage() {
                 <div>
                   <label className="block text-slate-400 text-xs mb-1.5">Titre *</label>
                   <input required value={form.title} onChange={e => setForm({ ...form, title: e.target.value })}
-                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-violet-500 transition-colors" />
+                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
                 </div>
                 <div>
                   <label className="block text-slate-400 text-xs mb-1.5">Catégorie</label>
                   <select value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}
-                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-violet-500 transition-colors">
+                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors">
                     {CATEGORIES.map(c => <option key={c} value={c}>{RESOURCE_CATEGORY_LABELS[c]}</option>)}
                   </select>
                 </div>
@@ -222,16 +222,16 @@ export default function WikiPage() {
                 <label className="block text-slate-400 text-xs mb-1.5">Contenu *</label>
                 <textarea required value={form.content} onChange={e => setForm({ ...form, content: e.target.value })} rows={12}
                   placeholder="Contenu de la ressource (prompt, guide, plugin info...)"
-                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-violet-500 transition-colors resize-none font-mono" />
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors resize-none font-mono" />
               </div>
               <div>
                 <label className="block text-slate-400 text-xs mb-1.5">Tags (séparés par des virgules)</label>
                 <input value={form.tags} onChange={e => setForm({ ...form, tags: e.target.value })} placeholder="seo, audit, wordpress..."
-                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-violet-500 transition-colors" />
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
               </div>
               <label className="flex items-center gap-2 cursor-pointer">
                 <div onClick={() => setForm({ ...form, pinned: !form.pinned })}
-                  className={`w-8 h-5 rounded-full transition-colors flex items-center px-0.5 ${form.pinned ? 'bg-violet-600' : 'bg-slate-700'}`}>
+                  className={`w-8 h-5 rounded-full transition-colors flex items-center px-0.5 ${form.pinned ? 'bg-[#E14B89]' : 'bg-slate-700'}`}>
                   <div className={`w-4 h-4 rounded-full bg-white transition-transform ${form.pinned ? 'translate-x-3' : 'translate-x-0'}`} />
                 </div>
                 <span className="text-slate-400 text-sm">Épingler en haut</span>
@@ -239,7 +239,7 @@ export default function WikiPage() {
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setShowModal(false)}
                   className="flex-1 border border-slate-700 text-slate-400 hover:text-white py-2.5 rounded-xl text-sm transition-colors">Annuler</button>
-                <button type="submit" className="flex-1 bg-violet-600 hover:bg-violet-500 text-white py-2.5 rounded-xl text-sm font-medium transition-colors">
+                <button type="submit" className="flex-1 bg-[#E14B89] hover:opacity-90 text-white py-2.5 rounded-xl text-sm font-medium transition-colors">
                   {editingId ? 'Sauvegarder' : 'Créer'}
                 </button>
               </div>
