@@ -15,13 +15,11 @@ import {
   ChevronRight,
   ShieldCheck,
   Wrench,
-  TrendingUp,
   ListTodo,
   Wallet,
   User,
   ChevronUp,
   Mail,
-  Target,
   Activity,
 } from 'lucide-react'
 import { cn, ROLE_LABELS } from '@/lib/utils'
@@ -29,32 +27,20 @@ import { useState, useRef, useEffect } from 'react'
 
 const sections = [
   {
-    label: 'Suivi',
+    label: 'Vue d\'ensemble',
     items: [
       { href: '/', label: 'Dashboard', icon: LayoutDashboard },
-      { href: '/projects', label: 'Projets', icon: FolderKanban },
-      { href: '/clients', label: 'Clients', icon: Users },
-    ],
-  },
-  {
-    label: 'Production',
-    items: [
-      { href: '/tasks', label: 'Tâches', icon: CheckSquare },
-      { href: '/aysha', label: 'Tâches Aysha', icon: ListTodo },
-    ],
-  },
-  {
-    label: 'Commercial',
-    items: [
-      { href: '/commercial', label: 'Commercial', icon: TrendingUp },
-      { href: '/maintenances', label: 'Maintenances', icon: Wrench },
-    ],
-  },
-  {
-    label: 'Finances',
-    items: [
       { href: '/finances', label: 'Finances', icon: Wallet },
-      { href: '/objectifs', label: 'Objectifs', icon: Target },
+      { href: '/clients', label: 'Clients', icon: Users },
+      { href: '/tasks', label: 'Tâches', icon: CheckSquare },
+    ],
+  },
+  {
+    label: 'Suivi',
+    items: [
+      { href: '/projects', label: 'Projets', icon: FolderKanban },
+      { href: '/maintenances', label: 'Maintenances', icon: Wrench },
+      { href: '/aysha', label: 'Tâches Aysha', icon: ListTodo },
     ],
   },
   {
@@ -131,10 +117,10 @@ export function Sidebar() {
           </div>
         ))}
 
-        {/* Équipe — admin only */}
+        {/* Admin — admin only */}
         {isAdmin && (
           <div>
-            <p className="px-3 mb-1 text-[10px] font-semibold text-slate-600 uppercase tracking-wider">Équipe</p>
+            <p className="px-3 mb-1 text-[10px] font-semibold text-slate-600 uppercase tracking-wider">Admin</p>
             <div className="space-y-0.5">
               <Link href="/users"
                 className={cn(
