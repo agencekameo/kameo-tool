@@ -175,7 +175,7 @@ export default function ClientsPage() {
       {loading ? (
         <div className="text-slate-500 text-sm">Chargement...</div>
       ) : (
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {filtered.map(client => (
             <Link
               key={client.id}

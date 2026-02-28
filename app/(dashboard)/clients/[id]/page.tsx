@@ -64,7 +64,7 @@ export default function ClientDetailPage() {
   if (!client) return <div className="p-8 text-slate-500">Chargement...</div>
 
   return (
-    <div className="p-8 max-w-4xl">
+    <div className="p-4 sm:p-8 max-w-4xl">
       <Link href="/clients" className="flex items-center gap-2 text-slate-400 hover:text-white text-sm mb-6 transition-colors">
         <ArrowLeft size={16} /> Retour aux clients
       </Link>
@@ -95,7 +95,7 @@ export default function ClientDetailPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="col-span-2 space-y-4">
           <div className="bg-[#111118] border border-slate-800 rounded-2xl p-5">
             <h2 className="text-white font-medium mb-4">Informations</h2>

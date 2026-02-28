@@ -69,7 +69,7 @@ export default function UserDetailPage() {
   const pendingInvoices = user.invoicesUploaded.filter(inv => !inv.amount)
 
   return (
-    <div className="p-8 max-w-4xl">
+    <div className="p-4 sm:p-8 max-w-4xl">
       <Link href="/users" className="flex items-center gap-2 text-slate-400 hover:text-white text-sm mb-6 transition-colors">
         <ArrowLeft size={16} /> Retour aux utilisateurs
       </Link>
@@ -102,14 +102,14 @@ export default function UserDetailPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <StatCard label="Projets réalisés" value={doneProjects.length} icon={FolderKanban} color="bg-green-400/10 text-green-400" />
         <StatCard label="Projets en cours" value={activeProjects.length} icon={FolderKanban} color="bg-blue-400/10 text-blue-400" />
         <StatCard label="Factures déposées" value={user.invoicesUploaded.length} icon={FileText} color="bg-[#E14B89]/10 text-[#E14B89]" />
         <StatCard label="CA généré" value={formatCurrency(totalCA)} icon={Euro} color="bg-amber-400/10 text-amber-400" />
       </div>
 
-      <div className="grid grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Projects */}
         <div className="space-y-4">
           {activeProjects.length > 0 && (

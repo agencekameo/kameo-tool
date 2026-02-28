@@ -72,7 +72,7 @@ export default function ObjectifsPage() {
   const pace = expectedCA > 0 ? Math.round((data.totalCA / expectedCA) * 100) : 0
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-2xl font-semibold text-white">Objectifs {data.year}</h1>
@@ -91,7 +91,7 @@ export default function ObjectifsPage() {
           <span>Progression annuelle</span>
         </div>
         <CircleProgress value={data.totalCA} goal={data.annualGoal} label={`CA ${data.year}`} size={200} primary />
-        <div className="grid grid-cols-3 gap-8 w-full max-w-sm">
+        <div className="grid grid-cols-3 gap-4 sm:gap-8 w-full max-w-sm">
           <div className="text-center">
             <p className="text-2xl font-bold text-white">{formatCurrency(data.totalCA)}</p>
             <p className="text-slate-500 text-xs mt-1">CA réalisé</p>

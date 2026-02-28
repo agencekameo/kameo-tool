@@ -44,7 +44,7 @@ export default async function DashboardPage() {
   const firstName = session?.user?.name?.split(' ')[0] ?? ''
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-2xl font-semibold text-white">
@@ -56,7 +56,7 @@ export default async function DashboardPage() {
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         {[
           {
             label: 'Projets actifs',
@@ -108,7 +108,7 @@ export default async function DashboardPage() {
         ))}
       </div>
 
-      <div className="grid grid-cols-5 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         {/* Projets récents */}
         <div className="col-span-3 bg-[#111118] border border-slate-800 rounded-2xl p-6">
           <div className="flex items-center justify-between mb-5">

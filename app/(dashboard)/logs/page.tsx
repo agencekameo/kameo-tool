@@ -70,7 +70,7 @@ export default function LogsPage() {
   })
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-2xl font-semibold text-white">Journal d&apos;activité</h1>

@@ -81,7 +81,7 @@ export default function WikiPage() {
   }
 
   return (
-    <div className="p-8 h-screen flex flex-col">
+    <div className="p-4 sm:p-8 h-screen flex flex-col">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-semibold text-white">Wiki & Ressources</h1>

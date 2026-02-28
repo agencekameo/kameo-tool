@@ -30,7 +30,7 @@ import { useState, useRef, useEffect } from 'react'
 
 const sections = [
   {
-    label: 'Vue d\'ensemble',
+    label: "Vue d'ensemble",
     items: [
       { href: '/', label: 'Dashboard', icon: LayoutDashboard },
       { href: '/finances', label: 'Finances', icon: Wallet },
@@ -55,7 +55,13 @@ const sections = [
   },
 ]
 
-export function Sidebar() {
+export function Sidebar({
+  mobileOpen = false,
+  onMobileClose,
+}: {
+  mobileOpen?: boolean
+  onMobileClose?: () => void
+}) {
   const pathname = usePathname()
   const { data: session } = useSession()
   const { theme, setTheme } = useTheme()
@@ -64,8 +70,28 @@ export function Sidebar() {
   const dropdownRef = useRef<HTMLDivElement>(null)
 
   const role = (session?.user as { role?: string })?.role ?? ''
-  const avatar = (session?.user as { avatar?: string })?.avatar
+  const [sidebarAvatar, setSidebarAvatar] = useState<string | null>(null)
 
+  // Fetch avatar from API (not from session — avatar is NOT stored in JWT)
+  useEffect(() => {
+    if (!session?.user?.id) return
+    fetch('/api/profile')
+      .then(r => r.json())
+      .then(data => { if (data?.avatar) setSidebarAvatar(data.avatar) })
+      .catch(() => {})
+  }, [session?.user?.id])
+
+  // Listen for avatar updates dispatched from the profile page
+  useEffect(() => {
+    function handleAvatarUpdate(e: Event) {
+      const ev = e as CustomEvent<{ avatar: string }>
+      setSidebarAvatar(ev.detail.avatar)
+    }
+    window.addEventListener('kameo:avatar-updated', handleAvatarUpdate)
+    return () => window.removeEventListener('kameo:avatar-updated', handleAvatarUpdate)
+  }, [])
+
+  // Close dropdown when clicking outside
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
@@ -76,6 +102,12 @@ export function Sidebar() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
+  // Close mobile sidebar on route change
+  useEffect(() => {
+    onMobileClose?.()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname])
+
   function isActive(href: string) {
     return href === '/' ? pathname === '/' : pathname.startsWith(href)
   }
@@ -83,8 +115,15 @@ export function Sidebar() {
   const isLight = theme === 'light'
 
   return (
-    <aside className="fixed left-0 top-0 h-screen w-60 bg-[#0d0d14] border-r border-slate-800/60 flex flex-col z-40">
-      {/* Logo — full SVG with "Kameo" text */}
+    <aside
+      className={cn(
+        'fixed left-0 top-0 h-screen w-60 bg-[#0d0d14] border-r border-slate-800/60 flex flex-col z-40',
+        'transition-transform duration-300 ease-in-out',
+        'md:translate-x-0',
+        mobileOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'
+      )}
+    >
+      {/* Logo */}
       <div className="px-4 py-4 border-b border-slate-800/60">
         <Image
           src="/kameo-logo.svg"
@@ -129,29 +168,39 @@ export function Sidebar() {
         {/* Admin — admin only */}
         {isAdmin && (
           <div>
-            <p className="px-3 mb-1 text-[10px] font-semibold text-slate-600 uppercase tracking-wider">Admin</p>
+            <p className="px-3 mb-1 text-[10px] font-semibold text-slate-600 uppercase tracking-wider">
+              Admin
+            </p>
             <div className="space-y-0.5">
-              <Link href="/users"
+              <Link
+                href="/users"
                 className={cn(
                   'flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-150',
                   pathname.startsWith('/users')
                     ? 'bg-[#E14B89]/10 text-[#E14B89] border border-[#E14B89]/20'
                     : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
-                )}>
+                )}
+              >
                 <ShieldCheck size={16} className="flex-shrink-0" />
                 <span className="flex-1">Équipe</span>
-                {pathname.startsWith('/users') && <ChevronRight size={13} className="text-[#E14B89]/60 flex-shrink-0" />}
+                {pathname.startsWith('/users') && (
+                  <ChevronRight size={13} className="text-[#E14B89]/60 flex-shrink-0" />
+                )}
               </Link>
-              <Link href="/logs"
+              <Link
+                href="/logs"
                 className={cn(
                   'flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-150',
                   pathname.startsWith('/logs')
                     ? 'bg-[#E14B89]/10 text-[#E14B89] border border-[#E14B89]/20'
                     : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
-                )}>
+                )}
+              >
                 <Activity size={16} className="flex-shrink-0" />
                 <span className="flex-1">Logs</span>
-                {pathname.startsWith('/logs') && <ChevronRight size={13} className="text-[#E14B89]/60 flex-shrink-0" />}
+                {pathname.startsWith('/logs') && (
+                  <ChevronRight size={13} className="text-[#E14B89]/60 flex-shrink-0" />
+                )}
               </Link>
             </div>
           </div>
@@ -182,19 +231,27 @@ export function Sidebar() {
       <div className="p-2 border-t border-slate-800/60" ref={dropdownRef}>
         {dropdownOpen && (
           <div className="mb-2 bg-[#111118] border border-slate-700 rounded-xl overflow-hidden shadow-xl">
-            <Link href="/profile" onClick={() => setDropdownOpen(false)}
-              className="flex items-center gap-2.5 px-4 py-2.5 text-slate-300 hover:text-white hover:bg-slate-800/50 transition-colors text-sm">
+            <Link
+              href="/profile"
+              onClick={() => setDropdownOpen(false)}
+              className="flex items-center gap-2.5 px-4 py-2.5 text-slate-300 hover:text-white hover:bg-slate-800/50 transition-colors text-sm"
+            >
               <User size={14} />
               Mon profil
             </Link>
-            <Link href="/email" onClick={() => setDropdownOpen(false)}
-              className="flex items-center gap-2.5 px-4 py-2.5 text-slate-300 hover:text-white hover:bg-slate-800/50 transition-colors text-sm">
+            <Link
+              href="/email"
+              onClick={() => setDropdownOpen(false)}
+              className="flex items-center gap-2.5 px-4 py-2.5 text-slate-300 hover:text-white hover:bg-slate-800/50 transition-colors text-sm"
+            >
               <Mail size={14} />
               Composer un email
             </Link>
             <div className="border-t border-slate-800" />
-            <button onClick={() => signOut({ callbackUrl: '/login' })}
-              className="w-full flex items-center gap-2.5 px-4 py-2.5 text-red-400 hover:text-red-300 hover:bg-red-400/5 transition-colors text-sm">
+            <button
+              onClick={() => signOut({ callbackUrl: '/login' })}
+              className="w-full flex items-center gap-2.5 px-4 py-2.5 text-red-400 hover:text-red-300 hover:bg-red-400/5 transition-colors text-sm"
+            >
               <LogOut size={14} />
               Se déconnecter
             </button>
@@ -209,8 +266,12 @@ export function Sidebar() {
           )}
         >
           <div className="w-7 h-7 rounded-full flex-shrink-0 overflow-hidden">
-            {avatar ? (
-              <img src={avatar} alt={session?.user?.name ?? ''} className="w-full h-full object-cover" />
+            {sidebarAvatar ? (
+              <img
+                src={sidebarAvatar}
+                alt={session?.user?.name ?? ''}
+                className="w-full h-full object-cover"
+              />
             ) : (
               <div className="w-full h-full bg-gradient-to-br from-[#E14B89] to-[#F8903C] flex items-center justify-center">
                 <span className="text-white font-semibold text-xs">
@@ -223,7 +284,13 @@ export function Sidebar() {
             <p className="text-xs font-medium text-white truncate">{session?.user?.name}</p>
             <p className="text-slate-500 text-xs truncate">{ROLE_LABELS[role] ?? role}</p>
           </div>
-          <ChevronUp size={13} className={cn('text-slate-600 flex-shrink-0 transition-transform', dropdownOpen ? 'rotate-0' : 'rotate-180')} />
+          <ChevronUp
+            size={13}
+            className={cn(
+              'text-slate-600 flex-shrink-0 transition-transform',
+              dropdownOpen ? 'rotate-0' : 'rotate-180'
+            )}
+          />
         </button>
       </div>
     </aside>

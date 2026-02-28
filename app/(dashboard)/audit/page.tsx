@@ -113,7 +113,7 @@ export default function AuditPage() {
   const displayAudit = currentAudit
 
   return (
-    <div className="p-8 max-w-5xl">
+    <div className="p-4 sm:p-8 max-w-5xl">
       <div className="mb-8">
         <h1 className="text-2xl font-semibold text-white">Audit SEO</h1>
         <p className="text-slate-400 text-sm mt-1">Analyse de performance et SEO via PageSpeed Insights</p>
@@ -163,7 +163,7 @@ export default function AuditPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-5 gap-6 mb-6">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 sm:gap-6 mb-6">
               <ScoreRing score={displayAudit.performanceMobile} label="Perf. Mobile" />
               <ScoreRing score={displayAudit.performanceDesktop} label="Perf. Desktop" />
               <ScoreRing score={displayAudit.seoScore} label="SEO Technique" />

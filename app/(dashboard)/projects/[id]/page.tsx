@@ -138,7 +138,7 @@ export default function ProjectDetailPage() {
   const unassignedUsers = users.filter(u => !project.assignees.find(a => a.id === u.id))
 
   return (
-    <div className="p-8 max-w-5xl">
+    <div className="p-4 sm:p-8 max-w-5xl">
       <Link href="/projects" className="flex items-center gap-2 text-slate-400 hover:text-white text-sm mb-6 transition-colors">
         <ArrowLeft size={16} /> Retour aux projets
       </Link>
@@ -195,7 +195,7 @@ export default function ProjectDetailPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Tasks */}
         <div className="col-span-2 space-y-4">
           <div className="bg-[#111118] border border-slate-800 rounded-2xl p-5">

@@ -150,7 +150,7 @@ export default function AyshaPage() {
   const doneTasks = tasks.filter(t => t.status === 'DONE')
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-2xl font-semibold text-white">Tâches Aysha</h1>

@@ -120,7 +120,7 @@ export default function FinancesPage() {
   ).sort((a, b) => b[1] - a[1])
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-2xl font-semibold text-white">Finances</h1>
@@ -135,7 +135,7 @@ export default function FinancesPage() {
       {loading ? <div className="text-slate-500 text-sm">Chargement...</div> : (
         <>
           {/* KPIs */}
-          <div className="grid grid-cols-4 gap-4 mb-8">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
             <KpiCard label="Entrées mensuelles" value={formatCurrency(totalMaintenanceIncome)}
               sub="Maintenances actives" icon={TrendingUp} color="bg-green-400/10 text-green-400" />
             <KpiCard label="Sorties mensuelles" value={formatCurrency(totalExpenses)}
@@ -147,7 +147,7 @@ export default function FinancesPage() {
               sub="Sur le CA maintenances" icon={Percent} color="bg-blue-400/10 text-blue-400" />
           </div>
 
-          <div className="grid grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Entrées */}
             <div>
               <h2 className="text-white font-semibold mb-4">Entrées</h2>
