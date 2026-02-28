@@ -60,7 +60,7 @@ export default function FinancesPage() {
       fetch('/api/maintenances').then(r => r.json()),
       fetch('/api/expenses').then(r => r.json()),
       fetch('/api/projects').then(r => r.json()),
-    ]).then(([m, e, p]) => { setMaintenances(m); setExpenses(e); setProjects(p) })
+    ]).then(([m, e, p]) => { setMaintenances(m); setExpenses([...e].sort((a: Expense, b: Expense) => b.amount - a.amount)); setProjects(p) })
     .finally(() => setLoading(false))
   }, [])
 

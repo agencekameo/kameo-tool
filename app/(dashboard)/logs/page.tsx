@@ -14,6 +14,8 @@ interface Log {
   user: { id: string; name: string; role: string; avatar?: string }
 }
 
+interface User { id: string; name: string }
+
 const ACTION_COLORS: Record<string, string> = {
   'CRÉÉ': 'bg-green-500/15 text-green-400',
   'MODIFIÉ': 'bg-blue-500/15 text-blue-400',
@@ -47,13 +49,18 @@ function timeAgo(date: string) {
 
 export default function LogsPage() {
   const [logs, setLogs] = useState<Log[]>([])
+  const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [filterAction, setFilterAction] = useState('TOUS')
   const [filterEntity, setFilterEntity] = useState('TOUS')
+  const [filterUser, setFilterUser] = useState('TOUS')
 
   useEffect(() => {
-    fetch('/api/logs').then(r => r.json()).then(setLogs).finally(() => setLoading(false))
+    Promise.all([
+      fetch('/api/logs').then(r => r.json()),
+      fetch('/api/users').then(r => r.json()),
+    ]).then(([l, u]) => { setLogs(l); setUsers(u) }).finally(() => setLoading(false))
   }, [])
 
   const entities = ['TOUS', ...Array.from(new Set(logs.map(l => l.entity)))]
@@ -66,7 +73,8 @@ export default function LogsPage() {
       l.entity.toLowerCase().includes(search.toLowerCase())
     const matchAction = filterAction === 'TOUS' || l.action === filterAction
     const matchEntity = filterEntity === 'TOUS' || l.entity === filterEntity
-    return matchSearch && matchAction && matchEntity
+    const matchUser = filterUser === 'TOUS' || l.user.id === filterUser
+    return matchSearch && matchAction && matchEntity && matchUser
   })
 
   return (
@@ -86,25 +94,46 @@ export default function LogsPage() {
       <div className="flex gap-3 mb-6 flex-wrap">
         <div className="relative">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher..."
-            className="bg-[#111118] border border-slate-800 rounded-xl pl-9 pr-4 py-2 text-white text-sm placeholder:text-slate-600 focus:outline-none focus:border-[#E14B89] transition-colors w-52" />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Rechercher..."
+            className="bg-[#111118] border border-slate-800 rounded-xl pl-9 pr-4 py-2 text-white text-sm placeholder:text-slate-600 focus:outline-none focus:border-[#E14B89] transition-colors w-52"
+          />
         </div>
         <div className="flex items-center gap-1 bg-[#111118] border border-slate-800 rounded-xl p-1">
           {actions.map(a => (
-            <button key={a} onClick={() => setFilterAction(a)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filterAction === a ? 'bg-[#E14B89] text-white' : 'text-slate-400 hover:text-white'}`}>
+            <button
+              key={a}
+              onClick={() => setFilterAction(a)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filterAction === a ? 'bg-[#E14B89] text-white' : 'text-slate-400 hover:text-white'}`}
+            >
               {a === 'TOUS' ? 'Toutes les actions' : a}
             </button>
           ))}
         </div>
         <div className="flex items-center gap-1 bg-[#111118] border border-slate-800 rounded-xl p-1">
           {entities.map(e => (
-            <button key={e} onClick={() => setFilterEntity(e)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filterEntity === e ? 'bg-[#E14B89] text-white' : 'text-slate-400 hover:text-white'}`}>
+            <button
+              key={e}
+              onClick={() => setFilterEntity(e)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filterEntity === e ? 'bg-[#E14B89] text-white' : 'text-slate-400 hover:text-white'}`}
+            >
               {e === 'TOUS' ? 'Tout' : e}
             </button>
           ))}
         </div>
+        {/* Member filter */}
+        <select
+          value={filterUser}
+          onChange={e => setFilterUser(e.target.value)}
+          className="bg-[#111118] border border-slate-800 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors cursor-pointer"
+        >
+          <option value="TOUS">Tous les membres</option>
+          {users.map(u => (
+            <option key={u.id} value={u.id}>{u.name}</option>
+          ))}
+        </select>
       </div>
 
       {loading ? (
@@ -121,8 +150,10 @@ export default function LogsPage() {
             const ActionIcon = ACTION_ICONS[log.action] ?? Activity
             const gradient = ROLE_AVATAR_COLORS[log.user.role] ?? 'from-slate-400 to-slate-600'
             return (
-              <div key={log.id}
-                className={`flex items-center gap-4 px-5 py-3.5 hover:bg-slate-800/20 transition-colors ${i < filtered.length - 1 ? 'border-b border-slate-800/50' : ''}`}>
+              <div
+                key={log.id}
+                className={`flex items-center gap-4 px-5 py-3.5 hover:bg-slate-800/20 transition-colors ${i < filtered.length - 1 ? 'border-b border-slate-800/50' : ''}`}
+              >
                 {/* Avatar */}
                 <div className="flex-shrink-0">
                   {log.user.avatar ? (

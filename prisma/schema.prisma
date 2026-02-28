@@ -95,6 +95,37 @@ enum ExpenseCategory {
   AUTRE
 }
 
+enum QuoteStatus {
+  BROUILLON
+  ENVOYE
+  ACCEPTE
+  REFUSE
+  EXPIRE
+}
+
+enum AbsenceType {
+  MALADIE
+  CONGES_PAYES
+  RTT
+  SANS_SOLDE
+  TELETRAVAIL
+  AUTRE
+}
+
+enum BackupStatus {
+  OK
+  PARTIAL
+  FAILED
+  EN_COURS
+}
+
+enum ExpenseStatus {
+  EN_ATTENTE
+  VALIDE
+  REMBOURSE
+  REFUSE
+}
+
 model User {
   id        String    @id @default(cuid())
   name      String
@@ -106,13 +137,18 @@ model User {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
-  assignedTasks    Task[]           @relation("TaskAssignee")
-  createdProjects  Project[]        @relation("ProjectCreator")
-  assignedProjects Project[]        @relation("ProjectAssignees")
-  audits           Audit[]
-  prospects        Prospect[]
-  invoicesUploaded ProjectInvoice[] @relation("InvoiceUploader")
-  logs             Log[]
+  assignedTasks           Task[]               @relation("TaskAssignee")
+  createdProjects         Project[]            @relation("ProjectCreator")
+  assignedProjects        Project[]            @relation("ProjectAssignees")
+  audits                  Audit[]
+  prospects               Prospect[]
+  invoicesUploaded        ProjectInvoice[]     @relation("InvoiceUploader")
+  logs                    Log[]
+  absences                Absence[]
+  expenseReports          ExpenseReport[]
+  quotes                  Quote[]
+  messages                Message[]
+  conversationMemberships ConversationMember[]
 }
 
 model Log {
@@ -143,6 +179,8 @@ model Client {
   updatedAt        DateTime        @updatedAt
 
   projects Project[]
+  quotes   Quote[]
+  backups  SiteBackup[]
 }
 
 model Project {
@@ -160,12 +198,13 @@ model Project {
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
-  client    Client           @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  createdBy User             @relation("ProjectCreator", fields: [createdById], references: [id])
-  tasks     Task[]
-  audits    Audit[]
-  assignees User[]           @relation("ProjectAssignees")
-  invoices  ProjectInvoice[]
+  client       Client           @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  createdBy    User             @relation("ProjectCreator", fields: [createdById], references: [id])
+  tasks        Task[]
+  audits       Audit[]
+  assignees    User[]           @relation("ProjectAssignees")
+  invoices     ProjectInvoice[]
+  conversation Conversation?
 }
 
 model Task {
@@ -282,4 +321,135 @@ model ProjectInvoice {
 
   project  Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   uploader User    @relation("InvoiceUploader", fields: [uploadedBy], references: [id])
+}
+
+model ArticleTemplate {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  unitPrice   Float
+  unit        String   @default("forfait")
+  category    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Quote {
+  id            String      @id @default(cuid())
+  number        String      @unique
+  clientId      String?
+  clientName    String
+  clientEmail   String?
+  clientAddress String?
+  subject       String
+  status        QuoteStatus @default(BROUILLON)
+  validUntil    DateTime?
+  notes         String?
+  discount      Float       @default(0)
+  createdById   String
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  items     QuoteItem[]
+  client    Client?     @relation(fields: [clientId], references: [id])
+  createdBy User        @relation(fields: [createdById], references: [id])
+}
+
+model QuoteItem {
+  id          String @id @default(cuid())
+  quoteId     String
+  description String
+  unit        String @default("forfait")
+  quantity    Float  @default(1)
+  unitPrice   Float
+  tva         Float  @default(20)
+  position    Int    @default(0)
+
+  quote Quote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+}
+
+model Absence {
+  id        String      @id @default(cuid())
+  userId    String
+  date      DateTime
+  endDate   DateTime?
+  type      AbsenceType @default(AUTRE)
+  duration  Float       @default(1)
+  notes     String?
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model SiteBackup {
+  id         String       @id @default(cuid())
+  clientName String
+  clientId   String?
+  url        String?
+  provider   String?
+  type       String       @default("FULL")
+  size       String?
+  status     BackupStatus @default(OK)
+  backupDate DateTime
+  notes      String?
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  client Client? @relation(fields: [clientId], references: [id])
+}
+
+model ExpenseReport {
+  id          String        @id @default(cuid())
+  userId      String
+  date        DateTime
+  amount      Float
+  description String
+  category    String        @default("AUTRE")
+  receiptUrl  String?
+  status      ExpenseStatus @default(EN_ATTENTE)
+  notes       String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Conversation {
+  id        String   @id @default(cuid())
+  name      String?
+  projectId String?  @unique
+  isGroup   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  messages     Message[]
+  participants ConversationMember[]
+  project      Project?             @relation(fields: [projectId], references: [id])
+}
+
+model ConversationMember {
+  id             String    @id @default(cuid())
+  conversationId String
+  userId         String
+  joinedAt       DateTime  @default(now())
+  lastReadAt     DateTime?
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+}
+
+model Message {
+  id             String   @id @default(cuid())
+  conversationId String
+  senderId       String
+  content        String?
+  fileUrl        String?
+  fileType       String?
+  fileName       String?
+  createdAt      DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User         @relation(fields: [senderId], references: [id])
 }

@@ -162,3 +162,45 @@ main,
 .bg-\[#0d0d14\] {
   transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 }
+
+/* ---- Table headers ---- */
+[data-theme="light"] thead tr {
+  background-color: #f8fafc !important;
+}
+
+/* ---- Drag handle ---- */
+[data-theme="light"] .text-slate-700 {
+  color: #cbd5e1 !important;
+}
+
+/* ---- Badge backgrounds (slate-800/80 etc.) ---- */
+[data-theme="light"] .bg-slate-800\/80,
+[data-theme="light"] .bg-slate-800\/40,
+[data-theme="light"] .bg-slate-800\/20 {
+  background-color: #e2e8f0 !important;
+}
+
+/* ---- Dashed borders ---- */
+[data-theme="light"] .border-dashed.border-slate-800 {
+  border-color: #cbd5e1 !important;
+}
+
+/* ---- Kanban column backgrounds ---- */
+[data-theme="light"] .bg-slate-800\/40 {
+  background-color: #e8edf5 !important;
+}
+
+/* ---- Input date picker ---- */
+[data-theme="light"] input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: none;
+}
+
+/* ---- Backdrop (modal overlay) ---- */
+[data-theme="light"] .bg-black\/60 {
+  background-color: rgba(15, 23, 42, 0.5) !important;
+}
+
+/* ---- Active nav item text fix ---- */
+[data-theme="light"] .text-\[\#E14B89\] {
+  color: #E14B89 !important;
+}

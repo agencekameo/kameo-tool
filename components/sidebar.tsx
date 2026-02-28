@@ -14,7 +14,6 @@ import {
   Search,
   LogOut,
   ChevronRight,
-  ShieldCheck,
   Wrench,
   ListTodo,
   Wallet,
@@ -24,6 +23,12 @@ import {
   Activity,
   Sun,
   Moon,
+  TrendingUp,
+  FileText,
+  Users2,
+  HardDrive,
+  Receipt,
+  FileCheck2,
 } from 'lucide-react'
 import { cn, ROLE_LABELS } from '@/lib/utils'
 import { useState, useRef, useEffect } from 'react'
@@ -43,13 +48,20 @@ const sections = [
     items: [
       { href: '/projects', label: 'Projets', icon: FolderKanban },
       { href: '/maintenances', label: 'Maintenances', icon: Wrench },
-      { href: '/aysha', label: 'Tâches Aysha', icon: ListTodo },
+      { href: '/aysha', label: 'Aysha', icon: ListTodo },
+    ],
+  },
+  {
+    label: 'Commercial',
+    items: [
+      { href: '/commercial', label: 'Prospects', icon: TrendingUp },
+      { href: '/devis', label: 'Devis', icon: FileText },
     ],
   },
   {
     label: 'Ressources',
     items: [
-      { href: '/wiki', label: 'Wiki & Ressources', icon: BookOpen },
+      { href: '/wiki', label: 'Wiki', icon: BookOpen },
       { href: '/audit', label: 'Audit SEO', icon: Search },
     ],
   },
@@ -126,13 +138,13 @@ export function Sidebar({
       {/* Logo */}
       <div className="px-4 py-4 border-b border-slate-800/60">
         <Image
-          src="/kameo-logo.svg"
+          src="/kameo-logo.png"
           alt="Kameo"
           width={112}
-          height={31}
+          height={40}
           priority
           className="flex-shrink-0"
-          style={{ filter: isLight ? 'invert(0)' : 'none' }}
+          style={{ objectFit: 'contain', objectPosition: 'left' }}
         />
         <p className="text-slate-500 text-xs mt-1">Outil interne</p>
       </div>
@@ -181,7 +193,7 @@ export function Sidebar({
                     : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
                 )}
               >
-                <ShieldCheck size={16} className="flex-shrink-0" />
+                <Users2 size={16} className="flex-shrink-0" />
                 <span className="flex-1">Équipe</span>
                 {pathname.startsWith('/users') && (
                   <ChevronRight size={13} className="text-[#E14B89]/60 flex-shrink-0" />
@@ -202,6 +214,51 @@ export function Sidebar({
                   <ChevronRight size={13} className="text-[#E14B89]/60 flex-shrink-0" />
                 )}
               </Link>
+              <Link
+                href="/contrats"
+                className={cn(
+                  'flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-150',
+                  pathname.startsWith('/contrats')
+                    ? 'bg-[#E14B89]/10 text-[#E14B89] border border-[#E14B89]/20'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                )}
+              >
+                <FileCheck2 size={16} className="flex-shrink-0" />
+                <span className="flex-1">Contrats</span>
+                {pathname.startsWith('/contrats') && (
+                  <ChevronRight size={13} className="text-[#E14B89]/60 flex-shrink-0" />
+                )}
+              </Link>
+              <Link
+                href="/backups"
+                className={cn(
+                  'flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-150',
+                  pathname.startsWith('/backups')
+                    ? 'bg-[#E14B89]/10 text-[#E14B89] border border-[#E14B89]/20'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                )}
+              >
+                <HardDrive size={16} className="flex-shrink-0" />
+                <span className="flex-1">Backups</span>
+                {pathname.startsWith('/backups') && (
+                  <ChevronRight size={13} className="text-[#E14B89]/60 flex-shrink-0" />
+                )}
+              </Link>
+              <Link
+                href="/notes-de-frais"
+                className={cn(
+                  'flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-150',
+                  pathname.startsWith('/notes-de-frais')
+                    ? 'bg-[#E14B89]/10 text-[#E14B89] border border-[#E14B89]/20'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                )}
+              >
+                <Receipt size={16} className="flex-shrink-0" />
+                <span className="flex-1">Notes de frais</span>
+                {pathname.startsWith('/notes-de-frais') && (
+                  <ChevronRight size={13} className="text-[#E14B89]/60 flex-shrink-0" />
+                )}
+              </Link>
             </div>
           </div>
         )}
@@ -211,19 +268,10 @@ export function Sidebar({
       <div className="px-3 pb-2">
         <button
           onClick={() => setTheme(isLight ? 'dark' : 'light')}
-          className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium text-slate-400 hover:text-white hover:bg-slate-800/50 transition-all duration-150"
+          title={isLight ? 'Passer en mode sombre' : 'Passer en mode clair'}
+          className="w-full flex items-center justify-center p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800/50 transition-all duration-150"
         >
-          {isLight ? (
-            <>
-              <Moon size={16} className="flex-shrink-0" />
-              <span className="flex-1">Mode sombre</span>
-            </>
-          ) : (
-            <>
-              <Sun size={16} className="flex-shrink-0" />
-              <span className="flex-1">Mode clair</span>
-            </>
-          )}
+          {isLight ? <Moon size={16} /> : <Sun size={16} />}
         </button>
       </div>
 

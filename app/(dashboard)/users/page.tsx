@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
-import { Plus, Trash2, Shield, Clock } from 'lucide-react'
+import { Plus, Trash2, Clock, Eye, X, Users2 } from 'lucide-react'
 import { ROLE_LABELS, ROLE_COLORS, ROLE_AVATAR_COLORS } from '@/lib/utils'
 
 interface User {
@@ -16,6 +16,15 @@ interface User {
 }
 
 const ROLES = ['ADMIN', 'DEVELOPER', 'REDACTEUR', 'DESIGNER']
+
+const ROLE_ACCESS: Record<string, string[]> = {
+  ADMIN: ['Dashboard', 'Finances', 'Clients', 'Tâches', 'Projets', 'Maintenances', 'Aysha', 'Commercial', 'Devis', 'Wiki', 'Audit', 'Équipe', 'Logs', 'Contrats', 'Backups', 'Notes de frais'],
+  DEVELOPER: ['Dashboard', 'Clients', 'Tâches', 'Projets', 'Wiki'],
+  DESIGNER: ['Dashboard', 'Clients', 'Tâches', 'Projets', 'Wiki'],
+  REDACTEUR: ['Dashboard', 'Clients', 'Tâches', 'Projets', 'Wiki', 'Audit'],
+  MEMBER: ['Dashboard', 'Projets', 'Wiki', 'Commercial'],
+  COMMERCIAL: ['Dashboard', 'Projets', 'Wiki', 'Commercial'],
+}
 
 function timeAgo(date?: string) {
   if (!date) return 'Jamais connecté'
@@ -40,6 +49,7 @@ export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
+  const [previewUser, setPreviewUser] = useState<User | null>(null)
   const [form, setForm] = useState({ name: '', email: '', password: '', role: 'DEVELOPER' })
   const [error, setError] = useState('')
 
@@ -80,6 +90,10 @@ export default function UsersPage() {
     setUsers(prev => prev.filter(u => u.id !== userId))
   }
 
+  const accessPages = previewUser
+    ? (ROLE_ACCESS[previewUser.role] ?? ROLE_ACCESS['MEMBER'])
+    : []
+
   return (
     <div className="p-4 sm:p-8">
       <div className="flex items-center justify-between mb-8">
@@ -88,8 +102,10 @@ export default function UsersPage() {
           <p className="text-slate-400 text-sm mt-1">{users.length} membre{users.length > 1 ? 's' : ''} dans l&apos;équipe</p>
         </div>
         {isAdmin && (
-          <button onClick={() => setShowModal(true)}
-            className="flex items-center gap-2 bg-[#E14B89] hover:opacity-90 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-colors">
+          <button
+            onClick={() => setShowModal(true)}
+            className="flex items-center gap-2 bg-[#E14B89] hover:opacity-90 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-colors"
+          >
             <Plus size={16} /> Ajouter un utilisateur
           </button>
         )}
@@ -114,7 +130,10 @@ export default function UsersPage() {
                 const gradient = ROLE_AVATAR_COLORS[user.role] ?? 'from-slate-400 to-slate-600'
                 const online = isOnline(user.lastSeen)
                 return (
-                  <tr key={user.id} className={`border-b border-slate-800/50 hover:bg-slate-800/20 transition-colors ${i === users.length - 1 ? 'border-0' : ''}`}>
+                  <tr
+                    key={user.id}
+                    className={`border-b border-slate-800/50 hover:bg-slate-800/20 transition-colors ${i === users.length - 1 ? 'border-0' : ''}`}
+                  >
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <div className="relative">
@@ -138,9 +157,14 @@ export default function UsersPage() {
                     <td className="px-6 py-4 text-slate-400 text-sm">{user.email}</td>
                     <td className="px-6 py-4">
                       {isAdmin && user.id !== (session?.user as { id?: string })?.id ? (
-                        <select value={user.role} onChange={e => handleRoleChange(user.id, e.target.value)}
-                          className={`text-xs px-2.5 py-1 rounded-full border font-medium bg-transparent cursor-pointer ${ROLE_COLORS[user.role]}`}>
-                          {ROLES.map(r => <option key={r} value={r} className="bg-[#111118] text-white">{ROLE_LABELS[r]}</option>)}
+                        <select
+                          value={user.role}
+                          onChange={e => handleRoleChange(user.id, e.target.value)}
+                          className={`text-xs px-2.5 py-1 rounded-full border font-medium bg-transparent cursor-pointer ${ROLE_COLORS[user.role]}`}
+                        >
+                          {ROLES.map(r => (
+                            <option key={r} value={r} className="bg-[#111118] text-white">{ROLE_LABELS[r]}</option>
+                          ))}
                         </select>
                       ) : (
                         <span className={`text-xs px-2.5 py-1 rounded-full border font-medium ${ROLE_COLORS[user.role]}`}>
@@ -156,12 +180,22 @@ export default function UsersPage() {
                     </td>
                     {isAdmin && (
                       <td className="px-6 py-4 text-right">
-                        {user.id !== (session?.user as { id?: string })?.id && (
-                          <button onClick={() => handleDelete(user.id)}
-                            className="text-slate-600 hover:text-red-400 transition-colors p-1">
-                            <Trash2 size={14} />
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => setPreviewUser(user)}
+                            className="text-slate-600 hover:text-blue-400 transition-colors p-1"
+                          >
+                            <Eye size={14} />
                           </button>
-                        )}
+                          {user.id !== (session?.user as { id?: string })?.id && (
+                            <button
+                              onClick={() => handleDelete(user.id)}
+                              className="text-slate-600 hover:text-red-400 transition-colors p-1"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     )}
                   </tr>
@@ -172,41 +206,118 @@ export default function UsersPage() {
         </div>
       )}
 
+      {/* Access preview modal */}
+      {previewUser && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#111118] border border-slate-800 rounded-2xl p-6 w-full max-w-sm">
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center gap-3">
+                <div className={`w-9 h-9 rounded-full bg-gradient-to-br ${ROLE_AVATAR_COLORS[previewUser.role] ?? 'from-slate-400 to-slate-600'} flex items-center justify-center`}>
+                  <span className="text-white font-semibold text-sm">{previewUser.name[0]?.toUpperCase()}</span>
+                </div>
+                <div>
+                  <p className="text-white font-semibold text-sm">{previewUser.name}</p>
+                  <p className="text-slate-500 text-xs">{ROLE_LABELS[previewUser.role] ?? previewUser.role}</p>
+                </div>
+              </div>
+              <button onClick={() => setPreviewUser(null)} className="text-slate-500 hover:text-white transition-colors">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2 mb-4">
+              <Users2 size={15} className="text-[#E14B89]" />
+              <p className="text-white text-sm font-medium">Pages accessibles</p>
+              <span className="ml-auto text-xs text-slate-500">{accessPages.length} page{accessPages.length > 1 ? 's' : ''}</span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              {accessPages.map(page => (
+                <div
+                  key={page}
+                  className="flex items-center gap-2 bg-[#1a1a24] border border-slate-800 rounded-xl px-3 py-2"
+                >
+                  <div className="w-1.5 h-1.5 rounded-full bg-[#E14B89] flex-shrink-0" />
+                  <span className="text-slate-300 text-xs">{page}</span>
+                </div>
+              ))}
+            </div>
+
+            <button
+              onClick={() => setPreviewUser(null)}
+              className="w-full mt-5 border border-slate-700 text-slate-400 hover:text-white py-2.5 rounded-xl text-sm transition-colors"
+            >
+              Fermer
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Create user modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-[#111118] border border-slate-800 rounded-2xl p-6 w-full max-w-md">
             <div className="flex items-center gap-2 mb-5">
-              <Shield size={18} className="text-[#E14B89]" />
+              <Users2 size={18} className="text-[#E14B89]" />
               <h2 className="text-white font-semibold text-lg">Nouvel utilisateur</h2>
             </div>
             <form onSubmit={handleCreate} className="space-y-4">
               <div>
                 <label className="block text-slate-400 text-xs mb-1.5">Nom complet *</label>
-                <input required value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
-                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+                <input
+                  required
+                  value={form.name}
+                  onChange={e => setForm({ ...form, name: e.target.value })}
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
+                />
               </div>
               <div>
                 <label className="block text-slate-400 text-xs mb-1.5">Email *</label>
-                <input type="email" required value={form.email} onChange={e => setForm({ ...form, email: e.target.value })}
-                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+                <input
+                  type="email"
+                  required
+                  value={form.email}
+                  onChange={e => setForm({ ...form, email: e.target.value })}
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
+                />
               </div>
               <div>
                 <label className="block text-slate-400 text-xs mb-1.5">Mot de passe *</label>
-                <input type="password" required value={form.password} onChange={e => setForm({ ...form, password: e.target.value })}
-                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+                <input
+                  type="password"
+                  required
+                  value={form.password}
+                  onChange={e => setForm({ ...form, password: e.target.value })}
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
+                />
               </div>
               <div>
                 <label className="block text-slate-400 text-xs mb-1.5">Rôle</label>
-                <select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}
-                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors">
+                <select
+                  value={form.role}
+                  onChange={e => setForm({ ...form, role: e.target.value })}
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
+                >
                   {ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
                 </select>
               </div>
-              {error && <p className="text-red-400 text-sm bg-red-400/10 border border-red-400/20 rounded-xl px-4 py-3">{error}</p>}
+              {error && (
+                <p className="text-red-400 text-sm bg-red-400/10 border border-red-400/20 rounded-xl px-4 py-3">{error}</p>
+              )}
               <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setShowModal(false)}
-                  className="flex-1 border border-slate-700 text-slate-400 hover:text-white py-2.5 rounded-xl text-sm transition-colors">Annuler</button>
-                <button type="submit" className="flex-1 bg-[#E14B89] hover:opacity-90 text-white py-2.5 rounded-xl text-sm font-medium transition-colors">Créer</button>
+                <button
+                  type="button"
+                  onClick={() => setShowModal(false)}
+                  className="flex-1 border border-slate-700 text-slate-400 hover:text-white py-2.5 rounded-xl text-sm transition-colors"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 bg-[#E14B89] hover:opacity-90 text-white py-2.5 rounded-xl text-sm font-medium transition-colors"
+                >
+                  Créer
+                </button>
               </div>
             </form>
           </div>
