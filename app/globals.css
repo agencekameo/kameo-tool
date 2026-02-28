@@ -38,3 +38,127 @@ select option {
   background: #1a1a24;
   color: white;
 }
+
+/* ────────────────────────────────────────────────
+   LIGHT MODE
+   ──────────────────────────────────────────────── */
+
+[data-theme="light"] body {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+/* Page backgrounds */
+[data-theme="light"] .bg-\[#0a0a0f\],
+[data-theme="light"] .bg-\[#0d0d14\] {
+  background-color: #f1f5f9 !important;
+}
+
+/* Card backgrounds */
+[data-theme="light"] .bg-\[#111118\] {
+  background-color: #ffffff !important;
+}
+
+/* Input / sub-panel backgrounds */
+[data-theme="light"] .bg-\[#1a1a24\] {
+  background-color: #f8fafc !important;
+}
+
+/* Sidebar background */
+[data-theme="light"] aside {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+}
+
+/* ---- Text ---- */
+[data-theme="light"] .text-white {
+  color: #0f172a !important;
+}
+[data-theme="light"] .text-slate-300 {
+  color: #334155 !important;
+}
+[data-theme="light"] .text-slate-400 {
+  color: #475569 !important;
+}
+[data-theme="light"] .text-slate-500 {
+  color: #64748b !important;
+}
+[data-theme="light"] .text-slate-600 {
+  color: #94a3b8 !important;
+}
+[data-theme="light"] .placeholder\:text-slate-600::placeholder {
+  color: #94a3b8 !important;
+}
+
+/* ---- Borders ---- */
+[data-theme="light"] .border-slate-800,
+[data-theme="light"] .border-slate-800\/60,
+[data-theme="light"] .border-slate-800\/50 {
+  border-color: #e2e8f0 !important;
+}
+[data-theme="light"] .border-slate-700 {
+  border-color: #cbd5e1 !important;
+}
+
+/* ---- Slate bg variants ---- */
+[data-theme="light"] .bg-slate-800 {
+  background-color: #e2e8f0 !important;
+}
+[data-theme="light"] .bg-slate-800\/20,
+[data-theme="light"] .bg-slate-800\/30,
+[data-theme="light"] .bg-slate-800\/50,
+[data-theme="light"] .bg-slate-800\/70 {
+  background-color: #f1f5f9 !important;
+}
+[data-theme="light"] .bg-\[#0d0d14\] {
+  background-color: #f8fafc !important;
+}
+
+/* ---- Hover states ---- */
+[data-theme="light"] .hover\:bg-slate-800\/20:hover,
+[data-theme="light"] .hover\:bg-slate-800\/50:hover,
+[data-theme="light"] .hover\:bg-slate-700:hover {
+  background-color: #f1f5f9 !important;
+}
+[data-theme="light"] .hover\:text-white:hover {
+  color: #0f172a !important;
+}
+
+/* ---- Sidebar active state ---- */
+[data-theme="light"] .bg-slate-800\/70 {
+  background-color: #e2e8f0 !important;
+}
+
+/* ---- Score rings / audit bg ---- */
+[data-theme="light"] .stroke-\[#1e1e2e\] {
+  stroke: #e2e8f0 !important;
+}
+
+/* ---- Scrollbar light ---- */
+[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+}
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* ---- Select options light ---- */
+[data-theme="light"] select option {
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+/* ---- Login page ---- */
+[data-theme="light"] .min-h-screen.bg-\[#0a0a0f\] {
+  background: #f1f5f9 !important;
+}
+
+/* Transition fluide */
+body,
+aside,
+main,
+.bg-\[#111118\],
+.bg-\[#1a1a24\],
+.bg-\[#0d0d14\] {
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}

@@ -4,6 +4,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { usePathname } from 'next/navigation'
 import { signOut, useSession } from 'next-auth/react'
+import { useTheme } from 'next-themes'
 import {
   LayoutDashboard,
   FolderKanban,
@@ -21,6 +22,8 @@ import {
   ChevronUp,
   Mail,
   Activity,
+  Sun,
+  Moon,
 } from 'lucide-react'
 import { cn, ROLE_LABELS } from '@/lib/utils'
 import { useState, useRef, useEffect } from 'react'
@@ -55,6 +58,7 @@ const sections = [
 export function Sidebar() {
   const pathname = usePathname()
   const { data: session } = useSession()
+  const { theme, setTheme } = useTheme()
   const isAdmin = (session?.user as { role?: string })?.role === 'ADMIN'
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
@@ -76,17 +80,22 @@ export function Sidebar() {
     return href === '/' ? pathname === '/' : pathname.startsWith(href)
   }
 
+  const isLight = theme === 'light'
+
   return (
     <aside className="fixed left-0 top-0 h-screen w-60 bg-[#0d0d14] border-r border-slate-800/60 flex flex-col z-40">
-      {/* Logo */}
+      {/* Logo — full SVG with "Kameo" text */}
       <div className="px-4 py-4 border-b border-slate-800/60">
-        <div className="flex items-center gap-2.5">
-          <Image src="/kameo-logo.svg" alt="Agence Kameo" width={26} height={23} className="flex-shrink-0" />
-          <div>
-            <span className="text-white font-semibold text-sm">Agence Kameo</span>
-            <p className="text-slate-500 text-xs">Outil interne</p>
-          </div>
-        </div>
+        <Image
+          src="/kameo-logo.svg"
+          alt="Kameo"
+          width={112}
+          height={31}
+          priority
+          className="flex-shrink-0"
+          style={{ filter: isLight ? 'invert(0)' : 'none' }}
+        />
+        <p className="text-slate-500 text-xs mt-1">Outil interne</p>
       </div>
 
       {/* Navigation */}
@@ -148,6 +157,26 @@ export function Sidebar() {
           </div>
         )}
       </nav>
+
+      {/* Theme toggle */}
+      <div className="px-3 pb-2">
+        <button
+          onClick={() => setTheme(isLight ? 'dark' : 'light')}
+          className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium text-slate-400 hover:text-white hover:bg-slate-800/50 transition-all duration-150"
+        >
+          {isLight ? (
+            <>
+              <Moon size={16} className="flex-shrink-0" />
+              <span className="flex-1">Mode sombre</span>
+            </>
+          ) : (
+            <>
+              <Sun size={16} className="flex-shrink-0" />
+              <span className="flex-1">Mode clair</span>
+            </>
+          )}
+        </button>
+      </div>
 
       {/* User dropdown */}
       <div className="p-2 border-t border-slate-800/60" ref={dropdownRef}>
