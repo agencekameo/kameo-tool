@@ -50,6 +50,10 @@ export default function ClientsPage() {
   })
   const importFileRef = useRef<HTMLInputElement>(null)
 
+  const [deleteModal, setDeleteModal] = useState<{ client: Client; step: 1 | 2 } | null>(null)
+  const [deleteConfirmText, setDeleteConfirmText] = useState('')
+  const [deleting, setDeleting] = useState(false)
+
   useEffect(() => {
     fetch('/api/clients').then(r => r.json()).then(setClients).finally(() => setLoading(false))
   }, [])
@@ -146,6 +150,34 @@ export default function ClientsPage() {
     if (importFileRef.current) importFileRef.current.value = ''
   }
 
+  function openDeleteModal(client: Client) {
+    setDeleteModal({ client, step: 1 })
+    setDeleteConfirmText('')
+  }
+
+  function closeDeleteModal() {
+    setDeleteModal(null)
+    setDeleteConfirmText('')
+  }
+
+  function advanceDeleteStep() {
+    if (!deleteModal) return
+    setDeleteModal({ ...deleteModal, step: 2 })
+    setDeleteConfirmText('')
+  }
+
+  async function handleDelete() {
+    if (!deleteModal) return
+    setDeleting(true)
+    try {
+      await fetch(`/api/clients/${deleteModal.client.id}`, { method: 'DELETE' })
+      setClients(prev => prev.filter(c => c.id !== deleteModal.client.id))
+      closeDeleteModal()
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   return (
     <div className="p-8">
       <div className="flex items-center justify-between mb-8">
@@ -195,63 +227,127 @@ export default function ClientsPage() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {filtered.map(client => (
-            <Link
-              key={client.id}
-              href={`/clients/${client.id}`}
-              className="bg-[#111118] border border-slate-800 rounded-2xl p-5 hover:border-slate-700 transition-colors group"
-            >
-              <div className="flex items-start justify-between mb-4">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500/20 to-violet-700/20 border border-[#E14B89]/20 flex items-center justify-center">
-                  <span className="text-[#E14B89] font-semibold text-sm">{client.name[0].toUpperCase()}</span>
+            <div key={client.id} className="relative group">
+              <Link
+                href={`/clients/${client.id}`}
+                className="block bg-[#111118] border border-slate-800 rounded-2xl p-5 hover:border-slate-700 transition-colors group"
+              >
+                <div className="flex items-start justify-between mb-4">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500/20 to-violet-700/20 border border-[#E14B89]/20 flex items-center justify-center">
+                    <span className="text-[#E14B89] font-semibold text-sm">{client.name[0].toUpperCase()}</span>
+                  </div>
+                  {!isAdmin && (
+                    <ChevronRight size={16} className="text-slate-600 group-hover:text-slate-400 transition-colors" />
+                  )}
                 </div>
-                {isAdmin ? (
-                  <button
-                    onClick={async (e) => {
-                      e.preventDefault()
-                      e.stopPropagation()
-                      if (!confirm(`Supprimer le client "${client.name}" ?`)) return
-                      await fetch(`/api/clients/${client.id}`, { method: 'DELETE' })
-                      setClients(prev => prev.filter(c => c.id !== client.id))
-                    }}
-                    className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 transition-all p-1 -mr-1 -mt-1"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                ) : (
-                  <ChevronRight size={16} className="text-slate-600 group-hover:text-slate-400 transition-colors" />
-                )}
-              </div>
-              <h3 className="text-white font-medium">{client.name}</h3>
-              {client.company && <p className="text-slate-400 text-sm mt-0.5">{client.company}</p>}
-              <div className="mt-3 space-y-1.5">
-                {client.email && (
-                  <div className="flex items-center gap-2 text-slate-500 text-xs">
-                    <Mail size={12} /><span className="truncate">{client.email}</span>
-                  </div>
-                )}
-                {client.phone && (
-                  <div className="flex items-center gap-2 text-slate-500 text-xs">
-                    <Phone size={12} /><span>{client.phone}</span>
-                  </div>
-                )}
-                {client.website && (
-                  <div className="flex items-center gap-2 text-slate-500 text-xs">
-                    <Globe size={12} /><span className="truncate">{client.website}</span>
-                  </div>
-                )}
-              </div>
-              <div className="mt-4 pt-4 border-t border-slate-800 flex items-center justify-between">
-                <span className={`text-xs px-2.5 py-1 rounded-full font-medium flex items-center gap-1 ${MAINTENANCE_COLORS[client.maintenancePlan]}`}>
-                  {client.maintenancePlan !== 'NONE' && <Wrench size={10} />}
-                  {MAINTENANCE_LABELS[client.maintenancePlan]}
-                </span>
-                <span className="text-slate-500 text-xs">{client.projects.length} projet{client.projects.length > 1 ? 's' : ''}</span>
-              </div>
-            </Link>
+                <h3 className="text-white font-medium">{client.name}</h3>
+                {client.company && <p className="text-slate-400 text-sm mt-0.5">{client.company}</p>}
+                <div className="mt-3 space-y-1.5">
+                  {client.email && (
+                    <div className="flex items-center gap-2 text-slate-500 text-xs">
+                      <Mail size={12} /><span className="truncate">{client.email}</span>
+                    </div>
+                  )}
+                  {client.phone && (
+                    <div className="flex items-center gap-2 text-slate-500 text-xs">
+                      <Phone size={12} /><span>{client.phone}</span>
+                    </div>
+                  )}
+                  {client.website && (
+                    <div className="flex items-center gap-2 text-slate-500 text-xs">
+                      <Globe size={12} /><span className="truncate">{client.website}</span>
+                    </div>
+                  )}
+                </div>
+                <div className="mt-4 pt-4 border-t border-slate-800 flex items-center justify-between">
+                  <span className={`text-xs px-2.5 py-1 rounded-full font-medium flex items-center gap-1 ${MAINTENANCE_COLORS[client.maintenancePlan]}`}>
+                    {client.maintenancePlan !== 'NONE' && <Wrench size={10} />}
+                    {MAINTENANCE_LABELS[client.maintenancePlan]}
+                  </span>
+                  <span className="text-slate-500 text-xs">{client.projects.length} projet{client.projects.length > 1 ? 's' : ''}</span>
+                </div>
+              </Link>
+              {isAdmin && (
+                <button
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    openDeleteModal(client)
+                  }}
+                  className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 transition-all p-1 rounded-lg hover:bg-red-400/10"
+                >
+                  <Trash2 size={14} />
+                </button>
+              )}
+            </div>
           ))}
           {filtered.length === 0 && !loading && (
             <div className="col-span-3 text-center py-16 text-slate-500">Aucun client trouvé</div>
           )}
+        </div>
+      )}
+
+      {/* Delete confirmation modal */}
+      {deleteModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#111118] border border-slate-800 rounded-2xl p-6 w-full max-w-md">
+            {deleteModal.step === 1 ? (
+              <>
+                <h2 className="text-white font-semibold text-lg mb-3">Supprimer le client ?</h2>
+                <p className="text-slate-400 text-sm mb-6">
+                  Êtes-vous sûr de vouloir supprimer &ldquo;{deleteModal.client.name}&rdquo; ? Cette action est irréversible. Tous les projets associés à ce client seront également supprimés.
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={closeDeleteModal}
+                    className="border border-slate-700 text-slate-400 hover:text-white py-2.5 rounded-xl text-sm flex-1 transition-colors"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    type="button"
+                    onClick={advanceDeleteStep}
+                    className="bg-red-500 hover:bg-red-600 text-white px-4 py-2.5 rounded-xl text-sm font-medium flex-1 transition-colors"
+                  >
+                    Oui, continuer
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h2 className="text-white font-semibold text-lg mb-3">Confirmation finale</h2>
+                <p className="text-slate-400 text-sm mb-4">
+                  Pour confirmer, tapez le nom du client ci-dessous :
+                </p>
+                <input
+                  type="text"
+                  value={deleteConfirmText}
+                  onChange={e => setDeleteConfirmText(e.target.value)}
+                  placeholder={deleteModal.client.name}
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-red-500 transition-colors mb-6"
+                  autoFocus
+                />
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={closeDeleteModal}
+                    className="border border-slate-700 text-slate-400 hover:text-white py-2.5 rounded-xl text-sm flex-1 transition-colors"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDelete}
+                    disabled={deleteConfirmText !== deleteModal.client.name || deleting}
+                    className="bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white px-4 py-2.5 rounded-xl text-sm font-medium flex-1 transition-colors"
+                  >
+                    {deleting ? 'Suppression...' : 'Supprimer définitivement'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       )}
 
@@ -361,7 +457,7 @@ export default function ClientsPage() {
 
               {/* Import hint */}
               <div className="bg-slate-800/40 border border-slate-800 rounded-xl px-4 py-3 text-xs text-slate-500">
-                💡 Pour importer plusieurs clients, utilisez le bouton <strong className="text-slate-400">Importer</strong> avec un fichier Excel/CSV.<br />
+                Pour importer plusieurs clients, utilisez le bouton <strong className="text-slate-400">Importer</strong> avec un fichier Excel/CSV.<br />
                 Colonnes attendues : <code className="text-slate-400">Nom, Entreprise, Email, Téléphone, Site</code>
               </div>
 

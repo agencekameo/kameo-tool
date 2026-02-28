@@ -211,3 +211,116 @@ main,
 [data-theme="light"] .text-\[\#E14B89\] {
   color: #E14B89 !important;
 }
+
+/* ---- Divide borders ---- */
+[data-theme="light"] .divide-slate-800 > * + * {
+  border-color: #e2e8f0 !important;
+}
+
+/* ---- Ring / outline colors ---- */
+[data-theme="light"] .ring-slate-700,
+[data-theme="light"] .ring-slate-800 {
+  --tw-ring-color: #e2e8f0 !important;
+}
+
+/* ---- Input backgrounds ---- */
+[data-theme="light"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+[data-theme="light"] textarea,
+[data-theme="light"] select {
+  background-color: #f8fafc !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+[data-theme="light"] input::placeholder,
+[data-theme="light"] textarea::placeholder {
+  color: #94a3b8 !important;
+}
+
+/* ---- Progress bars bg ---- */
+[data-theme="light"] .bg-slate-800.rounded-full,
+[data-theme="light"] .bg-slate-900 {
+  background-color: #e2e8f0 !important;
+}
+
+/* ---- Hover bg slate-700 ---- */
+[data-theme="light"] .hover\:bg-slate-700:hover {
+  background-color: #e2e8f0 !important;
+}
+
+/* ---- bg-slate-900 (used in some cards) ---- */
+[data-theme="light"] .bg-slate-900 {
+  background-color: #f1f5f9 !important;
+}
+
+/* ---- bg-black/... (overlays) ---- */
+[data-theme="light"] .bg-black\/40,
+[data-theme="light"] .bg-black\/50,
+[data-theme="light"] .bg-black\/80 {
+  background-color: rgba(15, 23, 42, 0.4) !important;
+}
+
+/* ---- Inline text-slate-200 ---- */
+[data-theme="light"] .text-slate-200 {
+  color: #1e293b !important;
+}
+[data-theme="light"] .text-slate-100 {
+  color: #0f172a !important;
+}
+
+/* ---- bg-[#0a0a0f] full coverage ---- */
+[data-theme="light"] .bg-\[#0a0a0f\] {
+  background-color: #f1f5f9 !important;
+}
+
+/* ---- Sidebar nav items ---- */
+[data-theme="light"] nav a,
+[data-theme="light"] nav button {
+  color: #475569;
+}
+[data-theme="light"] nav a:hover,
+[data-theme="light"] nav button:hover {
+  background-color: #f1f5f9 !important;
+  color: #0f172a !important;
+}
+
+/* ---- Kanban / task cards ---- */
+[data-theme="light"] .bg-slate-800\/60 {
+  background-color: #e2e8f0 !important;
+}
+
+/* ---- Modal / popover panels ---- */
+[data-theme="light"] .bg-\[#0d0d14\] {
+  background-color: #f8fafc !important;
+}
+
+/* ---- Stat number colors (keep brand colors, only fix white/dark) ---- */
+[data-theme="light"] h1,
+[data-theme="light"] h2,
+[data-theme="light"] h3,
+[data-theme="light"] p,
+[data-theme="light"] span:not([class*="text-"]) {
+  color: inherit;
+}
+
+/* ---- Fix hardcoded white text inside colored badges (keep brand badges) ---- */
+[data-theme="light"] .text-slate-300 {
+  color: #334155 !important;
+}
+
+/* ---- border-slate-700/50 and similar ---- */
+[data-theme="light"] .border-slate-700\/50,
+[data-theme="light"] .border-slate-700\/30 {
+  border-color: #e2e8f0 !important;
+}
+
+/* ---- bg-[#111118] hover variant ---- */
+[data-theme="light"] .hover\:bg-\[#111118\]:hover {
+  background-color: #f8fafc !important;
+}
+
+/* ---- Tooltip / dropdown bg ---- */
+[data-theme="light"] .bg-\[#1e1e2e\] {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  color: #0f172a !important;
+}

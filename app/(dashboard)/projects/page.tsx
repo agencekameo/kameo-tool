@@ -42,6 +42,10 @@ export default function ProjectsPage() {
     price: '', deadline: '', notes: '', services: [] as string[],
   })
 
+  const [deleteModal, setDeleteModal] = useState<{ project: Project; step: 1 | 2 } | null>(null)
+  const [deleteConfirmText, setDeleteConfirmText] = useState('')
+  const [deleting, setDeleting] = useState(false)
+
   useEffect(() => {
     Promise.all([
       fetch('/api/projects').then(r => r.json()),
@@ -92,6 +96,34 @@ export default function ProjectsPage() {
   const taskProgress = (tasks: { status: string }[]) => {
     if (!tasks.length) return 0
     return Math.round((tasks.filter(t => t.status === 'DONE').length / tasks.length) * 100)
+  }
+
+  function openDeleteModal(project: Project) {
+    setDeleteModal({ project, step: 1 })
+    setDeleteConfirmText('')
+  }
+
+  function closeDeleteModal() {
+    setDeleteModal(null)
+    setDeleteConfirmText('')
+  }
+
+  function advanceDeleteStep() {
+    if (!deleteModal) return
+    setDeleteModal({ ...deleteModal, step: 2 })
+    setDeleteConfirmText('')
+  }
+
+  async function handleDelete() {
+    if (!deleteModal) return
+    setDeleting(true)
+    try {
+      await fetch(`/api/projects/${deleteModal.project.id}`, { method: 'DELETE' })
+      setProjects(prev => prev.filter(p => p.id !== deleteModal.project.id))
+      closeDeleteModal()
+    } finally {
+      setDeleting(false)
+    }
   }
 
   return (
@@ -179,11 +211,7 @@ export default function ProjectsPage() {
                 </Link>
                 {isAdmin && (
                   <button
-                    onClick={async () => {
-                      if (!confirm(`Supprimer le projet "${project.name}" ?`)) return
-                      await fetch(`/api/projects/${project.id}`, { method: 'DELETE' })
-                      setProjects(prev => prev.filter(p => p.id !== project.id))
-                    }}
+                    onClick={() => openDeleteModal(project)}
                     className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 transition-all p-1.5 rounded-lg hover:bg-red-400/10"
                   >
                     <Trash2 size={14} />
@@ -193,6 +221,70 @@ export default function ProjectsPage() {
             )
           })}
           {filtered.length === 0 && <div className="text-center py-16 text-slate-500">Aucun projet</div>}
+        </div>
+      )}
+
+      {/* Delete confirmation modal */}
+      {deleteModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#111118] border border-slate-800 rounded-2xl p-6 w-full max-w-md">
+            {deleteModal.step === 1 ? (
+              <>
+                <h2 className="text-white font-semibold text-lg mb-3">Supprimer le projet ?</h2>
+                <p className="text-slate-400 text-sm mb-6">
+                  Êtes-vous sûr de vouloir supprimer &ldquo;{deleteModal.project.name}&rdquo; ? Cette action est irréversible.
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={closeDeleteModal}
+                    className="border border-slate-700 text-slate-400 hover:text-white py-2.5 rounded-xl text-sm flex-1 transition-colors"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    type="button"
+                    onClick={advanceDeleteStep}
+                    className="bg-red-500 hover:bg-red-600 text-white px-4 py-2.5 rounded-xl text-sm font-medium flex-1 transition-colors"
+                  >
+                    Oui, continuer
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h2 className="text-white font-semibold text-lg mb-3">Confirmation finale</h2>
+                <p className="text-slate-400 text-sm mb-4">
+                  Pour confirmer, tapez le nom du projet ci-dessous :
+                </p>
+                <input
+                  type="text"
+                  value={deleteConfirmText}
+                  onChange={e => setDeleteConfirmText(e.target.value)}
+                  placeholder={deleteModal.project.name}
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-red-500 transition-colors mb-6"
+                  autoFocus
+                />
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={closeDeleteModal}
+                    className="border border-slate-700 text-slate-400 hover:text-white py-2.5 rounded-xl text-sm flex-1 transition-colors"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDelete}
+                    disabled={deleteConfirmText !== deleteModal.project.name || deleting}
+                    className="bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white px-4 py-2.5 rounded-xl text-sm font-medium flex-1 transition-colors"
+                  >
+                    {deleting ? 'Suppression...' : 'Supprimer définitivement'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       )}
 

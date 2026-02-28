@@ -195,6 +195,7 @@ model Project {
   startDate   DateTime?
   notes           String?
   reviewReceived  Boolean       @default(false)
+  reviewExcluded  Boolean       @default(false)
   createdById String
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt

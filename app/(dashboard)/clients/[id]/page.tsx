@@ -3,8 +3,24 @@
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Globe, Mail, Phone, Wrench, FolderKanban, Pencil, Trash2, Save } from 'lucide-react'
-import { MAINTENANCE_LABELS, PROJECT_STATUS_COLORS, PROJECT_STATUS_LABELS, PROJECT_TYPE_LABELS, formatCurrency, formatDate } from '@/lib/utils'
+import { useSession } from 'next-auth/react'
+import {
+  ArrowLeft, Mail, Phone, Globe, Building2, FileText, Plus, Trash2,
+  Wrench, X, AlertTriangle,
+} from 'lucide-react'
+import {
+  formatCurrency, formatDate,
+  PROJECT_STATUS_LABELS, PROJECT_STATUS_COLORS,
+  PROJECT_TYPE_LABELS, PROJECT_TYPE_COLORS,
+  MAINTENANCE_LABELS,
+} from '@/lib/utils'
+
+// ─── Types ─────────────────────────────────────────────────────────────────────
+
+interface Task {
+  id: string
+  status: string
+}
 
 interface Project {
   id: string
@@ -13,6 +29,7 @@ interface Project {
   status: string
   price?: number
   deadline?: string
+  tasks: Task[]
 }
 
 interface Client {
@@ -22,189 +39,644 @@ interface Client {
   phone?: string
   company?: string
   website?: string
-  notes?: string
   address?: string
+  notes?: string
   maintenancePlan: string
   maintenancePrice?: number
   projects: Project[]
-  createdAt: string
 }
 
-export default function ClientDetailPage() {
-  const { id } = useParams()
+interface QuoteItem {
+  id: string
+  description: string
+  quantity: number
+  unitPrice: number
+  unit: string
+}
+
+// ─── Constants ─────────────────────────────────────────────────────────────────
+
+const MAINTENANCE_COLORS: Record<string, string> = {
+  NONE: 'bg-slate-800 text-slate-400',
+  ESSENTIELLE: 'bg-teal-500/15 text-teal-400',
+  DEVELOPPEMENT: 'bg-blue-500/15 text-blue-400',
+  SEO: 'bg-[#E14B89]/10 text-[#E14B89]',
+}
+
+const STATUS_LABELS: Record<string, string> = {
+  BROUILLON: 'Brouillon',
+  ENVOYE: 'Envoyé',
+  ACCEPTE: 'Accepté',
+  REFUSE: 'Refusé',
+  EXPIRE: 'Expiré',
+}
+
+const UNITS = ['forfait', 'jour', 'heure']
+
+function genTempId() {
+  return `tmp_${Math.random().toString(36).slice(2)}`
+}
+
+function taskProgress(tasks: Task[]): number | null {
+  if (!tasks.length) return null
+  return Math.round((tasks.filter(t => t.status === 'DONE').length / tasks.length) * 100)
+}
+
+function calcTotals(items: QuoteItem[], discount: number) {
+  const totalHT = items.reduce((s, i) => s + i.quantity * i.unitPrice, 0)
+  const remise = totalHT * discount / 100
+  const sousTotal = totalHT - remise
+  const tva = sousTotal * 0.20
+  const totalTTC = sousTotal + tva
+  return { totalHT, remise, sousTotal, tva, totalTTC }
+}
+
+// ─── Quote Modal ───────────────────────────────────────────────────────────────
+
+interface QuoteModalProps {
+  client: Client
+  onClose: () => void
+  onSuccess: () => void
+}
+
+function QuoteModal({ client, onClose, onSuccess }: QuoteModalProps) {
   const router = useRouter()
-  const [client, setClient] = useState<Client | null>(null)
-  const [editing, setEditing] = useState(false)
-  const [form, setForm] = useState<Partial<Client>>({})
+  const [saving, setSaving] = useState(false)
+  const [form, setForm] = useState({
+    subject: '',
+    status: 'BROUILLON',
+    validUntil: '',
+    notes: '',
+    discount: 0,
+    items: [{ id: genTempId(), description: '', quantity: 1, unitPrice: 0, unit: 'forfait' }] as QuoteItem[],
+  })
 
-  useEffect(() => {
-    fetch(`/api/clients/${id}`).then(r => r.json()).then(data => {
-      setClient(data)
-      setForm(data)
-    })
-  }, [id])
+  const { totalHT, remise, sousTotal, tva, totalTTC } = calcTotals(form.items, form.discount)
 
-  async function handleSave() {
-    const res = await fetch(`/api/clients/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form),
-    })
-    const updated = await res.json()
-    setClient(updated)
-    setEditing(false)
+  function addItem() {
+    setForm(f => ({
+      ...f,
+      items: [...f.items, { id: genTempId(), description: '', quantity: 1, unitPrice: 0, unit: 'forfait' }],
+    }))
   }
 
-  async function handleDelete() {
-    if (!confirm('Supprimer ce client et tous ses projets ?')) return
-    await fetch(`/api/clients/${id}`, { method: 'DELETE' })
-    router.push('/clients')
+  function updateItem(id: string, field: keyof QuoteItem, value: string | number) {
+    setForm(f => ({
+      ...f,
+      items: f.items.map(i => i.id === id ? { ...i, [field]: value } : i),
+    }))
   }
 
-  if (!client) return <div className="p-8 text-slate-500">Chargement...</div>
+  function removeItem(id: string) {
+    setForm(f => ({ ...f, items: f.items.filter(i => i.id !== id) }))
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!form.subject.trim()) return
+    setSaving(true)
+    try {
+      const payload = {
+        clientId: client.id,
+        clientName: client.name,
+        clientEmail: client.email || undefined,
+        subject: form.subject,
+        status: form.status,
+        validUntil: form.validUntil || undefined,
+        notes: form.notes || undefined,
+        discount: Number(form.discount) || 0,
+        items: form.items.map(({ id: _id, ...rest }) => ({
+          ...rest,
+          quantity: Number(rest.quantity),
+          unitPrice: Number(rest.unitPrice),
+        })),
+      }
+      const res = await fetch('/api/quotes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      if (res.ok) {
+        onSuccess()
+        router.push('/devis')
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
-    <div className="p-4 sm:p-8 max-w-4xl">
-      <Link href="/clients" className="flex items-center gap-2 text-slate-400 hover:text-white text-sm mb-6 transition-colors">
-        <ArrowLeft size={16} /> Retour aux clients
-      </Link>
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-[#111118] border border-slate-800 rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b border-slate-800 flex-shrink-0">
+          <div>
+            <h2 className="text-white font-semibold text-lg">Nouveau devis</h2>
+            <p className="text-slate-400 text-sm mt-0.5">Pour {client.name}</p>
+          </div>
+          <button onClick={onClose} className="text-slate-500 hover:text-white transition-colors p-1">
+            <X size={20} />
+          </button>
+        </div>
 
-      <div className="flex items-start justify-between mb-8">
-        <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-500/20 to-violet-700/20 border border-[#E14B89]/20 flex items-center justify-center">
-            <span className="text-[#E14B89] font-bold text-xl">{client.name[0].toUpperCase()}</span>
+        <form onSubmit={handleSubmit} className="overflow-y-auto flex-1">
+          <div className="p-6 space-y-5">
+            {/* Subject */}
+            <div>
+              <label className="block text-slate-400 text-xs mb-1.5">Objet *</label>
+              <input
+                required
+                value={form.subject}
+                onChange={e => setForm(f => ({ ...f, subject: e.target.value }))}
+                placeholder="Ex : Création site web vitrine"
+                className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
+              />
+            </div>
+
+            {/* Status + ValidUntil */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-slate-400 text-xs mb-1.5">Statut</label>
+                <select
+                  value={form.status}
+                  onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
+                >
+                  {Object.entries(STATUS_LABELS).map(([val, label]) => (
+                    <option key={val} value={val}>{label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-slate-400 text-xs mb-1.5">Valide jusqu&apos;au</label>
+                <input
+                  type="date"
+                  value={form.validUntil}
+                  onChange={e => setForm(f => ({ ...f, validUntil: e.target.value }))}
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
+                />
+              </div>
+            </div>
+
+            {/* Notes */}
+            <div>
+              <label className="block text-slate-400 text-xs mb-1.5">Notes</label>
+              <textarea
+                value={form.notes}
+                onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+                placeholder="Informations complémentaires..."
+                rows={2}
+                className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors resize-none"
+              />
+            </div>
+
+            {/* Line items */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-slate-400 text-xs">Prestations</label>
+                <button
+                  type="button"
+                  onClick={addItem}
+                  className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-colors"
+                >
+                  <Plus size={12} />
+                  Ajouter une ligne
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                {/* Table header */}
+                <div className="grid grid-cols-[1fr_80px_100px_90px_32px] gap-2 px-1">
+                  <span className="text-slate-600 text-xs">Description</span>
+                  <span className="text-slate-600 text-xs">Qté</span>
+                  <span className="text-slate-600 text-xs">Prix HT</span>
+                  <span className="text-slate-600 text-xs">Unité</span>
+                  <span />
+                </div>
+
+                {form.items.map(item => (
+                  <div key={item.id} className="grid grid-cols-[1fr_80px_100px_90px_32px] gap-2 items-center">
+                    <input
+                      value={item.description}
+                      onChange={e => updateItem(item.id, 'description', e.target.value)}
+                      placeholder="Description de la prestation"
+                      className="bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
+                    />
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.5"
+                      value={item.quantity}
+                      onChange={e => updateItem(item.id, 'quantity', parseFloat(e.target.value) || 0)}
+                      className="bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors text-center"
+                    />
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={item.unitPrice}
+                      onChange={e => updateItem(item.id, 'unitPrice', parseFloat(e.target.value) || 0)}
+                      className="bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
+                    />
+                    <select
+                      value={item.unit}
+                      onChange={e => updateItem(item.id, 'unit', e.target.value)}
+                      className="bg-[#1a1a24] border border-slate-700 rounded-xl px-2 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
+                    >
+                      {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => removeItem(item.id)}
+                      className="text-slate-600 hover:text-red-400 transition-colors flex items-center justify-center"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ))}
+
+                {form.items.length === 0 && (
+                  <div className="text-center py-4 text-slate-600 text-sm border border-dashed border-slate-800 rounded-xl">
+                    Aucune prestation. Cliquez sur &quot;Ajouter une ligne&quot;.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Discount */}
+            <div className="flex items-center gap-3">
+              <label className="text-slate-400 text-xs whitespace-nowrap">Remise (%)</label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="1"
+                value={form.discount}
+                onChange={e => setForm(f => ({ ...f, discount: parseFloat(e.target.value) || 0 }))}
+                className="w-24 bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
+              />
+            </div>
+
+            {/* Totals */}
+            <div className="bg-[#0d0d14] border border-slate-800 rounded-xl p-4">
+              <div className="space-y-1.5 text-sm">
+                <div className="flex justify-between text-slate-400">
+                  <span>Total HT</span>
+                  <span className="text-white">{formatCurrency(totalHT)}</span>
+                </div>
+                {form.discount > 0 && (
+                  <>
+                    <div className="flex justify-between text-slate-400">
+                      <span>Remise ({form.discount}%)</span>
+                      <span className="text-orange-400">- {formatCurrency(remise)}</span>
+                    </div>
+                    <div className="flex justify-between text-slate-400">
+                      <span>Sous-total HT</span>
+                      <span className="text-white">{formatCurrency(sousTotal)}</span>
+                    </div>
+                  </>
+                )}
+                <div className="flex justify-between text-slate-400">
+                  <span>TVA 20%</span>
+                  <span className="text-white">{formatCurrency(tva)}</span>
+                </div>
+                <div className="flex justify-between font-semibold text-base pt-2 border-t border-slate-800 mt-2">
+                  <span className="text-white">Total TTC</span>
+                  <span className="text-[#E14B89]">{formatCurrency(totalTTC)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="flex gap-3 p-6 border-t border-slate-800 flex-shrink-0">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 border border-slate-700 text-slate-400 hover:text-white py-2.5 rounded-xl text-sm transition-colors"
+            >
+              Annuler
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="flex-1 bg-[#E14B89] hover:opacity-90 text-white py-2.5 rounded-xl text-sm font-medium transition-colors disabled:opacity-60"
+            >
+              {saving ? 'Création...' : 'Créer le devis'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ─── Delete Confirmation Modal ─────────────────────────────────────────────────
+
+interface DeleteModalProps {
+  clientName: string
+  onCancel: () => void
+  onConfirm: () => void
+  deleting: boolean
+}
+
+function DeleteModal({ clientName, onCancel, onConfirm, deleting }: DeleteModalProps) {
+  const [confirmText, setConfirmText] = useState('')
+  const isValid = confirmText === clientName
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-[#111118] border border-red-500/30 rounded-2xl p-6 w-full max-w-md">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-xl bg-red-500/10 flex items-center justify-center flex-shrink-0">
+            <AlertTriangle size={20} className="text-red-400" />
           </div>
           <div>
-            <h1 className="text-2xl font-semibold text-white">{client.name}</h1>
-            {client.company && <p className="text-slate-400 mt-0.5">{client.company}</p>}
+            <h2 className="text-white font-semibold">Supprimer le client</h2>
+            <p className="text-slate-400 text-sm mt-0.5">Cette action est irréversible</p>
           </div>
         </div>
-        <div className="flex gap-2">
-          {editing ? (
-            <button onClick={handleSave} className="flex items-center gap-2 bg-[#E14B89] hover:opacity-90 text-white px-4 py-2 rounded-xl text-sm transition-colors">
-              <Save size={14} /> Sauvegarder
-            </button>
-          ) : (
-            <button onClick={() => setEditing(true)} className="flex items-center gap-2 border border-slate-700 hover:border-slate-600 text-slate-400 hover:text-white px-4 py-2 rounded-xl text-sm transition-colors">
-              <Pencil size={14} /> Modifier
-            </button>
-          )}
-          <button onClick={handleDelete} className="flex items-center gap-2 border border-red-900/40 hover:border-red-700 text-red-500 hover:text-red-400 px-3 py-2 rounded-xl text-sm transition-colors">
-            <Trash2 size={14} />
+
+        <p className="text-slate-400 text-sm mb-4">
+          Cette action est irréversible. Tous les projets de ce client seront également supprimés.
+        </p>
+
+        <div className="bg-red-500/5 border border-red-500/20 rounded-xl px-4 py-3 mb-4">
+          <p className="text-red-400 text-xs mb-2">
+            Tapez <strong className="text-red-300">{clientName}</strong> pour confirmer la suppression
+          </p>
+          <input
+            value={confirmText}
+            onChange={e => setConfirmText(e.target.value)}
+            placeholder={clientName}
+            className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-red-500 transition-colors"
+          />
+        </div>
+
+        <div className="flex gap-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="flex-1 border border-slate-700 text-slate-400 hover:text-white py-2.5 rounded-xl text-sm transition-colors"
+          >
+            Annuler
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={!isValid || deleting}
+            className="flex-1 bg-red-500 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-white py-2.5 rounded-xl text-sm font-medium transition-colors"
+          >
+            {deleting ? 'Suppression...' : 'Supprimer définitivement'}
           </button>
         </div>
       </div>
+    </div>
+  )
+}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="col-span-2 space-y-4">
-          <div className="bg-[#111118] border border-slate-800 rounded-2xl p-5">
-            <h2 className="text-white font-medium mb-4">Informations</h2>
-            {editing ? (
-              <div className="space-y-3">
-                {[
-                  { key: 'name', label: 'Nom', type: 'text' },
-                  { key: 'company', label: 'Entreprise', type: 'text' },
-                  { key: 'email', label: 'Email', type: 'email' },
-                  { key: 'phone', label: 'Téléphone', type: 'text' },
-                  { key: 'website', label: 'Site web', type: 'text' },
-                  { key: 'address', label: 'Adresse', type: 'text' },
-                ].map(({ key, label, type }) => (
-                  <div key={key}>
-                    <label className="block text-slate-400 text-xs mb-1">{label}</label>
-                    <input type={type} value={(form as Record<string, string>)[key] ?? ''}
-                      onChange={e => setForm({ ...form, [key]: e.target.value })}
-                      className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
-                  </div>
-                ))}
-                <div>
-                  <label className="block text-slate-400 text-xs mb-1">Notes</label>
-                  <textarea value={form.notes ?? ''} rows={3} onChange={e => setForm({ ...form, notes: e.target.value })}
-                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors resize-none" />
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {client.email && (
-                  <div className="flex items-center gap-3 text-sm"><Mail size={15} className="text-slate-500" /><span className="text-slate-300">{client.email}</span></div>
-                )}
-                {client.phone && (
-                  <div className="flex items-center gap-3 text-sm"><Phone size={15} className="text-slate-500" /><span className="text-slate-300">{client.phone}</span></div>
-                )}
-                {client.website && (
-                  <div className="flex items-center gap-3 text-sm"><Globe size={15} className="text-slate-500" /><span className="text-slate-300">{client.website}</span></div>
-                )}
-                {client.notes && (
-                  <div className="mt-3 pt-3 border-t border-slate-800">
-                    <p className="text-slate-400 text-xs mb-1">Notes</p>
-                    <p className="text-slate-300 text-sm whitespace-pre-wrap">{client.notes}</p>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+// ─── Main Page ─────────────────────────────────────────────────────────────────
 
-          <div className="bg-[#111118] border border-slate-800 rounded-2xl p-5">
-            <h2 className="text-white font-medium mb-4 flex items-center gap-2">
-              <FolderKanban size={16} className="text-slate-400" />
-              Projets ({client.projects.length})
-            </h2>
-            {client.projects.length === 0 ? (
-              <p className="text-slate-500 text-sm">Aucun projet</p>
-            ) : (
-              <div className="space-y-2">
-                {client.projects.map(project => (
-                  <Link key={project.id} href={`/projects/${project.id}`}
-                    className="flex items-center justify-between p-3 rounded-xl hover:bg-slate-800/40 transition-colors group">
-                    <div>
-                      <p className="text-white text-sm group-hover:text-[#F8903C] transition-colors">{project.name}</p>
-                      <p className="text-slate-500 text-xs mt-0.5">{PROJECT_TYPE_LABELS[project.type]}{project.deadline ? ` · ${formatDate(project.deadline)}` : ''}</p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      {project.price && <span className="text-slate-400 text-sm">{formatCurrency(project.price)}</span>}
-                      <span className={`text-xs px-2.5 py-1 rounded-full ${PROJECT_STATUS_COLORS[project.status]}`}>
-                        {PROJECT_STATUS_LABELS[project.status]}
-                      </span>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+export default function ClientDetailPage() {
+  const { id } = useParams<{ id: string }>()
+  const router = useRouter()
+  const { data: session } = useSession()
+  const isAdmin = (session?.user as { role?: string })?.role === 'ADMIN'
 
-        <div className="space-y-4">
-          <div className="bg-[#111118] border border-slate-800 rounded-2xl p-5">
-            <h2 className="text-white font-medium mb-4 flex items-center gap-2">
-              <Wrench size={15} className="text-slate-400" /> Maintenance
-            </h2>
-            {editing ? (
-              <div className="space-y-3">
-                <select value={form.maintenancePlan ?? 'NONE'} onChange={e => setForm({ ...form, maintenancePlan: e.target.value })}
-                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors">
-                  <option value="NONE">Aucune</option>
-                  <option value="ESSENTIELLE">Essentielle</option>
-                  <option value="DEVELOPPEMENT">Développement</option>
-                  <option value="SEO">SEO</option>
-                </select>
-                <input type="number" value={form.maintenancePrice ?? ''} placeholder="Prix mensuel €"
-                  onChange={e => setForm({ ...form, maintenancePrice: parseFloat(e.target.value) })}
-                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
-              </div>
-            ) : (
-              <div>
-                <p className="text-white font-medium">{MAINTENANCE_LABELS[client.maintenancePlan]}</p>
-                {client.maintenancePrice && (
-                  <p className="text-slate-400 text-sm mt-1">{formatCurrency(client.maintenancePrice)}/mois</p>
-                )}
-              </div>
-            )}
-          </div>
-          <div className="bg-[#111118] border border-slate-800 rounded-2xl p-5">
-            <p className="text-slate-400 text-xs">Client depuis</p>
-            <p className="text-white font-medium mt-1">{formatDate(client.createdAt)}</p>
-          </div>
+  const [client, setClient] = useState<Client | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [showQuoteModal, setShowQuoteModal] = useState(false)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
+  useEffect(() => {
+    if (!id) return
+    fetch(`/api/clients/${id}`)
+      .then(r => {
+        if (!r.ok) throw new Error('Not found')
+        return r.json()
+      })
+      .then(setClient)
+      .catch(() => router.push('/clients'))
+      .finally(() => setLoading(false))
+  }, [id, router])
+
+  async function handleDelete() {
+    setDeleting(true)
+    try {
+      await fetch(`/api/clients/${id}`, { method: 'DELETE' })
+      router.push('/clients')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="p-8">
+        <div className="text-slate-500 text-sm">Chargement...</div>
+      </div>
+    )
+  }
+
+  if (!client) return null
+
+  return (
+    <div className="p-8 max-w-5xl">
+      {/* Top bar: back link + action buttons */}
+      <div className="flex items-center justify-between mb-8">
+        <Link
+          href="/clients"
+          className="flex items-center gap-2 text-slate-400 hover:text-white text-sm transition-colors"
+        >
+          <ArrowLeft size={16} />
+          Retour
+        </Link>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowQuoteModal(true)}
+            className="flex items-center gap-2 bg-[#E14B89] hover:opacity-90 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-colors"
+          >
+            <FileText size={16} />
+            Nouveau devis
+          </button>
+          {isAdmin && (
+            <button
+              onClick={() => setShowDeleteModal(true)}
+              className="flex items-center gap-2 border border-red-500/30 text-red-400 hover:border-red-500/60 hover:text-red-300 px-4 py-2.5 rounded-xl text-sm font-medium transition-colors"
+            >
+              <Trash2 size={16} />
+              Supprimer
+            </button>
+          )}
         </div>
       </div>
+
+      {/* Client header card */}
+      <div className="bg-[#111118] border border-slate-800 rounded-2xl p-6 mb-6">
+        <div className="flex items-start gap-5">
+          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-500/20 to-violet-700/20 border border-[#E14B89]/20 flex items-center justify-center flex-shrink-0">
+            <span className="text-[#E14B89] font-bold text-xl">{client.name[0].toUpperCase()}</span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div>
+                <h1 className="text-2xl font-semibold text-white">{client.name}</h1>
+                {client.company && (
+                  <p className="text-slate-400 text-sm mt-1 flex items-center gap-1.5">
+                    <Building2 size={13} />
+                    {client.company}
+                  </p>
+                )}
+              </div>
+              <span className={`text-xs px-3 py-1.5 rounded-full font-medium flex items-center gap-1.5 flex-shrink-0 ${MAINTENANCE_COLORS[client.maintenancePlan]}`}>
+                {client.maintenancePlan !== 'NONE' && <Wrench size={11} />}
+                {MAINTENANCE_LABELS[client.maintenancePlan]}
+                {client.maintenancePrice != null && client.maintenancePlan !== 'NONE' && (
+                  <span className="ml-1 opacity-70">— {formatCurrency(client.maintenancePrice)}/mois</span>
+                )}
+              </span>
+            </div>
+
+            {/* Contact info */}
+            <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2">
+              {client.email && (
+                <a
+                  href={`mailto:${client.email}`}
+                  className="flex items-center gap-2 text-slate-400 hover:text-white text-sm transition-colors"
+                >
+                  <Mail size={14} />
+                  {client.email}
+                </a>
+              )}
+              {client.phone && (
+                <a
+                  href={`tel:${client.phone}`}
+                  className="flex items-center gap-2 text-slate-400 hover:text-white text-sm transition-colors"
+                >
+                  <Phone size={14} />
+                  {client.phone}
+                </a>
+              )}
+              {client.website && (
+                <a
+                  href={client.website.startsWith('http') ? client.website : `https://${client.website}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 text-slate-400 hover:text-white text-sm transition-colors"
+                >
+                  <Globe size={14} />
+                  {client.website}
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Notes */}
+        {client.notes && (
+          <div className="mt-5 pt-5 border-t border-slate-800">
+            <p className="text-slate-500 text-xs uppercase tracking-wider mb-2">Notes</p>
+            <p className="text-slate-300 text-sm whitespace-pre-line leading-relaxed">{client.notes}</p>
+          </div>
+        )}
+      </div>
+
+      {/* Projects section */}
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-white font-semibold">
+            Projets{' '}
+            <span className="text-slate-500 font-normal text-sm ml-1">
+              {client.projects.length}
+            </span>
+          </h2>
+        </div>
+
+        {client.projects.length === 0 ? (
+          <div className="bg-[#111118] border border-slate-800 rounded-2xl p-10 text-center">
+            <p className="text-slate-500 text-sm">Aucun projet pour ce client</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {client.projects.map(project => {
+              const progress = taskProgress(project.tasks)
+              return (
+                <div
+                  key={project.id}
+                  className="bg-[#111118] border border-slate-800 rounded-2xl p-5 hover:border-slate-700 transition-colors"
+                >
+                  <div className="flex items-start justify-between gap-4 flex-wrap">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2.5 flex-wrap">
+                        <h3 className="text-white font-medium truncate">{project.name}</h3>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PROJECT_TYPE_COLORS[project.type] || 'bg-slate-800 text-slate-400'}`}>
+                          {PROJECT_TYPE_LABELS[project.type] || project.type}
+                        </span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PROJECT_STATUS_COLORS[project.status] || 'bg-slate-800 text-slate-400'}`}>
+                          {PROJECT_STATUS_LABELS[project.status] || project.status}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-4 mt-1.5 flex-wrap">
+                        {project.deadline && (
+                          <span className="text-slate-500 text-xs">
+                            Livraison : {formatDate(project.deadline)}
+                          </span>
+                        )}
+                        {project.price != null && (
+                          <span className="text-slate-500 text-xs">
+                            {formatCurrency(project.price)}
+                          </span>
+                        )}
+                        {project.tasks.length > 0 && (
+                          <span className="text-slate-500 text-xs">
+                            {project.tasks.filter(t => t.status === 'DONE').length}/{project.tasks.length} tâches
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Task progress bar */}
+                  {progress !== null && (
+                    <div className="mt-4">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-slate-500 text-xs">Avancement</span>
+                        <span className="text-slate-400 text-xs font-medium">{progress}%</span>
+                      </div>
+                      <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-[#E14B89] rounded-full transition-all"
+                          style={{ width: `${progress}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Quote Modal */}
+      {showQuoteModal && (
+        <QuoteModal
+          client={client}
+          onClose={() => setShowQuoteModal(false)}
+          onSuccess={() => setShowQuoteModal(false)}
+        />
+      )}
+
+      {/* Delete Modal */}
+      {showDeleteModal && (
+        <DeleteModal
+          clientName={client.name}
+          onCancel={() => setShowDeleteModal(false)}
+          onConfirm={handleDelete}
+          deleting={deleting}
+        />
+      )}
     </div>
   )
 }

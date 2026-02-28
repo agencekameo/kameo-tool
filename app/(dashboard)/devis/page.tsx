@@ -284,6 +284,11 @@ export default function DevisPage() {
   const [newTemplate, setNewTemplate] = useState({ name: '', description: '', unitPrice: '', unit: '' })
   const [savingTemplate, setSavingTemplate] = useState(false)
 
+  // Delete template double-confirmation
+  const [deleteTemplateModal, setDeleteTemplateModal] = useState<{ id: string; name: string } | null>(null)
+  const [deleteTemplateStep, setDeleteTemplateStep] = useState<1 | 2>(1)
+  const [deletingTemplate, setDeletingTemplate] = useState(false)
+
   // ── Load data ──────────────────────────────────────────────────────────────
 
   const loadQuotes = useCallback(async () => {
@@ -451,7 +456,7 @@ export default function DevisPage() {
 
   async function handleSaveTemplate(e: React.FormEvent) {
     e.preventDefault()
-    if (!newTemplate.name.trim()) return
+    if (!newTemplate.name.trim() || !newTemplate.description.trim() || !newTemplate.unitPrice) return
     setSavingTemplate(true)
     try {
       const res = await fetch('/api/article-templates', {
@@ -459,7 +464,7 @@ export default function DevisPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: newTemplate.name,
-          description: newTemplate.description || newTemplate.name,
+          description: newTemplate.description,
           unitPrice: parseFloat(newTemplate.unitPrice) || 0,
           unit: newTemplate.unit || undefined,
         }),
@@ -472,9 +477,25 @@ export default function DevisPage() {
     }
   }
 
-  async function handleDeleteTemplate(id: string) {
-    await fetch(`/api/article-templates/${id}`, { method: 'DELETE' })
-    setTemplates(prev => prev.filter(t => t.id !== id))
+  function openDeleteTemplateModal(t: ArticleTemplate) {
+    setDeleteTemplateModal({ id: t.id, name: t.name })
+    setDeleteTemplateStep(1)
+  }
+
+  async function confirmDeleteTemplate() {
+    if (!deleteTemplateModal) return
+    if (deleteTemplateStep === 1) {
+      setDeleteTemplateStep(2)
+      return
+    }
+    setDeletingTemplate(true)
+    try {
+      await fetch(`/api/article-templates/${deleteTemplateModal.id}`, { method: 'DELETE' })
+      setTemplates(prev => prev.filter(t => t.id !== deleteTemplateModal.id))
+      setDeleteTemplateModal(null)
+    } finally {
+      setDeletingTemplate(false)
+    }
   }
 
   // ── Totals ─────────────────────────────────────────────────────────────────
@@ -926,7 +947,7 @@ export default function DevisPage() {
                             </button>
                             <button
                               type="button"
-                              onClick={() => handleDeleteTemplate(t.id)}
+                              onClick={() => openDeleteTemplateModal(t)}
                               className="p-1 text-slate-600 hover:text-red-400 transition-colors"
                               title="Supprimer le modèle"
                             >
@@ -945,13 +966,15 @@ export default function DevisPage() {
                       <input
                         value={newTemplate.name}
                         onChange={e => setNewTemplate(t => ({ ...t, name: e.target.value }))}
-                        placeholder="Nom *"
+                        placeholder="Titre *"
+                        required
                         className="w-full bg-[#1a1a24] border border-slate-700 rounded-lg px-2.5 py-2 text-white text-xs focus:outline-none focus:border-[#E14B89] transition-colors"
                       />
                       <input
                         value={newTemplate.description}
                         onChange={e => setNewTemplate(t => ({ ...t, description: e.target.value }))}
-                        placeholder="Description"
+                        placeholder="Description *"
+                        required
                         className="w-full bg-[#1a1a24] border border-slate-700 rounded-lg px-2.5 py-2 text-white text-xs focus:outline-none focus:border-[#E14B89] transition-colors"
                       />
                       <div className="grid grid-cols-2 gap-2">
@@ -961,7 +984,8 @@ export default function DevisPage() {
                           step="0.01"
                           value={newTemplate.unitPrice}
                           onChange={e => setNewTemplate(t => ({ ...t, unitPrice: e.target.value }))}
-                          placeholder="Prix HT"
+                          placeholder="Prix HT *"
+                          required
                           className="w-full bg-[#1a1a24] border border-slate-700 rounded-lg px-2.5 py-2 text-white text-xs focus:outline-none focus:border-[#E14B89] transition-colors"
                         />
                         <div className="relative">
@@ -978,7 +1002,7 @@ export default function DevisPage() {
                       </div>
                       <button
                         type="submit"
-                        disabled={savingTemplate || !newTemplate.name.trim()}
+                        disabled={savingTemplate || !newTemplate.name.trim() || !newTemplate.description.trim() || !newTemplate.unitPrice}
                         className="w-full bg-[#E14B89] hover:opacity-90 disabled:opacity-40 text-white py-2 rounded-lg text-xs font-medium transition-opacity flex items-center justify-center gap-1.5"
                       >
                         {savingTemplate ? (
@@ -1047,6 +1071,77 @@ export default function DevisPage() {
               </div>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* ── Delete Template Double-Confirmation Modal ──────────────────────── */}
+      {deleteTemplateModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
+          <div className="bg-[#111118] border border-slate-800 rounded-2xl p-6 w-full max-w-sm">
+            {deleteTemplateStep === 1 ? (
+              <>
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 rounded-xl bg-red-500/10 flex items-center justify-center flex-shrink-0">
+                    <Trash2 size={18} className="text-red-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-white font-semibold">Supprimer le modèle ?</h3>
+                    <p className="text-slate-500 text-xs mt-0.5">Cette action est irréversible.</p>
+                  </div>
+                </div>
+                <p className="text-slate-400 text-sm mb-5">
+                  Êtes-vous sûr de vouloir supprimer le modèle{' '}
+                  <span className="text-white font-medium">&ldquo;{deleteTemplateModal.name}&rdquo;</span> ?
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setDeleteTemplateModal(null)}
+                    className="flex-1 border border-slate-700 text-slate-400 hover:text-white py-2.5 rounded-xl text-sm transition-colors"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    onClick={confirmDeleteTemplate}
+                    className="flex-1 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 py-2.5 rounded-xl text-sm font-medium transition-colors"
+                  >
+                    Oui, continuer
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 rounded-xl bg-red-500/10 flex items-center justify-center flex-shrink-0">
+                    <Trash2 size={18} className="text-red-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-white font-semibold">Confirmation finale</h3>
+                    <p className="text-slate-500 text-xs mt-0.5">Suppression définitive du modèle.</p>
+                  </div>
+                </div>
+                <p className="text-slate-400 text-sm mb-4">
+                  Le modèle{' '}
+                  <span className="text-white font-medium">&ldquo;{deleteTemplateModal.name}&rdquo;</span>{' '}
+                  sera définitivement supprimé. Confirmez-vous cette action ?
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setDeleteTemplateModal(null)}
+                    className="flex-1 border border-slate-700 text-slate-400 hover:text-white py-2.5 rounded-xl text-sm transition-colors"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    onClick={confirmDeleteTemplate}
+                    disabled={deletingTemplate}
+                    className="flex-1 bg-red-500 hover:bg-red-600 disabled:opacity-60 text-white py-2.5 rounded-xl text-sm font-medium transition-colors"
+                  >
+                    {deletingTemplate ? 'Suppression...' : 'Supprimer définitivement'}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

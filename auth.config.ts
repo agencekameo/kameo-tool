@@ -17,6 +17,16 @@ export const authConfig: NextAuthConfig = {
     signIn: '/login',
   },
   callbacks: {
+    // Expose role + id into the session so the Edge middleware can read them
+    // (no Node.js deps here — purely reads from the already-decoded JWT token)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    session({ session, token }: any) {
+      if (token && session.user) {
+        session.user.role = token.role
+        session.user.id = token.sub
+      }
+      return session
+    },
     authorized({ auth, request: { nextUrl } }) {
       const isLoggedIn = !!auth?.user
       const pathname = nextUrl.pathname

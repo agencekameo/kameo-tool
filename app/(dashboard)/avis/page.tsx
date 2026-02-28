@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Star, StarOff, CheckCircle2, Clock, Filter } from 'lucide-react'
+import { Star, StarOff, CheckCircle2, Clock, Filter, XCircle } from 'lucide-react'
 import {
   PROJECT_STATUS_COLORS,
   PROJECT_STATUS_LABELS,
@@ -14,10 +14,11 @@ interface Project {
   type: string
   status: string
   reviewReceived: boolean
+  reviewExcluded: boolean
   client: { id: string; name: string; company?: string }
 }
 
-type FilterTab = 'all' | 'received' | 'missing'
+type FilterTab = 'all' | 'received' | 'missing' | 'excluded'
 
 const DELIVERED_STATUSES = ['LIVRAISON', 'MAINTENANCE', 'ARCHIVE']
 
@@ -59,40 +60,83 @@ export default function AvisPage() {
       .finally(() => setLoading(false))
   }, [])
 
-  const receivedCount = projects.filter(p => p.reviewReceived).length
-  const missingCount = projects.filter(p => !p.reviewReceived).length
+  const receivedCount = projects.filter(p => p.reviewReceived && !p.reviewExcluded).length
+  const missingCount = projects.filter(p => !p.reviewReceived && !p.reviewExcluded).length
+  const excludedCount = projects.filter(p => p.reviewExcluded).length
+  const denominator = projects.length - excludedCount
   const receivedPercent =
-    projects.length > 0 ? Math.round((receivedCount / projects.length) * 100) : 0
+    denominator > 0 ? Math.round((receivedCount / denominator) * 100) : 0
 
   const filtered = projects.filter(p => {
-    if (activeTab === 'received') return p.reviewReceived
-    if (activeTab === 'missing') return !p.reviewReceived
+    if (activeTab === 'received') return p.reviewReceived && !p.reviewExcluded
+    if (activeTab === 'missing') return !p.reviewReceived && !p.reviewExcluded
+    if (activeTab === 'excluded') return p.reviewExcluded
     return true
   })
 
   async function toggleReview(project: Project) {
     if (toggling) return
     setToggling(project.id)
-    const newValue = !project.reviewReceived
+
+    // Determine next state in the cycle:
+    // En attente (false, false) → Avis reçu (true, false) → Hors catégorie (false, true) → En attente (false, false)
+    let nextReceived: boolean
+    let nextExcluded: boolean
+
+    if (!project.reviewReceived && !project.reviewExcluded) {
+      // En attente → Avis reçu
+      nextReceived = true
+      nextExcluded = false
+    } else if (project.reviewReceived && !project.reviewExcluded) {
+      // Avis reçu → Hors catégorie
+      nextReceived = false
+      nextExcluded = true
+    } else {
+      // Hors catégorie → En attente
+      nextReceived = false
+      nextExcluded = false
+    }
+
     // Optimistic update
     setProjects(prev =>
-      prev.map(p => (p.id === project.id ? { ...p, reviewReceived: newValue } : p))
+      prev.map(p =>
+        p.id === project.id
+          ? { ...p, reviewReceived: nextReceived, reviewExcluded: nextExcluded }
+          : p
+      )
     )
+
     try {
       const res = await fetch(`/api/projects/${project.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reviewReceived: newValue }),
+        body: JSON.stringify({ reviewReceived: nextReceived, reviewExcluded: nextExcluded }),
       })
       if (!res.ok) {
         // Revert on failure
         setProjects(prev =>
-          prev.map(p => (p.id === project.id ? { ...p, reviewReceived: !newValue } : p))
+          prev.map(p =>
+            p.id === project.id
+              ? {
+                  ...p,
+                  reviewReceived: project.reviewReceived,
+                  reviewExcluded: project.reviewExcluded,
+                }
+              : p
+          )
         )
       }
     } catch {
       setProjects(prev =>
-        prev.map(p => (p.id === project.id ? { ...p, reviewReceived: !newValue } : p))
+        prev.map(p =>
+          p.id === project.id
+            ? {
+                ...p,
+                reviewReceived: project.reviewReceived,
+                reviewExcluded: project.reviewExcluded,
+              }
+            : p
+        )
       )
     } finally {
       setToggling(null)
@@ -102,7 +146,8 @@ export default function AvisPage() {
   const TABS: { key: FilterTab; label: string; count: number }[] = [
     { key: 'all', label: 'Tous', count: projects.length },
     { key: 'received', label: 'Avis reçu', count: receivedCount },
-    { key: 'missing', label: 'Sans avis', count: missingCount },
+    { key: 'missing', label: 'En attente', count: missingCount },
+    { key: 'excluded', label: 'Hors catégorie', count: excludedCount },
   ]
 
   return (
@@ -123,7 +168,7 @@ export default function AvisPage() {
       {/* Summary bar */}
       <div className="bg-[#111118] border border-slate-800 rounded-2xl p-5 mb-6">
         <div className="flex flex-wrap items-center gap-6">
-          {/* Stat 1 */}
+          {/* Stat 1 - Total */}
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center">
               <Filter size={16} className="text-slate-400" />
@@ -136,7 +181,7 @@ export default function AvisPage() {
 
           <div className="h-10 w-px bg-slate-800 hidden sm:block" />
 
-          {/* Stat 2 */}
+          {/* Stat 2 - Received */}
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center">
               <CheckCircle2 size={16} className="text-amber-400" />
@@ -149,14 +194,27 @@ export default function AvisPage() {
 
           <div className="h-10 w-px bg-slate-800 hidden sm:block" />
 
-          {/* Stat 3 */}
+          {/* Stat 3 - Missing */}
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-rose-500/10 flex items-center justify-center">
               <Clock size={16} className="text-rose-400" />
             </div>
             <div>
               <p className="text-2xl font-bold text-rose-400">{missingCount}</p>
-              <p className="text-slate-500 text-xs">avis manquants</p>
+              <p className="text-slate-500 text-xs">en attente</p>
+            </div>
+          </div>
+
+          <div className="h-10 w-px bg-slate-800 hidden sm:block" />
+
+          {/* Stat 4 - Excluded */}
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-slate-700/50 flex items-center justify-center">
+              <XCircle size={16} className="text-slate-400" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-slate-400">{excludedCount}</p>
+              <p className="text-slate-500 text-xs">hors catégorie</p>
             </div>
           </div>
 
@@ -259,6 +317,11 @@ export default function AvisPage() {
             const gradient = getGradient(project.client.name)
             const isToggling = toggling === project.id
 
+            // Determine current state
+            const isReceived = project.reviewReceived && !project.reviewExcluded
+            const isExcluded = project.reviewExcluded
+            // isWaiting = !isReceived && !isExcluded
+
             return (
               <div
                 key={project.id}
@@ -308,7 +371,7 @@ export default function AvisPage() {
 
                 {/* Review toggle */}
                 <div className="flex-shrink-0 w-36 flex justify-end">
-                  {project.reviewReceived ? (
+                  {isReceived ? (
                     <button
                       onClick={() => toggleReview(project)}
                       disabled={isToggling}
@@ -316,6 +379,15 @@ export default function AvisPage() {
                     >
                       <CheckCircle2 size={13} />
                       Avis reçu
+                    </button>
+                  ) : isExcluded ? (
+                    <button
+                      onClick={() => toggleReview(project)}
+                      disabled={isToggling}
+                      className="flex items-center gap-2 bg-orange-500/15 hover:bg-orange-500/25 border border-orange-500/30 text-orange-400 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all disabled:opacity-60 cursor-pointer"
+                    >
+                      <XCircle size={13} />
+                      Hors catégorie
                     </button>
                   ) : (
                     <button
@@ -337,7 +409,7 @@ export default function AvisPage() {
       {/* Footer note */}
       {!loading && projects.length > 0 && (
         <p className="text-slate-600 text-xs text-center mt-8">
-          Cliquez sur le badge d&apos;un projet pour basculer l&apos;état de l&apos;avis Google
+          Cliquez sur le badge d&apos;un projet pour faire cycler l&apos;état de l&apos;avis Google
         </p>
       )}
     </div>
