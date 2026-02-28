@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import {
   ArrowLeft, Mail, Phone, Globe, Building2, FileText, Plus, Trash2,
-  Wrench, X, AlertTriangle,
+  Wrench, X, AlertTriangle, FolderKanban,
 } from 'lucide-react'
 import {
   formatCurrency, formatDate,
@@ -371,6 +371,204 @@ function QuoteModal({ client, onClose, onSuccess }: QuoteModalProps) {
   )
 }
 
+// ─── Project Modal ─────────────────────────────────────────────────────────────
+
+const PROJECT_TYPES = ['WORDPRESS', 'WEBFLOW', 'SHOPIFY', 'VITRINE', 'ECOMMERCE', 'APPLICATION', 'AUTRE']
+const PROJECT_STATUSES = ['BRIEF', 'REDACTION', 'MAQUETTE', 'DEVELOPPEMENT', 'REVIEW', 'LIVRAISON', 'MAINTENANCE']
+const SERVICES = ['SEO', 'Google Ads', 'Meta Ads', 'Réseaux sociaux', 'Identité visuelle', 'Google Business', 'Rédaction', 'Maintenance']
+
+interface ProjectModalProps {
+  clientId: string
+  clientName: string
+  onClose: () => void
+  onSuccess: (project: Project) => void
+}
+
+function ProjectModal({ clientId, clientName, onClose, onSuccess }: ProjectModalProps) {
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [form, setForm] = useState({
+    name: '',
+    type: 'WORDPRESS',
+    status: 'BRIEF',
+    price: '',
+    deadline: '',
+    notes: '',
+    services: [] as string[],
+  })
+
+  function toggleService(s: string) {
+    setForm(f => ({ ...f, services: f.services.includes(s) ? f.services.filter(x => x !== s) : [...f.services, s] }))
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!form.name.trim() || saving) return
+    setSaving(true)
+    setError('')
+    try {
+      const res = await fetch('/api/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...form,
+          clientId,
+          price: form.price ? parseFloat(form.price) : null,
+          deadline: form.deadline || null,
+        }),
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        setError(err.error || 'Erreur lors de la création')
+        return
+      }
+      const project = await res.json()
+      onSuccess(project)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-[#111118] border border-slate-800 rounded-2xl w-full max-w-lg flex flex-col max-h-[90vh]">
+        <div className="flex items-center justify-between p-6 border-b border-slate-800 flex-shrink-0">
+          <div>
+            <h2 className="text-white font-semibold text-lg">Nouveau projet</h2>
+            <p className="text-slate-400 text-sm mt-0.5">Pour {clientName}</p>
+          </div>
+          <button onClick={onClose} className="text-slate-500 hover:text-white transition-colors p-1">
+            <X size={20} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="overflow-y-auto flex-1">
+          <div className="p-6 space-y-4">
+            {/* Name */}
+            <div>
+              <label className="block text-slate-400 text-xs mb-1.5">Nom du projet *</label>
+              <input
+                required
+                value={form.name}
+                onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                placeholder="Ex : Site vitrine restaurant La Bella"
+                className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
+              />
+            </div>
+
+            {/* Type + Status */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-slate-400 text-xs mb-1.5">Type</label>
+                <select
+                  value={form.type}
+                  onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
+                >
+                  {PROJECT_TYPES.map(t => (
+                    <option key={t} value={t}>{PROJECT_TYPE_LABELS[t] ?? t}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-slate-400 text-xs mb-1.5">Statut</label>
+                <select
+                  value={form.status}
+                  onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
+                >
+                  {PROJECT_STATUSES.map(s => (
+                    <option key={s} value={s}>{PROJECT_STATUS_LABELS[s] ?? s}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Price + Deadline */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-slate-400 text-xs mb-1.5">Prix HT (€)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={form.price}
+                  onChange={e => setForm(f => ({ ...f, price: e.target.value }))}
+                  placeholder="0"
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
+                />
+              </div>
+              <div>
+                <label className="block text-slate-400 text-xs mb-1.5">Date de livraison</label>
+                <input
+                  type="date"
+                  value={form.deadline}
+                  onChange={e => setForm(f => ({ ...f, deadline: e.target.value }))}
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
+                />
+              </div>
+            </div>
+
+            {/* Services */}
+            <div>
+              <label className="block text-slate-400 text-xs mb-2">Services inclus</label>
+              <div className="flex flex-wrap gap-2">
+                {SERVICES.map(s => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => toggleService(s)}
+                    className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
+                      form.services.includes(s)
+                        ? 'bg-[#E14B89]/15 border-[#E14B89]/40 text-[#E14B89]'
+                        : 'border-slate-700 text-slate-400 hover:border-slate-600 hover:text-slate-300'
+                    }`}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Notes */}
+            <div>
+              <label className="block text-slate-400 text-xs mb-1.5">Notes</label>
+              <textarea
+                value={form.notes}
+                onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+                placeholder="Informations complémentaires..."
+                rows={3}
+                className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors resize-none"
+              />
+            </div>
+
+            {error && (
+              <p className="text-red-400 text-sm">{error}</p>
+            )}
+          </div>
+
+          <div className="flex gap-3 p-6 border-t border-slate-800 flex-shrink-0">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 border border-slate-700 text-slate-400 hover:text-white py-2.5 rounded-xl text-sm transition-colors"
+            >
+              Annuler
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="flex-1 bg-[#E14B89] hover:opacity-90 text-white py-2.5 rounded-xl text-sm font-medium transition-colors disabled:opacity-60"
+            >
+              {saving ? 'Création...' : 'Créer le projet'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 // ─── Delete Confirmation Modal ─────────────────────────────────────────────────
 
 interface DeleteModalProps {
@@ -446,6 +644,7 @@ export default function ClientDetailPage() {
   const [client, setClient] = useState<Client | null>(null)
   const [loading, setLoading] = useState(true)
   const [showQuoteModal, setShowQuoteModal] = useState(false)
+  const [showProjectModal, setShowProjectModal] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
@@ -493,6 +692,13 @@ export default function ClientDetailPage() {
           Retour
         </Link>
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowProjectModal(true)}
+            className="flex items-center gap-2 border border-slate-700 text-slate-300 hover:text-white hover:border-slate-600 px-4 py-2.5 rounded-xl text-sm font-medium transition-colors"
+          >
+            <FolderKanban size={16} />
+            Nouveau projet
+          </button>
           <button
             onClick={() => setShowQuoteModal(true)}
             className="flex items-center gap-2 bg-[#E14B89] hover:opacity-90 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-colors"
@@ -591,6 +797,13 @@ export default function ClientDetailPage() {
               {client.projects.length}
             </span>
           </h2>
+          <button
+            onClick={() => setShowProjectModal(true)}
+            className="flex items-center gap-1.5 text-slate-400 hover:text-white text-sm transition-colors"
+          >
+            <Plus size={15} />
+            Ajouter
+          </button>
         </div>
 
         {client.projects.length === 0 ? (
@@ -658,6 +871,19 @@ export default function ClientDetailPage() {
           </div>
         )}
       </div>
+
+      {/* Project Modal */}
+      {showProjectModal && (
+        <ProjectModal
+          clientId={client.id}
+          clientName={client.name}
+          onClose={() => setShowProjectModal(false)}
+          onSuccess={(project) => {
+            setClient(c => c ? { ...c, projects: [project, ...c.projects] } : c)
+            setShowProjectModal(false)
+          }}
+        />
+      )}
 
       {/* Quote Modal */}
       {showQuoteModal && (

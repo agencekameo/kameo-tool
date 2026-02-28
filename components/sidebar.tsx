@@ -31,6 +31,7 @@ import {
   FileCheck2,
   Star,
   MapPin,
+  ClipboardList,
 } from 'lucide-react'
 import { cn, ROLE_LABELS } from '@/lib/utils'
 import { useState, useRef, useEffect } from 'react'
@@ -65,6 +66,7 @@ const sections = [
     label: 'Ressources',
     items: [
       { href: '/wiki', label: 'Wiki', icon: BookOpen },
+      { href: '/ressources', label: 'Cahier des charges', icon: ClipboardList },
       { href: '/audit', label: 'Audit SEO', icon: Search },
       { href: '/gmb', label: 'GMB', icon: MapPin },
     ],
@@ -142,7 +144,7 @@ export function Sidebar({
       {/* Logo */}
       <div className="px-4 py-4 border-b border-slate-800/60">
         <Image
-          src="/kameo-logo.png"
+          src={isLight ? '/kameo-logo-light.svg' : '/kameo-logo.svg'}
           alt="Kameo"
           width={112}
           height={40}

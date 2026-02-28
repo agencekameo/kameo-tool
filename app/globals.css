@@ -324,3 +324,182 @@ main,
   border-color: #e2e8f0 !important;
   color: #0f172a !important;
 }
+
+/* ════════════════════════════════════════════════
+   LIGHT MODE — ADDITIONAL FIXES
+   ════════════════════════════════════════════════ */
+
+/* ---- Fix all hardcoded dark backgrounds broadly ---- */
+[data-theme="light"] .bg-slate-900\/50,
+[data-theme="light"] .bg-slate-900\/80 {
+  background-color: rgba(241, 245, 249, 0.8) !important;
+}
+
+/* ---- text-slate-700 should be readable (not too light) ---- */
+[data-theme="light"] .text-slate-700 {
+  color: #475569 !important;
+}
+
+/* ---- Tables: td, th ---- */
+[data-theme="light"] td,
+[data-theme="light"] th {
+  color: #1e293b;
+  border-color: #e2e8f0 !important;
+}
+[data-theme="light"] tbody tr:hover {
+  background-color: #f8fafc !important;
+}
+
+/* ---- Buttons with dark bg ---- */
+[data-theme="light"] .bg-slate-800:not([class*="hover"]):not([class*="\/"])  {
+  background-color: #e2e8f0 !important;
+  color: #1e293b !important;
+}
+
+/* ---- Status badges & colored text in light mode ---- */
+[data-theme="light"] .bg-emerald-500\/10,
+[data-theme="light"] .bg-emerald-500\/20 {
+  background-color: rgba(16, 185, 129, 0.12) !important;
+}
+[data-theme="light"] .bg-amber-500\/10,
+[data-theme="light"] .bg-amber-500\/20 {
+  background-color: rgba(245, 158, 11, 0.12) !important;
+}
+[data-theme="light"] .bg-red-500\/10,
+[data-theme="light"] .bg-red-500\/20 {
+  background-color: rgba(239, 68, 68, 0.12) !important;
+}
+[data-theme="light"] .bg-blue-500\/10,
+[data-theme="light"] .bg-blue-500\/20 {
+  background-color: rgba(59, 130, 246, 0.12) !important;
+}
+[data-theme="light"] .bg-purple-500\/10,
+[data-theme="light"] .bg-purple-500\/20 {
+  background-color: rgba(168, 85, 247, 0.12) !important;
+}
+
+/* ---- Sidebar bottom user area ---- */
+[data-theme="light"] .border-slate-800\/60 {
+  border-color: #e2e8f0 !important;
+}
+
+/* ---- Sticky / fixed elements ---- */
+[data-theme="light"] .sticky,
+[data-theme="light"] .fixed {
+  background-color: inherit;
+}
+
+/* ---- Main page wrapper headings ---- */
+[data-theme="light"] main h1,
+[data-theme="light"] main h2,
+[data-theme="light"] main h3 {
+  color: #0f172a;
+}
+
+/* ---- Breadcrumbs / path text ---- */
+[data-theme="light"] .text-slate-400 {
+  color: #64748b !important;
+}
+
+/* ---- Kanban and task board ---- */
+[data-theme="light"] .border-slate-700\/40,
+[data-theme="light"] .border-slate-700\/20 {
+  border-color: #e2e8f0 !important;
+}
+
+/* ---- Fix cards with border-slate-800/40 ---- */
+[data-theme="light"] .border-slate-800\/40 {
+  border-color: #e2e8f0 !important;
+}
+
+/* ---- Stat cards with dark gradient backgrounds ---- */
+[data-theme="light"] [class*="from-"][class*="bg-gradient"] {
+  background: #f8fafc !important;
+}
+
+/* ---- focus-within border on inputs ---- */
+[data-theme="light"] .focus-within\:border-slate-700:focus-within {
+  border-color: #94a3b8 !important;
+}
+
+/* ---- Pill / tag / chip backgrounds ---- */
+[data-theme="light"] .rounded-full.bg-slate-800,
+[data-theme="light"] .rounded-full.bg-slate-900 {
+  background-color: #e2e8f0 !important;
+  color: #475569 !important;
+}
+
+/* ---- Sidebar p (section labels) ---- */
+[data-theme="light"] aside p {
+  color: inherit;
+}
+[data-theme="light"] aside .text-slate-500 {
+  color: #94a3b8 !important;
+}
+[data-theme="light"] aside .text-slate-600 {
+  color: #94a3b8 !important;
+}
+
+/* ---- Messagerie popup in light mode ---- */
+[data-theme="light"] .bg-\[#111118\].rounded-2xl {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+}
+
+/* ---- Fix logo section label ---- */
+[data-theme="light"] aside .text-xs.text-slate-500 {
+  color: #94a3b8 !important;
+}
+
+/* ---- Hover bg dark/50 variants in light mode ---- */
+[data-theme="light"] .hover\:bg-slate-800\/30:hover {
+  background-color: #f1f5f9 !important;
+}
+
+/* ---- Border-slate-800/30 ---- */
+[data-theme="light"] .border-slate-800\/30 {
+  border-color: #e2e8f0 !important;
+}
+
+/* ---- bg-red-500/5 etc. in light mode ---- */
+[data-theme="light"] .hover\:bg-red-400\/5:hover {
+  background-color: rgba(248, 113, 113, 0.08) !important;
+}
+
+/* ---- Fix white text in buttons that have explicit bg colors (brand pink etc.) ---- */
+[data-theme="light"] .bg-\[#E14B89\] {
+  color: #ffffff !important;
+}
+[data-theme="light"] .bg-\[#E14B89\]\/10 {
+  background-color: rgba(225, 75, 137, 0.1) !important;
+}
+[data-theme="light"] .bg-\[#E14B89\]\/20 {
+  background-color: rgba(225, 75, 137, 0.15) !important;
+}
+
+/* ---- Textarea in light mode ---- */
+[data-theme="light"] textarea {
+  background-color: #f8fafc !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+
+/* ---- Prose/markdown content in light mode ---- */
+[data-theme="light"] .prose h1,
+[data-theme="light"] .prose h2,
+[data-theme="light"] .prose h3 {
+  color: #0f172a !important;
+}
+[data-theme="light"] .prose p,
+[data-theme="light"] .prose li {
+  color: #334155 !important;
+}
+[data-theme="light"] .prose hr {
+  border-color: #e2e8f0 !important;
+}
+
+/* ---- Mobile top bar ---- */
+[data-theme="light"] .md\:hidden.sticky {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+}

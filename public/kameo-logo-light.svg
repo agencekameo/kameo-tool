@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 72" fill="none">
+  <defs>
+    <linearGradient id="gl" x1="2" y1="70" x2="36" y2="2" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F79332"/>
+      <stop offset="1" stop-color="#E85078"/>
+    </linearGradient>
+    <linearGradient id="gr" x1="36" y1="2" x2="70" y2="70" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E04070"/>
+      <stop offset="1" stop-color="#C22C60"/>
+    </linearGradient>
+  </defs>
+  <!-- Triangle mark -->
+  <path d="M2 70 L36 2 L36 36 L19 70Z" fill="url(#gl)"/>
+  <path d="M36 2 L70 70 L53 70 L36 36Z" fill="url(#gr)"/>
+  <path d="M19 70 L36 36 L53 70Z" fill="#7E1440" opacity="0.8"/>
+  <!-- Kameo text - dark for light mode -->
+  <text x="84" y="51" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="38" font-weight="700" letter-spacing="-1" fill="#0f172a">Kameo</text>
+</svg>

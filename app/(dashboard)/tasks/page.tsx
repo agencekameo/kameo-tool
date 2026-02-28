@@ -13,7 +13,7 @@ interface Task {
   status: string
   priority: string
   dueDate?: string
-  project: { id: string; name: string; client: { name: string } }
+  project?: { id: string; name: string; client: { name: string } } | null
   assignee?: { id: string; name: string }
 }
 
@@ -31,7 +31,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 const STATUS_CYCLE: Record<string, string> = {
   TODO: 'IN_PROGRESS',
-  IN_PROGRESS: 'REVIEW',
+  IN_PROGRESS: 'DONE',
   REVIEW: 'DONE',
   DONE: 'TODO',
 }
@@ -243,17 +243,14 @@ export default function TasksPage() {
               {/* Title + subtitle */}
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-white truncate">{task.title}</p>
-                <p className="text-slate-500 text-xs mt-0.5 truncate">
-                  <Link href={`/projects/${task.project.id}`} className="hover:text-[#E14B89] transition-colors">
-                    {task.project.client.name} · {task.project.name}
-                  </Link>
-                </p>
+                {task.project && (
+                  <p className="text-slate-500 text-xs mt-0.5 truncate">
+                    <Link href={`/projects/${task.project.id}`} className="hover:text-[#E14B89] transition-colors">
+                      {task.project.client.name} · {task.project.name}
+                    </Link>
+                  </p>
+                )}
               </div>
-
-              {/* Priority badge */}
-              <span className={`text-xs px-2 py-0.5 rounded-full flex-shrink-0 ${TASK_PRIORITY_COLORS[task.priority]}`}>
-                {TASK_PRIORITY_LABELS[task.priority]}
-              </span>
 
               {/* Status badge */}
               <span className={`text-xs px-2 py-0.5 rounded-full flex-shrink-0 ${STATUS_BG[task.status]}`}>
@@ -302,9 +299,11 @@ export default function TasksPage() {
                       <CheckCircle2 size={16} className="text-green-400" />
                     </button>
                     <p className="text-slate-500 text-sm line-through flex-1 truncate">{task.title}</p>
-                    <span className="text-slate-600 text-xs flex-shrink-0">
-                      {task.project.client.name} · {task.project.name}
-                    </span>
+                    {task.project && (
+                      <span className="text-slate-600 text-xs flex-shrink-0">
+                        {task.project.client.name} · {task.project.name}
+                      </span>
+                    )}
                     {task.assignee && (
                       <span className="text-slate-600 text-xs flex-shrink-0">{task.assignee.name}</span>
                     )}
@@ -338,46 +337,29 @@ export default function TasksPage() {
                 />
               </div>
               <div>
-                <label className="block text-slate-400 text-xs mb-1.5">Projet *</label>
+                <label className="block text-slate-400 text-xs mb-1.5">Projet</label>
                 <select
-                  required
                   value={form.projectId}
                   onChange={e => setForm({ ...form, projectId: e.target.value })}
                   className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
                 >
-                  <option value="">Sélectionner</option>
+                  <option value="">Sans projet</option>
                   {projects.map(p => (
                     <option key={p.id} value={p.id}>{p.client.name} · {p.name}</option>
                   ))}
                 </select>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-slate-400 text-xs mb-1.5">Priorité</label>
-                  <select
-                    value={form.priority}
-                    onChange={e => setForm({ ...form, priority: e.target.value })}
-                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
-                  >
-                    <option value="LOW">Faible</option>
-                    <option value="MEDIUM">Normale</option>
-                    <option value="HIGH">Haute</option>
-                    <option value="CRITICAL">Critique</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-slate-400 text-xs mb-1.5">Statut</label>
-                  <select
-                    value={form.status}
-                    onChange={e => setForm({ ...form, status: e.target.value })}
-                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
-                  >
-                    <option value="TODO">À faire</option>
-                    <option value="IN_PROGRESS">En cours</option>
-                    <option value="REVIEW">Review</option>
-                    <option value="DONE">Terminé</option>
-                  </select>
-                </div>
+              <div>
+                <label className="block text-slate-400 text-xs mb-1.5">Statut</label>
+                <select
+                  value={form.status}
+                  onChange={e => setForm({ ...form, status: e.target.value })}
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
+                >
+                  <option value="TODO">À faire</option>
+                  <option value="IN_PROGRESS">En cours</option>
+                  <option value="DONE">Terminé</option>
+                </select>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>

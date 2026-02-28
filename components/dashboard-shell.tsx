@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Sidebar } from './sidebar'
+import { MessageriePopup } from './messagerie-popup'
 import { Menu } from 'lucide-react'
 import Image from 'next/image'
 
@@ -39,6 +40,9 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
 
         {children}
       </main>
+
+      {/* Floating messagerie popup — visible on all dashboard pages */}
+      <MessageriePopup />
     </>
   )
 }

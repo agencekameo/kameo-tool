@@ -11,6 +11,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     where: { id },
     data: { assignees: { connect: { id: userId } } },
   })
+
+  // Also add the user to the project's group conversation
+  try {
+    const conv = await prisma.conversation.findUnique({ where: { projectId: id } })
+    if (conv) {
+      await prisma.conversationMember.upsert({
+        where: { conversationId_userId: { conversationId: conv.id, userId } },
+        update: {},
+        create: { conversationId: conv.id, userId },
+      })
+    }
+  } catch { /* Non-blocking */ }
+
   return NextResponse.json({ ok: true })
 }
 

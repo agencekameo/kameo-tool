@@ -149,6 +149,7 @@ model User {
   quotes                  Quote[]
   messages                Message[]
   conversationMemberships ConversationMember[]
+  cahiersDesCharges       CahierDesCharges[]
 }
 
 model Log {
@@ -206,7 +207,8 @@ model Project {
   audits       Audit[]
   assignees    User[]           @relation("ProjectAssignees")
   invoices     ProjectInvoice[]
-  conversation Conversation?
+  conversation       Conversation?
+  cahiersDesCharges  CahierDesCharges[]
 }
 
 model Task {
@@ -215,7 +217,7 @@ model Task {
   description    String?
   status         TaskStatus   @default(TODO)
   priority       TaskPriority @default(MEDIUM)
-  projectId      String
+  projectId      String?
   assigneeId     String?
   dueDate        DateTime?
   recurring      Boolean      @default(false)
@@ -224,8 +226,8 @@ model Task {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
-  project  Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  assignee User?   @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  project  Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignee User?    @relation("TaskAssignee", fields: [assigneeId], references: [id])
 }
 
 model Resource {
@@ -447,11 +449,36 @@ model Message {
   conversationId String
   senderId       String
   content        String?
-  fileUrl        String?
+  fileUrl        String?  @db.Text
   fileType       String?
   fileName       String?
   createdAt      DateTime @default(now())
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   sender       User         @relation(fields: [senderId], references: [id])
+}
+
+model CahierDesCharges {
+  id          String   @id @default(cuid())
+  title       String
+  projectId   String?
+  content     String   @db.Text
+  prompt      String?  @db.Text
+  template    String   @default("standard")
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project   Project? @relation(fields: [projectId], references: [id])
+  createdBy User     @relation(fields: [createdById], references: [id])
+}
+
+model GoogleCalendarToken {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  accessToken  String   @db.Text
+  refreshToken String   @db.Text
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }

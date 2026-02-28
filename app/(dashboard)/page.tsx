@@ -1,8 +1,9 @@
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { formatCurrency, formatDate, PROJECT_STATUS_COLORS, PROJECT_STATUS_LABELS, PROJECT_TYPE_LABELS, TASK_PRIORITY_COLORS, TASK_PRIORITY_LABELS, ROLE_AVATAR_COLORS } from '@/lib/utils'
+import { formatCurrency, formatDate, PROJECT_STATUS_COLORS, PROJECT_STATUS_LABELS, PROJECT_TYPE_LABELS, TASK_PRIORITY_COLORS, TASK_PRIORITY_LABELS } from '@/lib/utils'
 import Link from 'next/link'
-import { FolderKanban, Users, CheckSquare, TrendingUp, ArrowRight, Clock, Activity } from 'lucide-react'
+import { FolderKanban, Users, CheckSquare, TrendingUp, ArrowRight, Clock } from 'lucide-react'
+import { CalendarWidget } from '@/components/calendar-widget'
 
 const PROSPECT_STATUS_LABELS: Record<string, string> = {
   A_CONTACTER: 'À contacter',
@@ -28,14 +29,8 @@ const PROSPECT_STATUS_BG: Record<string, string> = {
   SIGNE: 'bg-green-500/15',
 }
 
-const ACTION_COLORS: Record<string, string> = {
-  'CRÉÉ': 'bg-green-500/15 text-green-400',
-  'MODIFIÉ': 'bg-blue-500/15 text-blue-400',
-  'SUPPRIMÉ': 'bg-red-500/15 text-red-400',
-}
-
 async function getDashboardData(userId: string) {
-  const [projects, tasks, clients, totalRevenue, prospects, recentLogs] = await Promise.all([
+  const [projects, tasks, clients, totalRevenue, prospects] = await Promise.all([
     prisma.project.findMany({
       where: { status: { notIn: ['ARCHIVE'] } },
       include: { client: true, tasks: true },
@@ -51,11 +46,6 @@ async function getDashboardData(userId: string) {
     prisma.client.count(),
     prisma.project.aggregate({ _sum: { price: true } }),
     prisma.prospect.findMany({ select: { id: true, status: true, budget: true } }),
-    prisma.log.findMany({
-      include: { user: { select: { name: true, avatar: true, role: true } } },
-      orderBy: { createdAt: 'desc' },
-      take: 5,
-    }),
   ])
 
   const projectsByStatus = await prisma.project.groupBy({
@@ -64,12 +54,12 @@ async function getDashboardData(userId: string) {
     where: { status: { not: 'ARCHIVE' } },
   })
 
-  return { projects, tasks, clients, totalRevenue: totalRevenue._sum.price ?? 0, projectsByStatus, prospects, recentLogs }
+  return { projects, tasks, clients, totalRevenue: totalRevenue._sum.price ?? 0, projectsByStatus, prospects }
 }
 
 export default async function DashboardPage() {
   const session = await auth()
-  const { projects, tasks, clients, totalRevenue, prospects, recentLogs } = await getDashboardData(session!.user!.id)
+  const { projects, tasks, clients, totalRevenue, prospects } = await getDashboardData(session!.user!.id)
 
   const activeProjects = projects.length
   const pendingTasks = tasks.length
@@ -205,7 +195,7 @@ export default async function DashboardPage() {
             {tasks.map(task => (
               <Link
                 key={task.id}
-                href={`/projects/${task.projectId}`}
+                href={task.projectId ? `/projects/${task.projectId}` : '/tasks'}
                 className="block p-3 rounded-xl hover:bg-slate-800/40 transition-colors"
               >
                 <div className="flex items-start gap-2">
@@ -215,7 +205,7 @@ export default async function DashboardPage() {
                   <div className="min-w-0">
                     <p className="text-white text-sm truncate">{task.title}</p>
                     <p className="text-slate-500 text-xs mt-0.5 flex items-center gap-1">
-                      {task.project.client.name}
+                      {task.project?.client.name ?? 'Sans projet'}
                       {task.dueDate && (
                         <>
                           <span>·</span>
@@ -275,52 +265,8 @@ export default async function DashboardPage() {
           )}
         </div>
 
-        {/* Activité récente */}
-        <div className="bg-[#111118] border border-slate-800 rounded-2xl p-6">
-          <div className="flex items-center justify-between mb-5">
-            <div className="flex items-center gap-2">
-              <Activity size={16} className="text-[#E14B89]" />
-              <h2 className="text-white font-semibold">Activité récente</h2>
-            </div>
-            <Link href="/logs" className="text-[#E14B89] text-sm hover:opacity-80 transition-opacity flex items-center gap-1">
-              Voir tout <ArrowRight size={13} />
-            </Link>
-          </div>
-          <div className="space-y-3">
-            {recentLogs.length === 0 && (
-              <p className="text-slate-500 text-sm text-center py-6">Aucune activité récente</p>
-            )}
-            {recentLogs.map(log => {
-              const gradient = ROLE_AVATAR_COLORS[log.user.role] ?? 'from-slate-400 to-slate-600'
-              return (
-                <div key={log.id} className="flex items-center gap-3">
-                  {/* Avatar */}
-                  <div className="flex-shrink-0">
-                    {log.user.avatar ? (
-                      <img src={log.user.avatar} alt={log.user.name} className="w-7 h-7 rounded-full object-cover" />
-                    ) : (
-                      <div className={`w-7 h-7 rounded-full bg-gradient-to-br ${gradient} flex items-center justify-center`}>
-                        <span className="text-white font-semibold text-xs">{log.user.name[0]?.toUpperCase()}</span>
-                      </div>
-                    )}
-                  </div>
-                  {/* Content */}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-slate-300 truncate">
-                      <span className="text-white font-medium">{log.user.name}</span>
-                      {' '}
-                      <span className={`text-xs px-1.5 py-0.5 rounded ${ACTION_COLORS[log.action] ?? 'bg-slate-800 text-slate-400'}`}>
-                        {log.action}
-                      </span>
-                      {log.entityLabel && <span className="text-slate-400"> {log.entityLabel}</span>}
-                    </p>
-                    <p className="text-slate-600 text-xs mt-0.5">{log.entity}</p>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
+        {/* Rendez-vous */}
+        <CalendarWidget />
       </div>
     </div>
   )
