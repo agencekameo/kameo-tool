@@ -1,8 +1,9 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Plus, Search } from 'lucide-react'
+import { Plus, Search, Trash2 } from 'lucide-react'
 import Link from 'next/link'
+import { useSession } from 'next-auth/react'
 import { PROJECT_STATUS_COLORS, PROJECT_STATUS_LABELS, PROJECT_TYPE_COLORS, PROJECT_TYPE_LABELS, formatCurrency, formatDate } from '@/lib/utils'
 
 interface Project {
@@ -25,12 +26,17 @@ const DONE_STATUSES = ['LIVRAISON', 'MAINTENANCE', 'ARCHIVE']
 const SERVICES = ['SEO', 'Google Ads', 'Meta Ads', 'Réseaux sociaux', 'Identité visuelle', 'Google Business', 'Rédaction', 'Maintenance']
 
 export default function ProjectsPage() {
+  const { data: session } = useSession()
+  const isAdmin = (session?.user as { role?: string })?.role === 'ADMIN'
+
   const [projects, setProjects] = useState<Project[]>([])
   const [clients, setClients] = useState<Client[]>([])
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState('EN_COURS')
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [createError, setCreateError] = useState('')
   const [form, setForm] = useState({
     name: '', clientId: '', type: 'WORDPRESS', status: 'BRIEF',
     price: '', deadline: '', notes: '', services: [] as string[],
@@ -56,15 +62,27 @@ export default function ProjectsPage() {
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
-    const res = await fetch('/api/projects', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...form, price: form.price ? parseFloat(form.price) : null, deadline: form.deadline || null }),
-    })
-    const project = await res.json()
-    setProjects(prev => [project, ...prev])
-    setShowModal(false)
-    setForm({ name: '', clientId: '', type: 'WORDPRESS', status: 'BRIEF', price: '', deadline: '', notes: '', services: [] })
+    if (submitting) return
+    setSubmitting(true)
+    setCreateError('')
+    try {
+      const res = await fetch('/api/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...form, price: form.price ? parseFloat(form.price) : null, deadline: form.deadline || null }),
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        setCreateError(err.error || 'Erreur lors de la création')
+        return
+      }
+      const project = await res.json()
+      setProjects(prev => [project, ...prev])
+      setShowModal(false)
+      setForm({ name: '', clientId: '', type: 'WORDPRESS', status: 'BRIEF', price: '', deadline: '', notes: '', services: [] })
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   function toggleService(s: string) {
@@ -129,35 +147,49 @@ export default function ProjectsPage() {
           {filtered.map(project => {
             const progress = taskProgress(project.tasks)
             return (
-              <Link key={project.id} href={`/projects/${project.id}`}
-                className="flex items-center gap-6 bg-[#111118] border border-slate-800 rounded-2xl p-5 hover:border-slate-700 transition-colors group">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-3 mb-1">
-                    <h3 className="text-white font-medium group-hover:text-[#F8903C] transition-colors">{project.name}</h3>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PROJECT_TYPE_COLORS[project.type]}`}>
-                      {PROJECT_TYPE_LABELS[project.type]}
+              <div key={project.id} className="relative group">
+                <Link href={`/projects/${project.id}`}
+                  className="flex items-center gap-6 bg-[#111118] border border-slate-800 rounded-2xl p-5 hover:border-slate-700 transition-colors group">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-3 mb-1">
+                      <h3 className="text-white font-medium group-hover:text-[#F8903C] transition-colors">{project.name}</h3>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PROJECT_TYPE_COLORS[project.type]}`}>
+                        {PROJECT_TYPE_LABELS[project.type]}
+                      </span>
+                    </div>
+                    <p className="text-slate-400 text-sm">{project.client.name}{project.client.company ? ` · ${project.client.company}` : ''}</p>
+                  </div>
+                  <div className="flex items-center gap-6 flex-shrink-0">
+                    {project.tasks.length > 0 && (
+                      <div className="w-24">
+                        <div className="flex justify-between text-xs text-slate-500 mb-1">
+                          <span>Tâches</span><span>{progress}%</span>
+                        </div>
+                        <div className="h-1.5 bg-slate-800 rounded-full">
+                          <div className="h-full bg-[#E14B89] rounded-full" style={{ width: `${progress}%` }} />
+                        </div>
+                      </div>
+                    )}
+                    {project.deadline && <span className="text-slate-400 text-sm">{formatDate(project.deadline)}</span>}
+                    {project.price && <span className="text-white font-medium text-sm">{formatCurrency(project.price)}</span>}
+                    <span className={`text-xs px-3 py-1.5 rounded-full font-medium ${PROJECT_STATUS_COLORS[project.status]}`}>
+                      {PROJECT_STATUS_LABELS[project.status]}
                     </span>
                   </div>
-                  <p className="text-slate-400 text-sm">{project.client.name}{project.client.company ? ` · ${project.client.company}` : ''}</p>
-                </div>
-                <div className="flex items-center gap-6 flex-shrink-0">
-                  {project.tasks.length > 0 && (
-                    <div className="w-24">
-                      <div className="flex justify-between text-xs text-slate-500 mb-1">
-                        <span>Tâches</span><span>{progress}%</span>
-                      </div>
-                      <div className="h-1.5 bg-slate-800 rounded-full">
-                        <div className="h-full bg-[#E14B89] rounded-full" style={{ width: `${progress}%` }} />
-                      </div>
-                    </div>
-                  )}
-                  {project.deadline && <span className="text-slate-400 text-sm">{formatDate(project.deadline)}</span>}
-                  {project.price && <span className="text-white font-medium text-sm">{formatCurrency(project.price)}</span>}
-                  <span className={`text-xs px-3 py-1.5 rounded-full font-medium ${PROJECT_STATUS_COLORS[project.status]}`}>
-                    {PROJECT_STATUS_LABELS[project.status]}
-                  </span>
-                </div>
-              </Link>
+                </Link>
+                {isAdmin && (
+                  <button
+                    onClick={async () => {
+                      if (!confirm(`Supprimer le projet "${project.name}" ?`)) return
+                      await fetch(`/api/projects/${project.id}`, { method: 'DELETE' })
+                      setProjects(prev => prev.filter(p => p.id !== project.id))
+                    }}
+                    className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 transition-all p-1.5 rounded-lg hover:bg-red-400/10"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                )}
+              </div>
             )
           })}
           {filtered.length === 0 && <div className="text-center py-16 text-slate-500">Aucun projet</div>}
@@ -227,10 +259,21 @@ export default function ProjectsPage() {
                 <textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={3}
                   className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors resize-none" />
               </div>
+
+              {/* Error message */}
+              {createError && (
+                <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 text-sm text-red-400">
+                  {createError}
+                </div>
+              )}
+
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setShowModal(false)}
                   className="flex-1 border border-slate-700 text-slate-400 hover:text-white py-2.5 rounded-xl text-sm transition-colors">Annuler</button>
-                <button type="submit" className="flex-1 bg-[#E14B89] hover:opacity-90 text-white py-2.5 rounded-xl text-sm font-medium transition-colors">Créer le projet</button>
+                <button type="submit" disabled={submitting}
+                  className="flex-1 bg-[#E14B89] hover:opacity-90 text-white py-2.5 rounded-xl text-sm font-medium transition-colors disabled:opacity-60">
+                  {submitting ? 'Création...' : 'Créer le projet'}
+                </button>
               </div>
             </form>
           </div>

@@ -4,6 +4,13 @@
   box-sizing: border-box;
 }
 
+/* Cursor pointer sur tous les éléments cliquables */
+button, [role="button"], select,
+input[type="checkbox"], input[type="radio"], input[type="file"],
+label[for], a, [tabindex]:not([tabindex="-1"]) {
+  cursor: pointer;
+}
+
 body {
   background: #0a0a0f;
   color: white;

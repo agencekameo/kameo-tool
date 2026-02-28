@@ -29,6 +29,8 @@ import {
   HardDrive,
   Receipt,
   FileCheck2,
+  Star,
+  MapPin,
 } from 'lucide-react'
 import { cn, ROLE_LABELS } from '@/lib/utils'
 import { useState, useRef, useEffect } from 'react'
@@ -41,6 +43,7 @@ const sections = [
       { href: '/finances', label: 'Finances', icon: Wallet },
       { href: '/clients', label: 'Clients', icon: Users },
       { href: '/tasks', label: 'Tâches', icon: CheckSquare },
+      { href: '/avis', label: 'Avis', icon: Star },
     ],
   },
   {
@@ -63,6 +66,7 @@ const sections = [
     items: [
       { href: '/wiki', label: 'Wiki', icon: BookOpen },
       { href: '/audit', label: 'Audit SEO', icon: Search },
+      { href: '/gmb', label: 'GMB', icon: MapPin },
     ],
   },
 ]

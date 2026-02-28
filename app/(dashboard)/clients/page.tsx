@@ -1,8 +1,9 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
-import { Plus, Search, Globe, Mail, Phone, ChevronRight, Wrench, Upload, CheckCircle2, XCircle, Loader2 } from 'lucide-react'
+import { Plus, Search, Globe, Mail, Phone, ChevronRight, Wrench, Upload, CheckCircle2, XCircle, Loader2, Trash2 } from 'lucide-react'
 import Link from 'next/link'
+import { useSession } from 'next-auth/react'
 import { MAINTENANCE_LABELS } from '@/lib/utils'
 
 interface Client {
@@ -31,6 +32,9 @@ const MAINTENANCE_COLORS: Record<string, string> = {
 }
 
 export default function ClientsPage() {
+  const { data: session } = useSession()
+  const isAdmin = (session?.user as { role?: string })?.role === 'ADMIN'
+
   const [clients, setClients] = useState<Client[]>([])
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
@@ -38,6 +42,8 @@ export default function ClientsPage() {
   const [showImportModal, setShowImportModal] = useState(false)
   const [importing, setImporting] = useState(false)
   const [importResults, setImportResults] = useState<ImportResult[]>([])
+  const [submitting, setSubmitting] = useState(false)
+  const [createError, setCreateError] = useState('')
   const [form, setForm] = useState({
     name: '', email: '', phone: '', company: '', website: '', notes: '',
     maintenancePlan: 'NONE', maintenancePrice: '',
@@ -56,18 +62,30 @@ export default function ClientsPage() {
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
-    const res = await fetch('/api/clients', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ...form,
-        maintenancePrice: form.maintenancePrice ? parseFloat(form.maintenancePrice) : null,
-      }),
-    })
-    const client = await res.json()
-    setClients(prev => [client, ...prev])
-    setShowModal(false)
-    setForm({ name: '', email: '', phone: '', company: '', website: '', notes: '', maintenancePlan: 'NONE', maintenancePrice: '' })
+    if (submitting) return
+    setSubmitting(true)
+    setCreateError('')
+    try {
+      const res = await fetch('/api/clients', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...form,
+          maintenancePrice: form.maintenancePrice ? parseFloat(form.maintenancePrice) : null,
+        }),
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        setCreateError(err.error || 'Erreur lors de la création')
+        return
+      }
+      const client = await res.json()
+      setClients(prev => [client, ...prev])
+      setShowModal(false)
+      setForm({ name: '', email: '', phone: '', company: '', website: '', notes: '', maintenancePlan: 'NONE', maintenancePrice: '' })
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   function handleImportClick() {
@@ -186,7 +204,22 @@ export default function ClientsPage() {
                 <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500/20 to-violet-700/20 border border-[#E14B89]/20 flex items-center justify-center">
                   <span className="text-[#E14B89] font-semibold text-sm">{client.name[0].toUpperCase()}</span>
                 </div>
-                <ChevronRight size={16} className="text-slate-600 group-hover:text-slate-400 transition-colors" />
+                {isAdmin ? (
+                  <button
+                    onClick={async (e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      if (!confirm(`Supprimer le client "${client.name}" ?`)) return
+                      await fetch(`/api/clients/${client.id}`, { method: 'DELETE' })
+                      setClients(prev => prev.filter(c => c.id !== client.id))
+                    }}
+                    className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 transition-all p-1 -mr-1 -mt-1"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                ) : (
+                  <ChevronRight size={16} className="text-slate-600 group-hover:text-slate-400 transition-colors" />
+                )}
               </div>
               <h3 className="text-white font-medium">{client.name}</h3>
               {client.company && <p className="text-slate-400 text-sm mt-0.5">{client.company}</p>}
@@ -332,14 +365,21 @@ export default function ClientsPage() {
                 Colonnes attendues : <code className="text-slate-400">Nom, Entreprise, Email, Téléphone, Site</code>
               </div>
 
+              {/* Error message */}
+              {createError && (
+                <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 text-sm text-red-400">
+                  {createError}
+                </div>
+              )}
+
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setShowModal(false)}
                   className="flex-1 border border-slate-700 text-slate-400 hover:text-white py-2.5 rounded-xl text-sm transition-colors">
                   Annuler
                 </button>
-                <button type="submit"
-                  className="flex-1 bg-[#E14B89] hover:opacity-90 text-white py-2.5 rounded-xl text-sm font-medium transition-colors">
-                  Créer le client
+                <button type="submit" disabled={submitting}
+                  className="flex-1 bg-[#E14B89] hover:opacity-90 text-white py-2.5 rounded-xl text-sm font-medium transition-colors disabled:opacity-60">
+                  {submitting ? 'Création...' : 'Créer le client'}
                 </button>
               </div>
             </form>

@@ -185,7 +185,7 @@ export default function ProfilePage() {
   const initial = form.name?.[0]?.toUpperCase() ?? '?'
 
   return (
-    <div className="p-4 sm:p-8 max-w-2xl mx-auto">
+    <div className="p-4 sm:p-8 max-w-4xl mx-auto">
       <div className="mb-8">
         <h1 className="text-2xl font-semibold text-white">Mon profil</h1>
         <p className="text-slate-400 text-sm mt-1">Gérez vos informations personnelles</p>
@@ -238,8 +238,11 @@ export default function ProfilePage() {
         />
       </div>
 
+      {/* Profile + Password side by side */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
       {/* Profile form */}
-      <div className="bg-[#111118] border border-slate-800 rounded-2xl p-6 mb-6">
+      <div className="bg-[#111118] border border-slate-800 rounded-2xl p-6">
         <div className="flex items-center gap-2 mb-5">
           <User size={16} className="text-[#E14B89]" />
           <h2 className="text-white font-medium">Informations</h2>
@@ -288,7 +291,7 @@ export default function ProfilePage() {
       </div>
 
       {/* Password form */}
-      <div className="bg-[#111118] border border-slate-800 rounded-2xl p-6">
+      <div className="bg-[#111118] border border-slate-800 rounded-2xl p-6 self-start">
         <div className="flex items-center gap-2 mb-5">
           <Lock size={16} className="text-[#E14B89]" />
           <h2 className="text-white font-medium">Mot de passe</h2>
@@ -347,6 +350,8 @@ export default function ProfilePage() {
           </button>
         </form>
       </div>
+
+      </div>{/* end grid */}
     </div>
   )
 }
