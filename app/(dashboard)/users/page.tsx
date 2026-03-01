@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
-import { Plus, Trash2, Clock, Eye, X, Users2 } from 'lucide-react'
+import { Plus, Trash2, Clock, Eye, X, Users2, Shield, Check, Save } from 'lucide-react'
 import { ROLE_LABELS, ROLE_COLORS, ROLE_AVATAR_COLORS } from '@/lib/utils'
 
 interface User {
@@ -17,11 +17,19 @@ interface User {
 
 const ROLES = ['ADMIN', 'DEVELOPER', 'REDACTEUR', 'DESIGNER']
 
-const ROLE_ACCESS: Record<string, string[]> = {
-  ADMIN: ['Dashboard', 'Finances', 'Clients', 'Tâches', 'Projets', 'Maintenances', 'Aysha', 'Commercial', 'Devis', 'Wiki', 'Audit', 'Équipe', 'Logs', 'Contrats', 'Backups', 'Notes de frais'],
+const ALL_PAGES = [
+  'Dashboard', 'Finances', 'Clients', 'Tâches', 'Avis',
+  'Projets', 'Maintenances', 'Aysha',
+  'Commercial', 'Devis',
+  'Wiki', 'Cahier des charges', 'Audit SEO', 'GMB',
+  'Équipe', 'Logs', 'Contrats', 'Backups', 'Notes de frais',
+]
+
+const DEFAULT_ROLE_ACCESS: Record<string, string[]> = {
+  ADMIN: ALL_PAGES,
   DEVELOPER: ['Dashboard', 'Clients', 'Tâches', 'Projets', 'Wiki'],
   DESIGNER: ['Dashboard', 'Clients', 'Tâches', 'Projets', 'Wiki'],
-  REDACTEUR: ['Dashboard', 'Clients', 'Tâches', 'Projets', 'Wiki', 'Audit'],
+  REDACTEUR: ['Dashboard', 'Clients', 'Tâches', 'Projets', 'Wiki', 'Audit SEO'],
   MEMBER: ['Dashboard', 'Projets', 'Wiki', 'Commercial'],
   COMMERCIAL: ['Dashboard', 'Projets', 'Wiki', 'Commercial'],
 }
@@ -44,20 +52,50 @@ function isOnline(date?: string) {
   return Date.now() - new Date(date).getTime() < 5 * 60 * 1000
 }
 
+// Page categories for the matrix display
+const PAGE_GROUPS = [
+  { label: "Vue d'ensemble", pages: ['Dashboard', 'Finances', 'Clients', 'Tâches', 'Avis'] },
+  { label: 'Suivi', pages: ['Projets', 'Maintenances', 'Aysha'] },
+  { label: 'Commercial', pages: ['Commercial', 'Devis'] },
+  { label: 'Ressources', pages: ['Wiki', 'Cahier des charges', 'Audit SEO', 'GMB'] },
+  { label: 'Admin', pages: ['Équipe', 'Logs', 'Contrats', 'Backups', 'Notes de frais'] },
+]
+
 export default function UsersPage() {
   const { data: session } = useSession()
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
+  const [showRolesModal, setShowRolesModal] = useState(false)
   const [previewUser, setPreviewUser] = useState<User | null>(null)
   const [form, setForm] = useState({ name: '', email: '', password: '', role: 'DEVELOPER' })
   const [error, setError] = useState('')
 
+  // Role permissions state
+  const [roleAccess, setRoleAccess] = useState<Record<string, string[]>>(DEFAULT_ROLE_ACCESS)
+  const [savingRoles, setSavingRoles] = useState(false)
+  const [rolesSaved, setRolesSaved] = useState(false)
+
   const isAdmin = (session?.user as { role?: string })?.role === 'ADMIN'
 
-  useEffect(() => {
-    fetch('/api/users').then(r => r.json()).then(setUsers).finally(() => setLoading(false))
+  const loadRolePermissions = useCallback(async () => {
+    try {
+      const res = await fetch('/api/settings?key=rolePermissions')
+      const data = await res.json()
+      if (data.value) {
+        setRoleAccess(JSON.parse(data.value))
+      }
+    } catch {
+      // fallback to defaults
+    }
   }, [])
+
+  useEffect(() => {
+    Promise.all([
+      fetch('/api/users').then(r => r.json()).then(setUsers),
+      loadRolePermissions(),
+    ]).finally(() => setLoading(false))
+  }, [loadRolePermissions])
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
@@ -90,25 +128,63 @@ export default function UsersPage() {
     setUsers(prev => prev.filter(u => u.id !== userId))
   }
 
+  function togglePageAccess(role: string, page: string) {
+    setRoleAccess(prev => {
+      const current = prev[role] ?? []
+      const has = current.includes(page)
+      return {
+        ...prev,
+        [role]: has ? current.filter(p => p !== page) : [...current, page],
+      }
+    })
+    setRolesSaved(false)
+  }
+
+  async function saveRolePermissions() {
+    setSavingRoles(true)
+    try {
+      await fetch('/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: 'rolePermissions', value: JSON.stringify(roleAccess) }),
+      })
+      setRolesSaved(true)
+      setTimeout(() => setRolesSaved(false), 2000)
+    } finally {
+      setSavingRoles(false)
+    }
+  }
+
   const accessPages = previewUser
-    ? (ROLE_ACCESS[previewUser.role] ?? ROLE_ACCESS['MEMBER'])
+    ? (roleAccess[previewUser.role] ?? roleAccess['MEMBER'] ?? [])
     : []
 
   return (
     <div className="p-4 sm:p-8">
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center justify-between mb-8 flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-semibold text-white">Équipe</h1>
           <p className="text-slate-400 text-sm mt-1">{users.length} membre{users.length > 1 ? 's' : ''} dans l&apos;équipe</p>
         </div>
-        {isAdmin && (
-          <button
-            onClick={() => setShowModal(true)}
-            className="flex items-center gap-2 bg-[#E14B89] hover:opacity-90 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-colors"
-          >
-            <Plus size={16} /> Ajouter un utilisateur
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {isAdmin && (
+            <button
+              onClick={() => setShowRolesModal(true)}
+              className="flex items-center gap-2 border border-slate-700 text-slate-300 hover:text-white hover:border-slate-600 px-4 py-2.5 rounded-xl text-sm font-medium transition-colors"
+            >
+              <Shield size={15} />
+              Rôles
+            </button>
+          )}
+          {isAdmin && (
+            <button
+              onClick={() => setShowModal(true)}
+              className="flex items-center gap-2 bg-[#E14B89] hover:opacity-90 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-colors"
+            >
+              <Plus size={16} /> Ajouter
+            </button>
+          )}
+        </div>
       </div>
 
       {loading ? (
@@ -119,9 +195,9 @@ export default function UsersPage() {
             <thead>
               <tr className="border-b border-slate-800">
                 <th className="text-left px-6 py-4 text-slate-400 text-xs font-medium">Utilisateur</th>
-                <th className="text-left px-6 py-4 text-slate-400 text-xs font-medium">Email</th>
+                <th className="text-left px-6 py-4 text-slate-400 text-xs font-medium hidden sm:table-cell">Email</th>
                 <th className="text-left px-6 py-4 text-slate-400 text-xs font-medium">Rôle</th>
-                <th className="text-left px-6 py-4 text-slate-400 text-xs font-medium">Dernière connexion</th>
+                <th className="text-left px-6 py-4 text-slate-400 text-xs font-medium hidden md:table-cell">Dernière connexion</th>
                 {isAdmin && <th className="px-6 py-4" />}
               </tr>
             </thead>
@@ -154,7 +230,7 @@ export default function UsersPage() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-slate-400 text-sm">{user.email}</td>
+                    <td className="px-6 py-4 text-slate-400 text-sm hidden sm:table-cell">{user.email}</td>
                     <td className="px-6 py-4">
                       {isAdmin && user.id !== (session?.user as { id?: string })?.id ? (
                         <select
@@ -172,7 +248,7 @@ export default function UsersPage() {
                         </span>
                       )}
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-6 py-4 hidden md:table-cell">
                       <div className="flex items-center gap-1.5 text-slate-400 text-xs">
                         <Clock size={12} />
                         {timeAgo(user.lastSeen)}
@@ -206,7 +282,129 @@ export default function UsersPage() {
         </div>
       )}
 
-      {/* Access preview modal */}
+      {/* ── Roles management modal ──────────────────────────────────────────── */}
+      {showRolesModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-start justify-center p-4 overflow-y-auto">
+          <div className="bg-[#111118] border border-slate-800 rounded-2xl w-full max-w-5xl my-8">
+
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800">
+              <div className="flex items-center gap-3">
+                <Shield size={18} className="text-[#E14B89]" />
+                <div>
+                  <h2 className="text-white font-semibold">Gestion des rôles</h2>
+                  <p className="text-slate-500 text-xs mt-0.5">Définissez les pages accessibles par rôle</p>
+                </div>
+              </div>
+              <button onClick={() => setShowRolesModal(false)} className="text-slate-500 hover:text-white transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Roles legend */}
+            <div className="px-6 py-4 border-b border-slate-800 flex flex-wrap gap-3">
+              {['ADMIN', 'DEVELOPER', 'DESIGNER', 'REDACTEUR', 'MEMBER', 'COMMERCIAL'].map(r => (
+                <div key={r} className="flex items-center gap-2">
+                  <span className={`text-xs px-2.5 py-1 rounded-full border font-medium ${ROLE_COLORS[r] ?? 'bg-slate-500/15 text-slate-400 border-slate-500/20'}`}>
+                    {ROLE_LABELS[r] ?? r}
+                  </span>
+                  <span className="text-slate-500 text-xs">{(roleAccess[r] ?? []).length} pages</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Permission matrix */}
+            <div className="p-6 overflow-x-auto">
+              <table className="w-full text-xs" style={{ minWidth: '620px' }}>
+                <thead>
+                  <tr>
+                    <th className="text-left text-slate-500 font-medium pb-3 pr-4 w-40">Page</th>
+                    {['ADMIN', 'DEVELOPER', 'DESIGNER', 'REDACTEUR', 'MEMBER', 'COMMERCIAL'].map(r => (
+                      <th key={r} className="text-center pb-3 px-3">
+                        <span className={`inline-block text-xs px-2 py-0.5 rounded-full border font-medium ${ROLE_COLORS[r] ?? 'bg-slate-500/15 text-slate-400 border-slate-500/20'}`}>
+                          {ROLE_LABELS[r] ?? r}
+                        </span>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {PAGE_GROUPS.map(group => (
+                    <>
+                      <tr key={`group-${group.label}`}>
+                        <td colSpan={7} className="py-2 pt-4">
+                          <span className="text-[9px] font-bold text-slate-600 uppercase tracking-widest">
+                            {group.label}
+                          </span>
+                        </td>
+                      </tr>
+                      {group.pages.map(page => (
+                        <tr key={page} className="border-b border-slate-800/40 hover:bg-slate-800/20 transition-colors">
+                          <td className="py-2.5 pr-4 text-slate-300 font-medium">{page}</td>
+                          {['ADMIN', 'DEVELOPER', 'DESIGNER', 'REDACTEUR', 'MEMBER', 'COMMERCIAL'].map(r => {
+                            const hasAccess = (roleAccess[r] ?? []).includes(page)
+                            const isAdminRole = r === 'ADMIN'
+                            return (
+                              <td key={r} className="py-2.5 px-3 text-center">
+                                <button
+                                  onClick={() => !isAdminRole && togglePageAccess(r, page)}
+                                  disabled={isAdminRole}
+                                  title={isAdminRole ? 'Admin a toujours accès à tout' : hasAccess ? 'Retirer l\'accès' : 'Donner l\'accès'}
+                                  className={`w-7 h-7 rounded-lg flex items-center justify-center mx-auto transition-all ${
+                                    hasAccess
+                                      ? 'bg-[#E14B89]/15 border border-[#E14B89]/30 text-[#E14B89]'
+                                      : 'bg-slate-800/50 border border-slate-700/50 text-slate-600'
+                                  } ${isAdminRole ? 'opacity-60 cursor-not-allowed' : 'hover:scale-110 cursor-pointer'}`}
+                                >
+                                  {hasAccess ? <Check size={12} /> : <span className="text-[10px]">–</span>}
+                                </button>
+                              </td>
+                            )
+                          })}
+                        </tr>
+                      ))}
+                    </>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-between px-6 py-4 border-t border-slate-800">
+              <p className="text-slate-500 text-xs">
+                Les modifications s&apos;appliquent à la prévisualisation des accès.
+              </p>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => { setRoleAccess(DEFAULT_ROLE_ACCESS); setRolesSaved(false) }}
+                  className="text-slate-400 hover:text-white text-sm transition-colors px-4 py-2 rounded-xl hover:bg-slate-800/50"
+                >
+                  Réinitialiser
+                </button>
+                <button
+                  onClick={() => setShowRolesModal(false)}
+                  className="border border-slate-700 text-slate-400 hover:text-white px-4 py-2.5 rounded-xl text-sm transition-colors"
+                >
+                  Fermer
+                </button>
+                <button
+                  onClick={saveRolePermissions}
+                  disabled={savingRoles}
+                  className="flex items-center gap-2 bg-[#E14B89] hover:opacity-90 disabled:opacity-50 text-white px-5 py-2.5 rounded-xl text-sm font-medium transition-opacity"
+                >
+                  {rolesSaved ? (
+                    <><Check size={14} /> Enregistré</>
+                  ) : (
+                    <><Save size={14} /> {savingRoles ? 'Enregistrement...' : 'Enregistrer'}</>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Access preview modal ────────────────────────────────────────────── */}
       {previewUser && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-[#111118] border border-slate-800 rounded-2xl p-6 w-full max-w-sm">
@@ -253,7 +451,7 @@ export default function UsersPage() {
         </div>
       )}
 
-      {/* Create user modal */}
+      {/* ── Create user modal ───────────────────────────────────────────────── */}
       {showModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-[#111118] border border-slate-800 rounded-2xl p-6 w-full max-w-md">

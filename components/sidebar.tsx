@@ -142,24 +142,24 @@ export function Sidebar({
       )}
     >
       {/* Logo */}
-      <div className="px-4 py-4 border-b border-slate-800/60">
+      <div className="px-4 py-3 border-b border-slate-800/60 flex-shrink-0">
         <Image
           src={isLight ? '/kameo-logo-light.svg' : '/kameo-logo.svg'}
           alt="Kameo"
           width={112}
-          height={40}
+          height={36}
           priority
           className="flex-shrink-0"
           style={{ objectFit: 'contain', objectPosition: 'left' }}
         />
-        <p className="text-slate-500 text-xs mt-1">Outil interne</p>
+        <p className="text-slate-500 text-[10px] mt-0.5">Outil interne</p>
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 px-2 py-3 overflow-y-auto space-y-4">
+      {/* Navigation — flex-1 + min-h-0 prevents overflow on short screens */}
+      <nav className="flex-1 min-h-0 px-2 py-2 overflow-y-auto space-y-1.5">
         {sections.map(section => (
           <div key={section.label}>
-            <p className="px-3 mb-1 text-[10px] font-semibold text-slate-600 uppercase tracking-wider">
+            <p className="px-3 mb-0.5 text-[9px] font-semibold text-slate-600 uppercase tracking-wider">
               {section.label}
             </p>
             <div className="space-y-0.5">
@@ -168,15 +168,15 @@ export function Sidebar({
                   key={href}
                   href={href}
                   className={cn(
-                    'flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-150',
+                    'flex items-center gap-2.5 px-3 py-1.5 rounded-xl text-sm font-medium transition-all duration-150',
                     isActive(href)
                       ? 'bg-[#E14B89]/10 text-[#E14B89] border border-[#E14B89]/20'
                       : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
                   )}
                 >
-                  <Icon size={16} className="flex-shrink-0" />
-                  <span className="flex-1 truncate">{label}</span>
-                  {isActive(href) && <ChevronRight size={13} className="text-[#E14B89]/60 flex-shrink-0" />}
+                  <Icon size={15} className="flex-shrink-0" />
+                  <span className="flex-1 truncate text-[13px]">{label}</span>
+                  {isActive(href) && <ChevronRight size={12} className="text-[#E14B89]/60 flex-shrink-0" />}
                 </Link>
               ))}
             </div>
@@ -186,103 +186,52 @@ export function Sidebar({
         {/* Admin — admin only */}
         {isAdmin && (
           <div>
-            <p className="px-3 mb-1 text-[10px] font-semibold text-slate-600 uppercase tracking-wider">
+            <p className="px-3 mb-0.5 text-[9px] font-semibold text-slate-600 uppercase tracking-wider">
               Admin
             </p>
             <div className="space-y-0.5">
-              <Link
-                href="/users"
-                className={cn(
-                  'flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-150',
-                  pathname.startsWith('/users')
-                    ? 'bg-[#E14B89]/10 text-[#E14B89] border border-[#E14B89]/20'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
-                )}
-              >
-                <Users2 size={16} className="flex-shrink-0" />
-                <span className="flex-1">Équipe</span>
-                {pathname.startsWith('/users') && (
-                  <ChevronRight size={13} className="text-[#E14B89]/60 flex-shrink-0" />
-                )}
-              </Link>
-              <Link
-                href="/logs"
-                className={cn(
-                  'flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-150',
-                  pathname.startsWith('/logs')
-                    ? 'bg-[#E14B89]/10 text-[#E14B89] border border-[#E14B89]/20'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
-                )}
-              >
-                <Activity size={16} className="flex-shrink-0" />
-                <span className="flex-1">Logs</span>
-                {pathname.startsWith('/logs') && (
-                  <ChevronRight size={13} className="text-[#E14B89]/60 flex-shrink-0" />
-                )}
-              </Link>
-              <Link
-                href="/contrats"
-                className={cn(
-                  'flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-150',
-                  pathname.startsWith('/contrats')
-                    ? 'bg-[#E14B89]/10 text-[#E14B89] border border-[#E14B89]/20'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
-                )}
-              >
-                <FileCheck2 size={16} className="flex-shrink-0" />
-                <span className="flex-1">Contrats</span>
-                {pathname.startsWith('/contrats') && (
-                  <ChevronRight size={13} className="text-[#E14B89]/60 flex-shrink-0" />
-                )}
-              </Link>
-              <Link
-                href="/backups"
-                className={cn(
-                  'flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-150',
-                  pathname.startsWith('/backups')
-                    ? 'bg-[#E14B89]/10 text-[#E14B89] border border-[#E14B89]/20'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
-                )}
-              >
-                <HardDrive size={16} className="flex-shrink-0" />
-                <span className="flex-1">Backups</span>
-                {pathname.startsWith('/backups') && (
-                  <ChevronRight size={13} className="text-[#E14B89]/60 flex-shrink-0" />
-                )}
-              </Link>
-              <Link
-                href="/notes-de-frais"
-                className={cn(
-                  'flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-150',
-                  pathname.startsWith('/notes-de-frais')
-                    ? 'bg-[#E14B89]/10 text-[#E14B89] border border-[#E14B89]/20'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
-                )}
-              >
-                <Receipt size={16} className="flex-shrink-0" />
-                <span className="flex-1">Notes de frais</span>
-                {pathname.startsWith('/notes-de-frais') && (
-                  <ChevronRight size={13} className="text-[#E14B89]/60 flex-shrink-0" />
-                )}
-              </Link>
+              {[
+                { href: '/users', label: 'Équipe', Icon: Users2 },
+                { href: '/logs', label: 'Logs', Icon: Activity },
+                { href: '/contrats', label: 'Contrats', Icon: FileCheck2 },
+                { href: '/backups', label: 'Backups', Icon: HardDrive },
+                { href: '/notes-de-frais', label: 'Notes de frais', Icon: Receipt },
+              ].map(({ href, label, Icon }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  className={cn(
+                    'flex items-center gap-2.5 px-3 py-1.5 rounded-xl text-sm font-medium transition-all duration-150',
+                    pathname.startsWith(href)
+                      ? 'bg-[#E14B89]/10 text-[#E14B89] border border-[#E14B89]/20'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                  )}
+                >
+                  <Icon size={15} className="flex-shrink-0" />
+                  <span className="flex-1 text-[13px]">{label}</span>
+                  {pathname.startsWith(href) && (
+                    <ChevronRight size={12} className="text-[#E14B89]/60 flex-shrink-0" />
+                  )}
+                </Link>
+              ))}
             </div>
           </div>
         )}
       </nav>
 
       {/* Theme toggle */}
-      <div className="px-3 pb-2">
+      <div className="px-3 pb-1 flex-shrink-0">
         <button
           onClick={() => setTheme(isLight ? 'dark' : 'light')}
           title={isLight ? 'Passer en mode sombre' : 'Passer en mode clair'}
           className="w-full flex items-center justify-center p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800/50 transition-all duration-150"
         >
-          {isLight ? <Moon size={16} /> : <Sun size={16} />}
+          {isLight ? <Moon size={15} /> : <Sun size={15} />}
         </button>
       </div>
 
       {/* User dropdown */}
-      <div className="p-2 border-t border-slate-800/60" ref={dropdownRef}>
+      <div className="p-2 border-t border-slate-800/60 flex-shrink-0" ref={dropdownRef}>
         {dropdownOpen && (
           <div className="mb-2 bg-[#111118] border border-slate-700 rounded-xl overflow-hidden shadow-xl">
             <Link
@@ -315,7 +264,7 @@ export function Sidebar({
         <button
           onClick={() => setDropdownOpen(!dropdownOpen)}
           className={cn(
-            'flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all w-full group',
+            'flex items-center gap-3 px-3 py-2 rounded-xl transition-all w-full group',
             dropdownOpen ? 'bg-slate-800/70' : 'hover:bg-slate-800/50'
           )}
         >

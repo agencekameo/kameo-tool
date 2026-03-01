@@ -503,3 +503,98 @@ main,
   background-color: #ffffff !important;
   border-color: #e2e8f0 !important;
 }
+
+/* ══════════════════════════════════════════════════
+   BRAND GRADIENT  E14B89 → F8903C
+   ══════════════════════════════════════════════════ */
+
+/* Solid brand bg → gradient */
+.bg-\[#E14B89\] {
+  background: linear-gradient(135deg, #E14B89 0%, #F8903C 100%) !important;
+}
+
+/* Tinted brand bg */
+.bg-\[#E14B89\]\/10 {
+  background: linear-gradient(135deg, rgba(225,75,137,0.10) 0%, rgba(248,144,60,0.10) 100%) !important;
+}
+.bg-\[#E14B89\]\/20 {
+  background: linear-gradient(135deg, rgba(225,75,137,0.14) 0%, rgba(248,144,60,0.14) 100%) !important;
+}
+.bg-\[#E14B89\]\/5 {
+  background: linear-gradient(135deg, rgba(225,75,137,0.05) 0%, rgba(248,144,60,0.05) 100%) !important;
+}
+
+/* Hover variants */
+.hover\:bg-\[#E14B89\]\/10:hover {
+  background: linear-gradient(135deg, rgba(225,75,137,0.10) 0%, rgba(248,144,60,0.10) 100%) !important;
+}
+
+/* Brand gradient utility (usable via className="brand-gradient") */
+.brand-gradient {
+  background: linear-gradient(135deg, #E14B89 0%, #F8903C 100%);
+}
+.brand-gradient-text {
+  background: linear-gradient(135deg, #E14B89 0%, #F8903C 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ══════════════════════════════════════════════════
+   MOBILE OPTIMIZATIONS
+   ══════════════════════════════════════════════════ */
+
+/* Tables horizontally scrollable on mobile */
+@media (max-width: 640px) {
+  /* Make table wrappers scroll horizontally */
+  .overflow-hidden table,
+  .overflow-x-auto table {
+    min-width: 560px;
+  }
+
+  /* Force rounded card containers to allow horizontal scroll */
+  .rounded-2xl.border,
+  .rounded-xl.border {
+    overflow-x: auto;
+  }
+
+  /* Reduce page padding on mobile */
+  .p-8 {
+    padding: 1rem !important;
+  }
+  .px-8 {
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+  }
+  .py-8 {
+    padding-top: 1.5rem !important;
+    padding-bottom: 1.5rem !important;
+  }
+
+  /* Header row wraps on mobile */
+  .flex.items-center.justify-between.mb-8,
+  .flex.items-center.justify-between.mb-6 {
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+
+  /* Stats grid: 2 cols max on mobile */
+  .grid-cols-4 {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+  .grid-cols-3 {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  /* Modal: full width + max height + scrollable */
+  .fixed.inset-0 > div[class*="max-w"] {
+    max-height: 92vh;
+    overflow-y: auto;
+  }
+
+  /* Bottom mobile bar shows logo correctly */
+  .md\:hidden.sticky img {
+    height: 20px;
+    width: auto;
+  }
+}

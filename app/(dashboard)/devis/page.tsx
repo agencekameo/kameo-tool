@@ -112,7 +112,7 @@ function PrintView({ quote, onClose }: { quote: Quote; onClose: () => void }) {
       <div className="max-w-[800px] mx-auto px-12 py-10 print:p-0 print:max-w-none text-gray-900">
 
         {/* Header: Agency left, Devis info right */}
-        <div className="flex items-start justify-between mb-10 pb-8 border-b-[3px]" style={{ borderColor: '#E14B89' }}>
+        <div className="flex items-start justify-between mb-10 pb-8 border-b-[3px]" style={{ borderColor: '#F8903C' }}>
           <div>
             <div className="text-2xl font-extrabold tracking-tight" style={{ color: '#E14B89' }}>
               Agence Kameo
@@ -138,7 +138,7 @@ function PrintView({ quote, onClose }: { quote: Quote; onClose: () => void }) {
             </div>
             <div className="mt-3">
               <span className="text-xs px-3 py-1 rounded font-semibold border"
-                style={{ borderColor: '#E14B89', color: '#E14B89', background: 'rgba(225,75,137,0.06)' }}>
+                style={{ borderColor: '#F8903C', color: '#E14B89', background: 'rgba(248,144,60,0.06)' }}>
                 {STATUS_LABELS[quote.status]}
               </span>
             </div>
@@ -166,7 +166,7 @@ function PrintView({ quote, onClose }: { quote: Quote; onClose: () => void }) {
         {/* Items table */}
         <table className="w-full mb-2 text-sm border-collapse">
           <thead>
-            <tr style={{ background: '#E14B89' }}>
+            <tr style={{ background: 'linear-gradient(135deg, #E14B89 0%, #F8903C 100%)' }}>
               <th className="text-left py-2.5 px-4 text-white font-semibold w-[46%]">Contenu</th>
               <th className="text-center py-2.5 px-3 text-white font-semibold">Unité</th>
               <th className="text-right py-2.5 px-3 text-white font-semibold">Qté</th>
@@ -227,7 +227,7 @@ function PrintView({ quote, onClose }: { quote: Quote; onClose: () => void }) {
                 <span className="font-medium">{formatCurrency(tva)}</span>
               </div>
               <div className="flex justify-between font-bold text-white text-base py-3 px-4 rounded-lg mt-1"
-                style={{ background: '#E14B89' }}>
+                style={{ background: 'linear-gradient(135deg, #E14B89 0%, #F8903C 100%)' }}>
                 <span>Total TTC</span>
                 <span>{formatCurrency(totalTTC)}</span>
               </div>
