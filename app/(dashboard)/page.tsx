@@ -33,13 +33,29 @@ async function getDashboardData(userId: string) {
   const [projects, tasks, clients, totalRevenue, prospects] = await Promise.all([
     prisma.project.findMany({
       where: { status: { notIn: ['ARCHIVE'] } },
-      include: { client: true, tasks: true },
+      select: {
+        id: true,
+        name: true,
+        type: true,
+        status: true,
+        price: true,
+        client: { select: { id: true, name: true } },
+      },
       orderBy: { updatedAt: 'desc' },
       take: 5,
     }),
     prisma.task.findMany({
       where: { assigneeId: userId, status: { not: 'DONE' } },
-      include: { project: { include: { client: true } } },
+      select: {
+        id: true,
+        title: true,
+        priority: true,
+        projectId: true,
+        dueDate: true,
+        project: {
+          select: { client: { select: { name: true } } },
+        },
+      },
       orderBy: [{ priority: 'desc' }, { dueDate: 'asc' }],
       take: 6,
     }),

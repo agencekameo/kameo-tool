@@ -172,6 +172,9 @@ model Log {
   createdAt   DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
 }
 
 model Client {
@@ -221,6 +224,10 @@ model Project {
   documents    ProjectDocument[]
   conversation       Conversation?
   cahiersDesCharges  CahierDesCharges[]
+
+  @@index([clientId])
+  @@index([status])
+  @@index([updatedAt])
 }
 
 model Task {
@@ -240,6 +247,10 @@ model Task {
 
   project  Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
   assignee User?    @relation("TaskAssignee", fields: [assigneeId], references: [id])
+
+  @@index([projectId])
+  @@index([assigneeId])
+  @@index([status])
 }
 
 model Resource {
@@ -312,6 +323,9 @@ model Prospect {
   updatedAt  DateTime       @updatedAt
 
   assignee User? @relation(fields: [assignedTo], references: [id])
+
+  @@index([assignedTo])
+  @@index([status])
 }
 
 model Expense {
@@ -468,6 +482,8 @@ model ConversationMember {
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([conversationId, userId])
+  @@index([userId])
+  @@index([conversationId, archivedAt])
 }
 
 model Message {
@@ -482,6 +498,9 @@ model Message {
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   sender       User         @relation(fields: [senderId], references: [id])
+
+  @@index([conversationId])
+  @@index([createdAt])
 }
 
 model CahierDesCharges {

@@ -6,11 +6,19 @@ import { NextRequest, NextResponse } from 'next/server'
 export async function GET() {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const projects = await prisma.project.findMany({
-    include: { client: true, tasks: true },
-    orderBy: { updatedAt: 'desc' },
-  })
-  return NextResponse.json(projects)
+  try {
+    const projects = await prisma.project.findMany({
+      include: {
+        client: { select: { id: true, name: true, company: true } },
+        tasks: { select: { id: true, status: true } },
+      },
+      orderBy: { updatedAt: 'desc' },
+    })
+    return NextResponse.json(projects)
+  } catch (err) {
+    console.error('[GET /api/projects]', err)
+    return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
+  }
 }
 
 export async function POST(req: NextRequest) {

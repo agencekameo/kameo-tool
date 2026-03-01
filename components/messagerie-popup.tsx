@@ -99,6 +99,7 @@ export function MessageriePopup() {
   const [loadingMessages, setLoadingMessages] = useState(false)
   const [menuConvId, setMenuConvId] = useState<string | null>(null)
   const [convStep, setConvStep] = useState(1)
+  const [isPageVisible, setIsPageVisible] = useState(true)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -124,6 +125,13 @@ export function MessageriePopup() {
     } catch { /* silent */ }
   }, [])
 
+  // Track page visibility to pause polling when tab is hidden
+  useEffect(() => {
+    const handleVisibility = () => setIsPageVisible(document.visibilityState === 'visible')
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => document.removeEventListener('visibilitychange', handleVisibility)
+  }, [])
+
   // Update own lastSeen presence every 60s
   useEffect(() => {
     if (!currentUserId) return
@@ -133,32 +141,33 @@ export function MessageriePopup() {
     return () => clearInterval(interval)
   }, [currentUserId])
 
-  // Poll for unread badge even when popup is closed
+  // Poll for unread badge even when popup is closed — pauses when tab hidden
   useEffect(() => {
-    if (!currentUserId) return
+    if (!currentUserId || !isPageVisible) return
     fetchConversations()
-    const interval = setInterval(fetchConversations, 30000)
+    const interval = setInterval(fetchConversations, 60000)
     return () => clearInterval(interval)
-  }, [currentUserId, fetchConversations])
+  }, [currentUserId, fetchConversations, isPageVisible])
 
-  // Load conversations when popup opens
+  // Load conversations when popup opens — pauses when tab hidden
   useEffect(() => {
-    if (!open || !currentUserId) return
+    if (!open || !currentUserId || !isPageVisible) return
     setLoadingConvs(true)
     fetchConversations().finally(() => setLoadingConvs(false))
-    const interval = setInterval(fetchConversations, 10000)
+    const interval = setInterval(fetchConversations, 15000)
     return () => clearInterval(interval)
-  }, [open, currentUserId, fetchConversations])
+  }, [open, currentUserId, fetchConversations, isPageVisible])
 
-  // Load and poll messages when a conversation is selected
+  // Load and poll messages when a conversation is selected — pauses when tab hidden
   useEffect(() => {
-    if (pollingRef.current) clearInterval(pollingRef.current)
+    if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null }
     if (!selectedConvId) { setMessages([]); return }
+    if (!isPageVisible) return
     setLoadingMessages(true)
     fetchMessages(selectedConvId).finally(() => setLoadingMessages(false))
-    pollingRef.current = setInterval(() => fetchMessages(selectedConvId), 3000)
-    return () => { if (pollingRef.current) clearInterval(pollingRef.current) }
-  }, [selectedConvId, fetchMessages])
+    pollingRef.current = setInterval(() => fetchMessages(selectedConvId), 8000)
+    return () => { if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null } }
+  }, [selectedConvId, fetchMessages, isPageVisible])
 
   // Scroll to bottom on new messages
   useEffect(() => {
