@@ -118,7 +118,7 @@ function PrintView({ quote, onClose }: { quote: Quote; onClose: () => void }) {
               Agence Kameo
             </div>
             <div className="text-xs text-gray-500 mt-2 leading-relaxed">
-              <div>1862 rue la Lauragaise, 31670 Labege</div>
+              <div>9 rue des colonnes, Paris 75002</div>
               <div>Tél : 06 76 23 00 37 — contact@agencekameo.fr</div>
               <div className="mt-1.5 text-gray-400 text-[10px]">
                 SIRET : 980 573 984 00013 &nbsp;|&nbsp; APE : 62.01Z<br />
@@ -298,7 +298,7 @@ function PrintView({ quote, onClose }: { quote: Quote; onClose: () => void }) {
 
         {/* Footer */}
         <div className="mt-8 pt-4 border-t border-gray-100 text-[10px] text-gray-400 text-center leading-relaxed">
-          Agence Kameo — 1862 rue la Lauragaise, 31670 Labege — contact@agencekameo.fr<br />
+          Agence Kameo — 9 rue des colonnes, Paris 75002 — contact@agencekameo.fr<br />
           SIRET : 980 573 984 00013 — TVA : FR54980573984 — RCS Paris 980 573 984
           {quote.validUntil && (
             <span> — Offre valable jusqu&apos;au {new Date(quote.validUntil).toLocaleDateString('fr-FR')}</span>
