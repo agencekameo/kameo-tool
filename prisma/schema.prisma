@@ -396,6 +396,11 @@ model Quote {
   items     QuoteItem[]
   client    Client?     @relation(fields: [clientId], references: [id])
   createdBy User        @relation(fields: [createdById], references: [id])
+
+  @@index([clientId])
+  @@index([status])
+  @@index([createdById])
+  @@index([createdAt])
 }
 
 model QuoteItem {
@@ -409,6 +414,9 @@ model QuoteItem {
   position    Int    @default(0)
 
   quote Quote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  @@index([quoteId])
+  @@index([quoteId, position])
 }
 
 model Absence {

@@ -109,36 +109,36 @@ function PrintView({ quote, onClose }: { quote: Quote; onClose: () => void }) {
       </div>
 
       {/* Print content */}
-      <div className="max-w-3xl mx-auto px-10 py-12 print:p-0 print:max-w-none">
-        {/* Header */}
-        <div className="flex items-start justify-between mb-10">
+      <div className="max-w-[800px] mx-auto px-12 py-10 print:p-0 print:max-w-none text-gray-900">
+
+        {/* Header: Agency left, Devis info right */}
+        <div className="flex items-start justify-between mb-10 pb-8 border-b-[3px]" style={{ borderColor: '#E14B89' }}>
           <div>
-            <div className="text-2xl font-bold text-gray-900" style={{ color: '#E14B89' }}>
+            <div className="text-2xl font-extrabold tracking-tight" style={{ color: '#E14B89' }}>
               Agence Kameo
             </div>
-            <div className="text-xs text-gray-500 mt-1 leading-relaxed">
-              123 rue de l'Exemple, 75001 Paris<br />
-              contact@agencekameo.fr<br />
-              SIRET : 123 456 789 00010<br />
-              IBAN : FR76 1234 5678 9101 1121 3141 516
+            <div className="text-xs text-gray-500 mt-2 leading-relaxed">
+              <div>1862 rue la Lauragaise, 31670 Labege</div>
+              <div>Tél : 06 76 23 00 37 — contact@agencekameo.fr</div>
+              <div className="mt-1.5 text-gray-400 text-[10px]">
+                SIRET : 980 573 984 00013 &nbsp;|&nbsp; APE : 62.01Z<br />
+                TVA Intracommunautaire : FR54980573984<br />
+                RCS Paris 980 573 984
+              </div>
             </div>
           </div>
           <div className="text-right">
-            <div className="text-3xl font-bold text-gray-900">DEVIS</div>
-            <div className="text-sm text-gray-500 mt-1">
-              N° {quote.number}
+            <div className="text-4xl font-black tracking-tight text-gray-800 uppercase">Devis</div>
+            <div className="text-lg font-bold mt-1" style={{ color: '#E14B89' }}>N° {quote.number}</div>
+            <div className="text-sm text-gray-500 mt-2 space-y-0.5">
+              <div>Émis le : {today}</div>
+              {quote.validUntil && (
+                <div>Valide jusqu&apos;au : {new Date(quote.validUntil).toLocaleDateString('fr-FR')}</div>
+              )}
             </div>
-            <div className="text-sm text-gray-500">
-              Date : {today}
-            </div>
-            {quote.validUntil && (
-              <div className="text-sm text-gray-500">
-                Valide jusqu'au : {new Date(quote.validUntil).toLocaleDateString('fr-FR')}
-              </div>
-            )}
-            <div className="mt-2">
-              <span className={`text-xs px-2 py-0.5 rounded-full font-medium border ${STATUS_COLORS[quote.status]}`}
-                style={{ background: 'transparent', border: '1px solid currentColor' }}>
+            <div className="mt-3">
+              <span className="text-xs px-3 py-1 rounded font-semibold border"
+                style={{ borderColor: '#E14B89', color: '#E14B89', background: 'rgba(225,75,137,0.06)' }}>
                 {STATUS_LABELS[quote.status]}
               </span>
             </div>
@@ -146,96 +146,170 @@ function PrintView({ quote, onClose }: { quote: Quote; onClose: () => void }) {
         </div>
 
         {/* Client block */}
-        <div className="mb-10">
-          <div className="text-xs uppercase tracking-widest text-gray-400 mb-2 font-semibold">Client</div>
-          <div className="bg-gray-50 rounded-xl px-5 py-4 inline-block min-w-[220px]">
-            <div className="font-semibold text-gray-900">{quote.clientName}</div>
-            {quote.clientEmail && <div className="text-sm text-gray-600 mt-0.5">{quote.clientEmail}</div>}
+        <div className="mb-8">
+          <div className="text-[10px] uppercase tracking-widest text-gray-400 mb-2 font-bold">À l&apos;attention de</div>
+          <div className="border border-gray-200 rounded-lg px-5 py-4 inline-block min-w-[220px]">
+            <div className="font-bold text-gray-900 text-base">{quote.clientName}</div>
+            {quote.clientEmail && <div className="text-sm text-gray-600 mt-1">{quote.clientEmail}</div>}
             {quote.clientAddress && (
-              <div className="text-sm text-gray-600 mt-0.5 whitespace-pre-line">{quote.clientAddress}</div>
+              <div className="text-sm text-gray-600 mt-1 whitespace-pre-line">{quote.clientAddress}</div>
             )}
           </div>
         </div>
 
         {/* Subject */}
-        <div className="mb-8">
-          <div className="text-xs uppercase tracking-widest text-gray-400 mb-1 font-semibold">Objet</div>
-          <div className="text-gray-900 font-medium">{quote.subject}</div>
+        <div className="mb-8 bg-gray-50 rounded-lg px-5 py-3 border border-gray-100">
+          <span className="text-[10px] uppercase tracking-widest text-gray-400 font-bold mr-3">Objet :</span>
+          <span className="text-gray-900 font-semibold">{quote.subject}</span>
         </div>
 
         {/* Items table */}
-        <table className="w-full mb-8 text-sm">
+        <table className="w-full mb-2 text-sm border-collapse">
           <thead>
-            <tr className="border-b-2 border-gray-200">
-              <th className="text-left py-2 pr-4 text-gray-600 font-semibold w-1/2">Description</th>
-              <th className="text-center py-2 px-2 text-gray-600 font-semibold">Unité</th>
-              <th className="text-right py-2 px-2 text-gray-600 font-semibold">Qté</th>
-              <th className="text-right py-2 px-2 text-gray-600 font-semibold">Prix HT</th>
-              <th className="text-right py-2 pl-2 text-gray-600 font-semibold">Total HT</th>
+            <tr style={{ background: '#E14B89' }}>
+              <th className="text-left py-2.5 px-4 text-white font-semibold w-[46%]">Contenu</th>
+              <th className="text-center py-2.5 px-3 text-white font-semibold">Unité</th>
+              <th className="text-right py-2.5 px-3 text-white font-semibold">Qté</th>
+              <th className="text-right py-2.5 px-3 text-white font-semibold">Prix HT</th>
+              <th className="text-right py-2.5 px-4 text-white font-semibold">Total HT</th>
             </tr>
           </thead>
           <tbody>
-            {quote.items.map((item, i) => (
-              <tr key={item.id} className={i % 2 === 0 ? 'bg-gray-50' : ''}>
-                <td className="py-2.5 pr-4 text-gray-800">{item.description}</td>
-                <td className="py-2.5 px-2 text-center text-gray-500">{item.unit || '—'}</td>
-                <td className="py-2.5 px-2 text-right text-gray-800">{item.quantity}</td>
-                <td className="py-2.5 px-2 text-right text-gray-800">{formatCurrency(item.unitPrice)}</td>
-                <td className="py-2.5 pl-2 text-right text-gray-900 font-medium">
-                  {formatCurrency(item.quantity * item.unitPrice)}
-                </td>
-              </tr>
-            ))}
+            {quote.items.map((item, i) => {
+              const lines = item.description.split('\n').filter(Boolean)
+              const hasMultiline = lines.length > 1
+              return (
+                <tr key={item.id} style={{ background: i % 2 === 0 ? '#fff' : '#f9fafb' }}>
+                  <td className="py-3 px-4 text-gray-800 border-b border-gray-100">
+                    {hasMultiline ? (
+                      <div>
+                        <div className="font-semibold text-gray-900">{lines[0]}</div>
+                        <div className="text-gray-500 text-xs mt-0.5 leading-relaxed">{lines.slice(1).join('\n')}</div>
+                      </div>
+                    ) : (
+                      <span>{item.description}</span>
+                    )}
+                  </td>
+                  <td className="py-3 px-3 text-center text-gray-500 border-b border-gray-100">{item.unit || '—'}</td>
+                  <td className="py-3 px-3 text-right text-gray-800 border-b border-gray-100">{item.quantity}</td>
+                  <td className="py-3 px-3 text-right text-gray-800 border-b border-gray-100">{formatCurrency(item.unitPrice)}</td>
+                  <td className="py-3 px-4 text-right text-gray-900 font-semibold border-b border-gray-100">
+                    {formatCurrency(item.quantity * item.unitPrice)}
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
 
         {/* Totals */}
-        <div className="flex justify-end mb-10">
-          <div className="w-64 space-y-1.5 text-sm">
-            <div className="flex justify-between text-gray-600">
-              <span>Total HT</span>
-              <span>{formatCurrency(totalHT)}</span>
-            </div>
-            {quote.discount > 0 && (
-              <div className="flex justify-between text-orange-600">
-                <span>Remise ({quote.discount}%)</span>
-                <span>- {formatCurrency(remise)}</span>
+        <div className="flex justify-end mb-10 mt-4">
+          <div className="w-72 text-sm">
+            <div className="space-y-1.5">
+              <div className="flex justify-between text-gray-600 py-1.5 border-b border-gray-100">
+                <span>Total HT</span>
+                <span className="font-medium">{formatCurrency(totalHT)}</span>
               </div>
-            )}
-            {quote.discount > 0 && (
-              <div className="flex justify-between text-gray-600 border-t border-gray-200 pt-1.5">
-                <span>Sous-total HT</span>
-                <span>{formatCurrency(sousTotal)}</span>
+              {quote.discount > 0 && (
+                <div className="flex justify-between text-orange-600 py-1.5 border-b border-gray-100">
+                  <span>Remise ({quote.discount}%)</span>
+                  <span>- {formatCurrency(remise)}</span>
+                </div>
+              )}
+              {quote.discount > 0 && (
+                <div className="flex justify-between text-gray-600 py-1.5 border-b border-gray-100">
+                  <span>Sous-total HT</span>
+                  <span className="font-medium">{formatCurrency(sousTotal)}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-gray-600 py-1.5 border-b border-gray-100">
+                <span>TVA 20%</span>
+                <span className="font-medium">{formatCurrency(tva)}</span>
               </div>
-            )}
-            <div className="flex justify-between text-gray-600">
-              <span>TVA 20%</span>
-              <span>{formatCurrency(tva)}</span>
+              <div className="flex justify-between font-bold text-white text-base py-3 px-4 rounded-lg mt-1"
+                style={{ background: '#E14B89' }}>
+                <span>Total TTC</span>
+                <span>{formatCurrency(totalTTC)}</span>
+              </div>
             </div>
-            <div className="flex justify-between font-bold text-gray-900 text-base border-t-2 border-gray-900 pt-2 mt-1">
-              <span>Total TTC</span>
-              <span>{formatCurrency(totalTTC)}</span>
+
+            {/* Échéancier acomptes */}
+            <div className="mt-4 text-xs text-gray-500 space-y-1 bg-gray-50 rounded-lg px-4 py-3 border border-gray-100">
+              <div className="font-semibold text-gray-600 mb-1.5">Échéancier prévisionnel</div>
+              <div className="flex justify-between">
+                <span>30% à la commande</span>
+                <span className="font-medium text-gray-700">{formatCurrency(totalTTC * 0.30)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>30% fin des maquettes</span>
+                <span className="font-medium text-gray-700">{formatCurrency(totalTTC * 0.30)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>40% fin du projet</span>
+                <span className="font-medium text-gray-700">{formatCurrency(totalTTC * 0.40)}</span>
+              </div>
             </div>
           </div>
         </div>
 
         {/* Notes */}
         {quote.notes && (
-          <div className="border-t border-gray-200 pt-6 mb-8">
-            <div className="text-xs uppercase tracking-widest text-gray-400 mb-2 font-semibold">Notes</div>
+          <div className="border-t border-gray-200 pt-5 mb-8">
+            <div className="text-[10px] uppercase tracking-widest text-gray-400 mb-2 font-bold">Notes</div>
             <p className="text-gray-600 text-sm whitespace-pre-line">{quote.notes}</p>
           </div>
         )}
 
+        {/* Règlement + Bon pour accord */}
+        <div className="border-t border-gray-200 pt-6 mt-2 grid grid-cols-2 gap-10">
+          {/* Paiement */}
+          <div>
+            <div className="text-[10px] uppercase tracking-widest text-gray-400 mb-3 font-bold">Règlement</div>
+            <div className="text-sm text-gray-600 space-y-1">
+              <div>Mode : Virement Bancaire</div>
+              <div>Banque : Crédit Agricole</div>
+              <div className="font-mono text-xs mt-2 text-gray-700">IBAN : FR76 1310 6005 0030 0406 5882 074</div>
+              <div className="font-mono text-xs text-gray-700">BIC : AGRIFRPP831</div>
+            </div>
+            <div className="mt-3 text-xs text-gray-500 leading-relaxed bg-gray-50 rounded px-3 py-2">
+              <strong>Conditions :</strong> 30% à la commande · 30% à la fin des maquettes · 40% à la fin du projet
+            </div>
+          </div>
+
+          {/* Bon pour accord */}
+          <div>
+            <div className="text-[10px] uppercase tracking-widest text-gray-400 mb-3 font-bold">Bon pour accord et signature</div>
+            <div className="text-sm text-gray-600 space-y-4">
+              <div>
+                <div className="text-xs text-gray-400 mb-1">Fait à :</div>
+                <div className="border-b border-gray-300 min-h-[28px]"></div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-400 mb-1">Le :</div>
+                <div className="border-b border-gray-300 min-h-[28px]"></div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-400 mb-1">Signature :</div>
+                <div className="border-b border-gray-300 min-h-[52px]"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Footer */}
-        <div className="border-t border-gray-200 pt-6 text-xs text-gray-400 text-center">
-          Agence Kameo — SIRET 123 456 789 00010 — contact@agencekameo.fr — www.agencekameo.fr
+        <div className="mt-8 pt-4 border-t border-gray-100 text-[10px] text-gray-400 text-center leading-relaxed">
+          Agence Kameo — 1862 rue la Lauragaise, 31670 Labege — contact@agencekameo.fr<br />
+          SIRET : 980 573 984 00013 — TVA : FR54980573984 — RCS Paris 980 573 984
+          {quote.validUntil && (
+            <span> — Offre valable jusqu&apos;au {new Date(quote.validUntil).toLocaleDateString('fr-FR')}</span>
+          )}
         </div>
       </div>
 
       <style>{`
         @media print {
           body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          @page { margin: 12mm 15mm; }
         }
       `}</style>
     </div>
@@ -386,7 +460,7 @@ export default function DevisPage() {
       ...f,
       items: [...f.items, {
         id: genTempId(),
-        description: t.description || t.name,
+        description: t.name + (t.description && t.description !== t.name ? '\n' + t.description : ''),
         quantity: 1,
         unitPrice: t.unitPrice,
         unit: t.unit || 'forfait',
@@ -701,7 +775,7 @@ export default function DevisPage() {
                   </div>
                 )}
 
-                {/* Subject + Status + ValidUntil */}
+                {/* Objet */}
                 <div>
                   <label className="block text-slate-400 text-xs mb-1.5 font-medium">Objet *</label>
                   <input
@@ -712,7 +786,8 @@ export default function DevisPage() {
                   />
                 </div>
 
-                <div className="grid grid-cols-3 gap-3">
+                {/* Statut — visible uniquement en mode édition */}
+                {editingQuote && (
                   <div>
                     <label className="block text-slate-400 text-xs mb-1.5 font-medium">Statut</label>
                     <div className="relative">
@@ -728,38 +803,7 @@ export default function DevisPage() {
                       <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
                     </div>
                   </div>
-                  <div>
-                    <label className="block text-slate-400 text-xs mb-1.5 font-medium">Valide jusqu'au</label>
-                    <input
-                      type="date"
-                      value={form.validUntil}
-                      onChange={e => setForm(f => ({ ...f, validUntil: e.target.value }))}
-                      className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-slate-400 text-xs mb-1.5 font-medium">Remise (%)</label>
-                    <input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={form.discount}
-                      onChange={e => setForm(f => ({ ...f, discount: parseFloat(e.target.value) || 0 }))}
-                      className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-slate-400 text-xs mb-1.5 font-medium">Notes internes</label>
-                  <textarea
-                    value={form.notes}
-                    onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-                    rows={3}
-                    placeholder="Conditions, remarques..."
-                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors resize-none"
-                  />
-                </div>
+                )}
 
                 {/* ── Line items ───────────────────────────────────────────── */}
                 <div>
@@ -794,7 +838,7 @@ export default function DevisPage() {
                       <table className="w-full text-xs">
                         <thead>
                           <tr className="border-b border-slate-800 bg-[#0d0d14]">
-                            <th className="text-left text-slate-500 font-medium px-3 py-2 w-[40%]">Description</th>
+                            <th className="text-left text-slate-500 font-medium px-3 py-2 w-[40%]">Contenu</th>
                             <th className="text-left text-slate-500 font-medium px-2 py-2 w-[14%]">Unité</th>
                             <th className="text-right text-slate-500 font-medium px-2 py-2 w-[10%]">Qté</th>
                             <th className="text-right text-slate-500 font-medium px-2 py-2 w-[16%]">Prix HT</th>
@@ -806,11 +850,12 @@ export default function DevisPage() {
                           {form.items.map((item, i) => (
                             <tr key={item.id} className={`border-b border-slate-800/60 ${i === form.items.length - 1 ? 'border-b-0' : ''}`}>
                               <td className="px-3 py-1.5">
-                                <input
+                                <textarea
                                   value={item.description}
                                   onChange={e => updateItem(item.id, 'description', e.target.value)}
-                                  placeholder="Description..."
-                                  className="w-full bg-transparent text-white text-xs focus:outline-none placeholder:text-slate-600 focus:bg-[#1a1a24] rounded px-1 py-0.5 transition-colors"
+                                  placeholder="Contenu..."
+                                  rows={2}
+                                  className="w-full bg-transparent text-white text-xs focus:outline-none placeholder:text-slate-600 focus:bg-[#1a1a24] rounded px-1 py-0.5 transition-colors resize-none leading-relaxed"
                                 />
                               </td>
                               <td className="px-2 py-1.5">
@@ -898,6 +943,42 @@ export default function DevisPage() {
                       <span className="text-[#E14B89]">{formatCurrency(totalTTC)}</span>
                     </div>
                   </div>
+                </div>
+
+                {/* ── Validité + Remise ────────────────────────────────────── */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-slate-400 text-xs mb-1.5 font-medium">Valide jusqu&apos;au</label>
+                    <input
+                      type="date"
+                      value={form.validUntil}
+                      onChange={e => setForm(f => ({ ...f, validUntil: e.target.value }))}
+                      className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-400 text-xs mb-1.5 font-medium">Remise (%)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={form.discount}
+                      onChange={e => setForm(f => ({ ...f, discount: parseFloat(e.target.value) || 0 }))}
+                      className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
+                    />
+                  </div>
+                </div>
+
+                {/* ── Notes internes ───────────────────────────────────────── */}
+                <div>
+                  <label className="block text-slate-400 text-xs mb-1.5 font-medium">Notes internes</label>
+                  <textarea
+                    value={form.notes}
+                    onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+                    rows={3}
+                    placeholder="Conditions, remarques..."
+                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors resize-none"
+                  />
                 </div>
 
               </div>

@@ -13,48 +13,58 @@ function getNextQuoteNumber(lastNumber: string | null): string {
 export async function GET() {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const quotes = await prisma.quote.findMany({
-    include: {
-      items: { orderBy: { position: 'asc' } },
-      client: { select: { id: true, name: true } },
-      createdBy: { select: { id: true, name: true } },
-    },
-    orderBy: { createdAt: 'desc' },
-  })
-  return NextResponse.json(quotes)
+  try {
+    const quotes = await prisma.quote.findMany({
+      include: {
+        items: { orderBy: { position: 'asc' } },
+        client: { select: { id: true, name: true } },
+        createdBy: { select: { id: true, name: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    })
+    return NextResponse.json(quotes)
+  } catch (err) {
+    console.error('[GET /api/quotes]', err)
+    return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
+  }
 }
 
 export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const body = await req.json()
-  const last = await prisma.quote.findFirst({ orderBy: { createdAt: 'desc' }, select: { number: true } })
-  const number = getNextQuoteNumber(last?.number ?? null)
-  const quote = await prisma.quote.create({
-    data: {
-      number,
-      clientId: body.clientId || null,
-      clientName: body.clientName,
-      clientEmail: body.clientEmail || null,
-      clientAddress: body.clientAddress || null,
-      subject: body.subject,
-      status: body.status || 'BROUILLON',
-      validUntil: body.validUntil ? new Date(body.validUntil) : null,
-      notes: body.notes || null,
-      discount: body.discount || 0,
-      createdById: session.user.id,
-      items: {
-        create: (body.items || []).map((item: { description: string; unit?: string; quantity: number; unitPrice: number; tva: number; position: number }, i: number) => ({
-          description: item.description,
-          unit: item.unit || 'forfait',
-          quantity: item.quantity || 1,
-          unitPrice: item.unitPrice || 0,
-          tva: item.tva || 20,
-          position: i,
-        })),
+  try {
+    const body = await req.json()
+    const last = await prisma.quote.findFirst({ orderBy: { createdAt: 'desc' }, select: { number: true } })
+    const number = getNextQuoteNumber(last?.number ?? null)
+    const quote = await prisma.quote.create({
+      data: {
+        number,
+        clientId: body.clientId || null,
+        clientName: body.clientName,
+        clientEmail: body.clientEmail || null,
+        clientAddress: body.clientAddress || null,
+        subject: body.subject,
+        status: body.status || 'BROUILLON',
+        validUntil: body.validUntil ? new Date(body.validUntil) : null,
+        notes: body.notes || null,
+        discount: body.discount || 0,
+        createdById: session.user.id,
+        items: {
+          create: (body.items || []).map((item: { description: string; unit?: string; quantity: number; unitPrice: number; tva: number; position: number }, i: number) => ({
+            description: item.description,
+            unit: item.unit || 'forfait',
+            quantity: item.quantity || 1,
+            unitPrice: item.unitPrice || 0,
+            tva: item.tva || 20,
+            position: i,
+          })),
+        },
       },
-    },
-    include: { items: true, client: { select: { id: true, name: true } }, createdBy: { select: { id: true, name: true } } },
-  })
-  return NextResponse.json(quote)
+      include: { items: true, client: { select: { id: true, name: true } }, createdBy: { select: { id: true, name: true } } },
+    })
+    return NextResponse.json(quote)
+  } catch (err) {
+    console.error('[POST /api/quotes]', err)
+    return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
+  }
 }
