@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils'
 
 interface ConversationMember {
   lastReadAt?: string | null
-  user: { id: string; name: string; avatar?: string }
+  user: { id: string; name: string; avatar?: string | null; lastSeen?: string | null }
 }
 
 interface Conversation {
@@ -45,6 +45,16 @@ function getConversationName(conv: Conversation, currentUserId: string) {
   if (others.length === 0) return 'Moi'
   if (others.length === 1) return others[0].user.name
   return others.map(p => p.user.name).join(', ')
+}
+
+function getOtherParticipant(conv: Conversation, currentUserId: string) {
+  const others = conv.participants.filter(p => p.user.id !== currentUserId)
+  return others.length === 1 ? others[0].user : null
+}
+
+function isOnline(lastSeen?: string | null): boolean {
+  if (!lastSeen) return false
+  return Date.now() - new Date(lastSeen).getTime() < 5 * 60 * 1000 // 5 minutes
 }
 
 function formatTime(iso: string) {
@@ -110,6 +120,15 @@ export function MessageriePopup() {
       setMessages(Array.isArray(data) ? data : [])
     } catch { /* silent */ }
   }, [])
+
+  // Update own lastSeen presence every 60s
+  useEffect(() => {
+    if (!currentUserId) return
+    const ping = () => fetch('/api/lastseen', { method: 'POST' })
+    ping()
+    const interval = setInterval(ping, 60000)
+    return () => clearInterval(interval)
+  }, [currentUserId])
 
   // Poll for unread badge even when popup is closed
   useEffect(() => {
@@ -320,6 +339,8 @@ export function MessageriePopup() {
                     const myMember = conv.participants.find(p => p.user.id === currentUserId)
                     const hasUnread = lastMsg &&
                       (!myMember?.lastReadAt || new Date(lastMsg.createdAt) > new Date(myMember.lastReadAt))
+                    const otherUser = conv.isGroup ? null : getOtherParticipant(conv, currentUserId)
+                    const online = otherUser ? isOnline(otherUser.lastSeen) : false
                     return (
                       <button
                         key={conv.id}
@@ -329,12 +350,24 @@ export function MessageriePopup() {
                           isSelected && 'bg-[#E14B89]/10 border-l-2 border-l-[#E14B89]'
                         )}
                       >
-                        <div className={cn(
-                          'w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-[11px] font-semibold mt-0.5',
-                          isSelected ? 'bg-[#E14B89]/20 text-[#E14B89]' : 'bg-slate-800 text-slate-400'
-                        )}>
-                          {conv.isGroup ? <Users size={13} /> : getInitials(name)}
+                        {/* Avatar */}
+                        <div className="relative flex-shrink-0 mt-0.5">
+                          <div className={cn(
+                            'w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-semibold overflow-hidden',
+                            isSelected ? 'bg-[#E14B89]/20 text-[#E14B89]' : 'bg-slate-800 text-slate-400'
+                          )}>
+                            {conv.isGroup
+                              ? <Users size={13} />
+                              : otherUser?.avatar
+                                ? <img src={otherUser.avatar} alt="" className="w-full h-full object-cover" />
+                                : getInitials(name)
+                            }
+                          </div>
+                          {online && (
+                            <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-400 rounded-full border-2 border-[#111118]" />
+                          )}
                         </div>
+
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between gap-1">
                             <p className={cn(
@@ -348,11 +381,13 @@ export function MessageriePopup() {
                               <span className="text-slate-600 text-[10px] flex-shrink-0">{formatTime(lastMsg.createdAt)}</span>
                             )}
                           </div>
-                          {lastMsg && (
+                          {lastMsg ? (
                             <p className={cn('text-[11px] truncate mt-0.5', hasUnread ? 'text-slate-300 font-medium' : 'text-slate-600')}>
                               {lastMsg.content ?? (lastMsg.fileType?.startsWith('image/') ? '📷 Photo' : '📎 Fichier')}
                             </p>
-                          )}
+                          ) : online ? (
+                            <p className="text-[11px] text-green-400 mt-0.5">En ligne</p>
+                          ) : null}
                         </div>
                         {hasUnread && (
                           <span className="w-2 h-2 rounded-full bg-[#E14B89] flex-shrink-0 mt-2.5" />
@@ -379,23 +414,39 @@ export function MessageriePopup() {
               ) : (
                 <>
                   {/* Conv header */}
-                  <div className="px-4 py-2.5 border-b border-slate-800 flex-shrink-0 flex items-center gap-2.5">
-                    <div className="w-7 h-7 rounded-full bg-[#E14B89]/20 flex items-center justify-center text-[11px] font-semibold text-[#E14B89]">
-                      {selectedConv.isGroup
-                        ? <Users size={13} />
-                        : getInitials(getConversationName(selectedConv, currentUserId))
-                      }
-                    </div>
-                    <div>
-                      <p className="text-white text-xs font-medium">
-                        {getConversationName(selectedConv, currentUserId)}
-                      </p>
-                      <p className="text-slate-500 text-[11px]">
-                        {selectedConv.participants.length} participant{selectedConv.participants.length > 1 ? 's' : ''}
-                        {selectedConv.project && ` · Projet: ${selectedConv.project.name}`}
-                      </p>
-                    </div>
-                  </div>
+                  {(() => {
+                    const convName = getConversationName(selectedConv, currentUserId)
+                    const otherUser = selectedConv.isGroup ? null : getOtherParticipant(selectedConv, currentUserId)
+                    const online = otherUser ? isOnline(otherUser.lastSeen) : false
+                    return (
+                      <div className="px-4 py-2.5 border-b border-slate-800 flex-shrink-0 flex items-center gap-2.5">
+                        <div className="relative">
+                          <div className="w-8 h-8 rounded-full bg-[#E14B89]/20 flex items-center justify-center text-[11px] font-semibold text-[#E14B89] overflow-hidden flex-shrink-0">
+                            {selectedConv.isGroup
+                              ? <Users size={13} />
+                              : otherUser?.avatar
+                                ? <img src={otherUser.avatar} alt="" className="w-full h-full object-cover" />
+                                : getInitials(convName)
+                            }
+                          </div>
+                          {online && (
+                            <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-400 rounded-full border-2 border-[#111118]" />
+                          )}
+                        </div>
+                        <div>
+                          <p className="text-white text-xs font-medium">{convName}</p>
+                          <p className="text-[11px]">
+                            {online
+                              ? <span className="text-green-400">● En ligne</span>
+                              : selectedConv.isGroup
+                                ? <span className="text-slate-500">{selectedConv.participants.length} participants{selectedConv.project ? ` · ${selectedConv.project.name}` : ''}</span>
+                                : <span className="text-slate-500">Hors ligne</span>
+                            }
+                          </p>
+                        </div>
+                      </div>
+                    )
+                  })()}
 
                   {/* Messages */}
                   <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2.5">
