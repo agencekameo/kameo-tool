@@ -223,7 +223,23 @@ export default function ClientsPage() {
       </div>
 
       {loading ? (
-        <div className="text-slate-500 text-sm">Chargement...</div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 animate-pulse">
+          {[1,2,3,4,5,6].map(i => (
+            <div key={i} className="bg-[#111118] border border-slate-800 rounded-2xl p-5">
+              <div className="flex items-start gap-3 mb-4">
+                <div className="w-10 h-10 rounded-xl bg-slate-800 flex-shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-4 bg-slate-800 rounded-lg w-3/4" />
+                  <div className="h-3 bg-slate-800 rounded-lg w-1/2" />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <div className="h-3 bg-slate-800 rounded-lg w-full" />
+                <div className="h-3 bg-slate-800 rounded-lg w-2/3" />
+              </div>
+            </div>
+          ))}
+        </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {filtered.map(client => (

@@ -174,7 +174,29 @@ export default function ProjectsPage() {
         </div>
       </div>
 
-      {loading ? <div className="text-slate-500 text-sm">Chargement...</div> : (
+      {loading ? (
+        <div className="space-y-3 animate-pulse">
+          {[1, 2, 3, 4, 5].map(i => (
+            <div key={i} className="flex items-center gap-6 bg-[#111118] border border-slate-800 rounded-2xl p-5">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="h-4 bg-slate-800 rounded-full w-40" />
+                  <div className="h-5 bg-slate-800 rounded-full w-20" />
+                </div>
+                <div className="h-3 bg-slate-800 rounded-full w-28" />
+              </div>
+              <div className="flex items-center gap-6 flex-shrink-0">
+                <div className="w-24">
+                  <div className="h-1.5 bg-slate-800 rounded-full" />
+                </div>
+                <div className="h-3 bg-slate-800 rounded-full w-20" />
+                <div className="h-3 bg-slate-800 rounded-full w-16" />
+                <div className="h-6 bg-slate-800 rounded-full w-24" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
         <div className="space-y-3">
           {filtered.map(project => {
             const progress = taskProgress(project.tasks)

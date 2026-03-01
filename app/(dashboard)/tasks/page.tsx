@@ -189,7 +189,21 @@ export default function TasksPage() {
       </div>
 
       {loading ? (
-        <div className="text-slate-500 text-sm">Chargement...</div>
+        <div className="space-y-2 animate-pulse">
+          {[1, 2, 3, 4, 5, 6].map(i => (
+            <div key={i} className="bg-[#111118] border border-slate-800 rounded-2xl p-4 flex items-center gap-3">
+              <div className="w-4 h-4 bg-slate-800 rounded flex-shrink-0" />
+              <div className="w-4 h-4 bg-slate-800 rounded-full flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="h-3.5 bg-slate-800 rounded-full w-48 mb-1.5" />
+                <div className="h-2.5 bg-slate-800 rounded-full w-32" />
+              </div>
+              <div className="h-5 bg-slate-800 rounded-full w-20 flex-shrink-0" />
+              <div className="h-3 bg-slate-800 rounded-full w-16 flex-shrink-0" />
+              <div className="h-3 bg-slate-800 rounded-full w-20 flex-shrink-0" />
+            </div>
+          ))}
+        </div>
       ) : (
         <div className="space-y-2">
           {/* Quick add row */}

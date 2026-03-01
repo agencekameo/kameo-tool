@@ -672,8 +672,35 @@ export default function ClientDetailPage() {
 
   if (loading) {
     return (
-      <div className="p-8">
-        <div className="text-slate-500 text-sm">Chargement...</div>
+      <div className="p-8 max-w-5xl animate-pulse">
+        <div className="flex items-center justify-between mb-8">
+          <div className="h-4 w-16 bg-slate-800 rounded-lg" />
+          <div className="flex gap-3">
+            <div className="h-10 w-36 bg-slate-800 rounded-xl" />
+            <div className="h-10 w-36 bg-slate-800 rounded-xl" />
+          </div>
+        </div>
+        <div className="bg-[#111118] border border-slate-800 rounded-2xl p-6 mb-6">
+          <div className="flex items-start gap-5">
+            <div className="w-14 h-14 rounded-2xl bg-slate-800 flex-shrink-0" />
+            <div className="flex-1 space-y-3">
+              <div className="h-6 w-48 bg-slate-800 rounded-lg" />
+              <div className="h-4 w-32 bg-slate-800 rounded-lg" />
+              <div className="flex gap-4 mt-4">
+                <div className="h-4 w-40 bg-slate-800 rounded-lg" />
+                <div className="h-4 w-28 bg-slate-800 rounded-lg" />
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="space-y-3">
+          {[1, 2].map(i => (
+            <div key={i} className="bg-[#111118] border border-slate-800 rounded-2xl p-5">
+              <div className="h-5 w-48 bg-slate-800 rounded-lg mb-2" />
+              <div className="h-3 w-32 bg-slate-800 rounded-lg" />
+            </div>
+          ))}
+        </div>
       </div>
     )
   }
