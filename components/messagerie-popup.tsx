@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import {
   MessageSquare, X, Plus, Send, Users, Paperclip, ChevronLeft,
+  MoreHorizontal, Trash2, Archive,
 } from 'lucide-react'
 import { useSession } from 'next-auth/react'
 import { cn } from '@/lib/utils'
@@ -96,6 +97,7 @@ export function MessageriePopup() {
   const [filePreview, setFilePreview] = useState<{ url: string; type: string; name: string } | null>(null)
   const [loadingConvs, setLoadingConvs] = useState(false)
   const [loadingMessages, setLoadingMessages] = useState(false)
+  const [menuConvId, setMenuConvId] = useState<string | null>(null)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -233,7 +235,27 @@ export function MessageriePopup() {
     } catch { /* silent */ }
   }
 
+  async function handleArchiveConv(convId: string) {
+    setMenuConvId(null)
+    await fetch(`/api/conversations/${convId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ archive: true }),
+    })
+    setConversations(prev => prev.filter(c => c.id !== convId))
+    if (selectedConvId === convId) setSelectedConvId(null)
+  }
+
+  async function handleDeleteConv(convId: string) {
+    setMenuConvId(null)
+    if (!confirm('Supprimer cette conversation ? Cette action est irréversible.')) return
+    await fetch(`/api/conversations/${convId}`, { method: 'DELETE' })
+    setConversations(prev => prev.filter(c => c.id !== convId))
+    if (selectedConvId === convId) setSelectedConvId(null)
+  }
+
   function selectConversation(convId: string) {
+    setMenuConvId(null)
     setSelectedConvId(convId)
   }
 
@@ -270,7 +292,7 @@ export function MessageriePopup() {
 
       {/* Popup panel */}
       {open && (
-        <div className={cn(
+        <div onClick={() => menuConvId && setMenuConvId(null)} className={cn(
           'fixed bottom-24 right-6 z-50',
           'w-[700px] h-[520px] max-w-[calc(100vw-1.5rem)] max-h-[calc(100vh-7rem)]',
           'bg-[#111118] border border-slate-800 rounded-2xl shadow-2xl',
@@ -341,58 +363,96 @@ export function MessageriePopup() {
                       (!myMember?.lastReadAt || new Date(lastMsg.createdAt) > new Date(myMember.lastReadAt))
                     const otherUser = conv.isGroup ? null : getOtherParticipant(conv, currentUserId)
                     const online = otherUser ? isOnline(otherUser.lastSeen) : false
+                    const menuOpen = menuConvId === conv.id
                     return (
-                      <button
+                      <div
                         key={conv.id}
-                        onClick={() => selectConversation(conv.id)}
                         className={cn(
-                          'w-full text-left px-3 py-2.5 border-b border-slate-800/40 hover:bg-slate-800/30 transition-colors flex items-start gap-2.5',
+                          'relative group border-b border-slate-800/40',
                           isSelected && 'bg-[#E14B89]/10 border-l-2 border-l-[#E14B89]'
                         )}
                       >
-                        {/* Avatar */}
-                        <div className="relative flex-shrink-0 mt-0.5">
-                          <div className={cn(
-                            'w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-semibold overflow-hidden',
-                            isSelected ? 'bg-[#E14B89]/20 text-[#E14B89]' : 'bg-slate-800 text-slate-400'
-                          )}>
-                            {conv.isGroup
-                              ? <Users size={13} />
-                              : otherUser?.avatar
-                                ? <img src={otherUser.avatar} alt="" className="w-full h-full object-cover" />
-                                : getInitials(name)
-                            }
-                          </div>
-                          {online && (
-                            <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-400 rounded-full border-2 border-[#111118]" />
-                          )}
-                        </div>
-
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-1">
-                            <p className={cn(
-                              'text-xs font-medium truncate',
-                              isSelected ? 'text-white' : 'text-slate-300',
-                              hasUnread && 'font-semibold text-white'
+                        <button
+                          onClick={() => selectConversation(conv.id)}
+                          className="w-full text-left px-3 py-2.5 hover:bg-slate-800/30 transition-colors flex items-start gap-2.5"
+                        >
+                          {/* Avatar */}
+                          <div className="relative flex-shrink-0 mt-0.5">
+                            <div className={cn(
+                              'w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-semibold overflow-hidden',
+                              isSelected ? 'bg-[#E14B89]/20 text-[#E14B89]' : 'bg-slate-800 text-slate-400'
                             )}>
-                              {name}
-                            </p>
-                            {lastMsg && (
-                              <span className="text-slate-600 text-[10px] flex-shrink-0">{formatTime(lastMsg.createdAt)}</span>
+                              {conv.isGroup
+                                ? <Users size={13} />
+                                : otherUser?.avatar
+                                  ? <img src={otherUser.avatar} alt="" className="w-full h-full object-cover" />
+                                  : getInitials(name)
+                              }
+                            </div>
+                            {online && (
+                              <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-400 rounded-full border-2 border-[#111118]" />
                             )}
                           </div>
-                          {lastMsg ? (
-                            <p className={cn('text-[11px] truncate mt-0.5', hasUnread ? 'text-slate-300 font-medium' : 'text-slate-600')}>
-                              {lastMsg.content ?? (lastMsg.fileType?.startsWith('image/') ? '📷 Photo' : '📎 Fichier')}
-                            </p>
-                          ) : online ? (
-                            <p className="text-[11px] text-green-400 mt-0.5">En ligne</p>
-                          ) : null}
-                        </div>
-                        {hasUnread && (
-                          <span className="w-2 h-2 rounded-full bg-[#E14B89] flex-shrink-0 mt-2.5" />
+
+                          <div className="flex-1 min-w-0 pr-5">
+                            <div className="flex items-center justify-between gap-1">
+                              <p className={cn(
+                                'text-xs font-medium truncate',
+                                isSelected ? 'text-white' : 'text-slate-300',
+                                hasUnread && 'font-semibold text-white'
+                              )}>
+                                {name}
+                              </p>
+                              {lastMsg && (
+                                <span className="text-slate-600 text-[10px] flex-shrink-0">{formatTime(lastMsg.createdAt)}</span>
+                              )}
+                            </div>
+                            {lastMsg ? (
+                              <p className={cn('text-[11px] truncate mt-0.5', hasUnread ? 'text-slate-300 font-medium' : 'text-slate-600')}>
+                                {lastMsg.content ?? (lastMsg.fileType?.startsWith('image/') ? '📷 Photo' : '📎 Fichier')}
+                              </p>
+                            ) : online ? (
+                              <p className="text-[11px] text-green-400 mt-0.5">En ligne</p>
+                            ) : null}
+                          </div>
+                          {hasUnread && !menuOpen && (
+                            <span className="w-2 h-2 rounded-full bg-[#E14B89] flex-shrink-0 mt-2.5 absolute right-3 top-3.5" />
+                          )}
+                        </button>
+
+                        {/* ··· menu button — visible on hover */}
+                        <button
+                          onClick={e => { e.stopPropagation(); setMenuConvId(menuOpen ? null : conv.id) }}
+                          className={cn(
+                            'absolute right-2 top-2.5 p-1 rounded-md transition-all',
+                            'text-slate-600 hover:text-slate-300 hover:bg-slate-700/60',
+                            menuOpen ? 'opacity-100 bg-slate-700/60' : 'opacity-0 group-hover:opacity-100'
+                          )}
+                        >
+                          <MoreHorizontal size={13} />
+                        </button>
+
+                        {/* Dropdown menu */}
+                        {menuOpen && (
+                          <div className="absolute right-1 top-8 z-50 bg-[#1a1a24] border border-slate-700 rounded-xl shadow-xl overflow-hidden w-40"
+                            onMouseLeave={() => setMenuConvId(null)}>
+                            <button
+                              onClick={() => handleArchiveConv(conv.id)}
+                              className="w-full flex items-center gap-2.5 px-3 py-2.5 text-slate-300 hover:text-white hover:bg-slate-700/50 text-xs transition-colors"
+                            >
+                              <Archive size={13} className="text-amber-400" />
+                              Archiver
+                            </button>
+                            <button
+                              onClick={() => handleDeleteConv(conv.id)}
+                              className="w-full flex items-center gap-2.5 px-3 py-2.5 text-slate-300 hover:text-red-400 hover:bg-red-500/10 text-xs transition-colors"
+                            >
+                              <Trash2 size={13} className="text-red-400" />
+                              Supprimer
+                            </button>
+                          </div>
                         )}
-                      </button>
+                      </div>
                     )
                   })}
                 </div>

@@ -13,7 +13,9 @@ export async function GET() {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const conversations = await prisma.conversation.findMany({
     where: {
-      participants: { some: { userId: session.user.id } },
+      participants: {
+        some: { userId: session.user.id, archivedAt: null },
+      },
     },
     include: {
       participants: PARTICIPANT_SELECT,
