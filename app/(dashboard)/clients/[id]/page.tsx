@@ -842,14 +842,15 @@ export default function ClientDetailPage() {
             {client.projects.map(project => {
               const progress = taskProgress(project.tasks)
               return (
-                <div
+                <Link
                   key={project.id}
-                  className="bg-[#111118] border border-slate-800 rounded-2xl p-5 hover:border-slate-700 transition-colors"
+                  href={`/projects/${project.id}`}
+                  className="block bg-[#111118] border border-slate-800 rounded-2xl p-5 hover:border-slate-700 transition-colors"
                 >
                   <div className="flex items-start justify-between gap-4 flex-wrap">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2.5 flex-wrap">
-                        <h3 className="text-white font-medium truncate">{project.name}</h3>
+                        <h3 className="text-white font-medium truncate group-hover:text-[#E14B89] transition-colors">{project.name}</h3>
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PROJECT_TYPE_COLORS[project.type] || 'bg-slate-800 text-slate-400'}`}>
                           {PROJECT_TYPE_LABELS[project.type] || project.type}
                         </span>
@@ -892,7 +893,7 @@ export default function ClientDetailPage() {
                       </div>
                     </div>
                   )}
-                </div>
+                </Link>
               )
             })}
           </div>
