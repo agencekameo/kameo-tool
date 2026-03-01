@@ -119,6 +119,14 @@ enum BackupStatus {
   EN_COURS
 }
 
+enum ProjectDocCategory {
+  CAHIER_DES_CHARGES
+  INFO_PROJET
+  CHARTE_GRAPHIQUE
+  DOCUMENT_LEGAL
+  AUTRE
+}
+
 enum ExpenseStatus {
   EN_ATTENTE
   VALIDE
@@ -143,6 +151,7 @@ model User {
   audits                  Audit[]
   prospects               Prospect[]
   invoicesUploaded        ProjectInvoice[]     @relation("InvoiceUploader")
+  projectDocuments        ProjectDocument[]    @relation("DocUploader")
   logs                    Log[]
   absences                Absence[]
   expenseReports          ExpenseReport[]
@@ -195,6 +204,8 @@ model Project {
   deadline    DateTime?
   startDate   DateTime?
   notes           String?
+  figmaUrl        String?
+  contentUrl      String?
   reviewReceived  Boolean       @default(false)
   reviewExcluded  Boolean       @default(false)
   createdById String
@@ -207,6 +218,7 @@ model Project {
   audits       Audit[]
   assignees    User[]           @relation("ProjectAssignees")
   invoices     ProjectInvoice[]
+  documents    ProjectDocument[]
   conversation       Conversation?
   cahiersDesCharges  CahierDesCharges[]
 }
@@ -325,6 +337,19 @@ model ProjectInvoice {
 
   project  Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   uploader User    @relation("InvoiceUploader", fields: [uploadedBy], references: [id])
+}
+
+model ProjectDocument {
+  id           String             @id @default(cuid())
+  projectId    String
+  name         String
+  url          String
+  category     ProjectDocCategory
+  uploadedById String
+  createdAt    DateTime           @default(now())
+
+  project    Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  uploadedBy User    @relation("DocUploader", fields: [uploadedById], references: [id])
 }
 
 model ArticleTemplate {

@@ -14,6 +14,10 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
       tasks: { include: { assignee: true }, orderBy: { createdAt: 'desc' } },
       createdBy: true,
       assignees: true,
+      documents: {
+        include: { uploadedBy: { select: { id: true, name: true } } },
+        orderBy: { createdAt: 'desc' },
+      },
     },
   })
   if (!project) return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -25,12 +29,24 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { id } = await params
   const body = await req.json()
+  const { name, status, type, price, deadline, notes, services, figmaUrl, contentUrl, startDate } = body
+  const data: Record<string, unknown> = {}
+  if (name !== undefined) data.name = name
+  if (status !== undefined) data.status = status
+  if (type !== undefined) data.type = type
+  if (price !== undefined) data.price = price !== null && price !== '' ? Number(price) : null
+  if (deadline !== undefined) data.deadline = deadline ? new Date(deadline) : null
+  if (startDate !== undefined) data.startDate = startDate ? new Date(startDate) : null
+  if (notes !== undefined) data.notes = notes || null
+  if (services !== undefined) data.services = services
+  if (figmaUrl !== undefined) data.figmaUrl = figmaUrl || null
+  if (contentUrl !== undefined) data.contentUrl = contentUrl || null
   const project = await prisma.project.update({
     where: { id },
-    data: body,
+    data,
     include: { client: true, tasks: true },
   })
-  const changes = Object.keys(body).join(', ')
+  const changes = Object.keys(data).join(', ')
   await createLog(session.user.id, 'MODIFIÉ', 'Projet', project.id, project.name, changes)
   return NextResponse.json(project)
 }
