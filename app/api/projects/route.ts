@@ -16,29 +16,57 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const body = await req.json()
 
-  const project = await prisma.project.create({
-    data: { ...body, createdById: session.user.id },
-    include: { client: true, tasks: true },
-  })
-
-  // Auto-create a group conversation for this project
   try {
-    await prisma.conversation.create({
-      data: {
-        name: project.name,
-        isGroup: true,
-        projectId: project.id,
-        participants: {
-          create: [{ userId: session.user.id }],
-        },
-      },
-    })
-  } catch {
-    // Non-blocking: conversation creation failure should not break project creation
-  }
+    const body = await req.json()
 
-  await createLog(session.user.id, 'CRÉÉ', 'Projet', project.id, project.name)
-  return NextResponse.json(project)
+    // Destructure only known Project fields to avoid Prisma "unknown field" errors
+    const { name, clientId, type, status, price, deadline, notes, services, startDate } = body
+
+    if (!name || !clientId || !type) {
+      return NextResponse.json({ error: 'Nom, client et type sont requis' }, { status: 400 })
+    }
+
+    const project = await prisma.project.create({
+      data: {
+        name,
+        clientId,
+        type,
+        status: status || 'BRIEF',
+        price: price !== undefined && price !== null && price !== '' ? Number(price) : null,
+        deadline: deadline ? new Date(deadline) : null,
+        startDate: startDate ? new Date(startDate) : null,
+        notes: notes || null,
+        services: Array.isArray(services) ? services : [],
+        createdById: session.user.id,
+      },
+      include: { client: true, tasks: true },
+    })
+
+    // Auto-create a group conversation for this project (non-blocking)
+    try {
+      await prisma.conversation.create({
+        data: {
+          name: project.name,
+          isGroup: true,
+          projectId: project.id,
+          participants: { create: [{ userId: session.user.id }] },
+        },
+      })
+    } catch {
+      // Non-blocking
+    }
+
+    try {
+      await createLog(session.user.id, 'CRÉÉ', 'Projet', project.id, project.name)
+    } catch {
+      // Non-blocking
+    }
+
+    return NextResponse.json(project)
+  } catch (err) {
+    console.error('Project creation error:', err)
+    const message = err instanceof Error ? err.message : 'Erreur interne'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
 }

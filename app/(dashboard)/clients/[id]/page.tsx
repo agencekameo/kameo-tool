@@ -373,7 +373,7 @@ function QuoteModal({ client, onClose, onSuccess }: QuoteModalProps) {
 
 // ─── Project Modal ─────────────────────────────────────────────────────────────
 
-const PROJECT_TYPES = ['WORDPRESS', 'WEBFLOW', 'SHOPIFY', 'VITRINE', 'ECOMMERCE', 'APPLICATION', 'AUTRE']
+const PROJECT_TYPES = ['WORDPRESS', 'FRAMER', 'CUSTOM', 'ECOMMERCE']
 const PROJECT_STATUSES = ['BRIEF', 'REDACTION', 'MAQUETTE', 'DEVELOPPEMENT', 'REVIEW', 'LIVRAISON', 'MAINTENANCE']
 const SERVICES = ['SEO', 'Google Ads', 'Meta Ads', 'Réseaux sociaux', 'Identité visuelle', 'Google Business', 'Rédaction', 'Maintenance']
 
