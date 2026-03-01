@@ -66,6 +66,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(project)
   } catch (err) {
     console.error('Project creation error:', err)
+    // P2003 = FK constraint → session user ID not in User table (DB was wiped)
+    if (err instanceof Error && 'code' in err && (err as { code: string }).code === 'P2003') {
+      return NextResponse.json(
+        { error: 'Compte introuvable — allez sur kameo.vercel.app/setup pour recréer votre compte, puis reconnectez-vous.' },
+        { status: 401 }
+      )
+    }
     const message = err instanceof Error ? err.message : 'Erreur interne'
     return NextResponse.json({ error: message }, { status: 500 })
   }

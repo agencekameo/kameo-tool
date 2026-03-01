@@ -111,11 +111,11 @@ export default function ProfilePage() {
           // ⚠️ Do NOT call update({}) here — it triggers the session refresh,
           //    which would reset form.avatar to empty (avatar is not in JWT).
         } else {
-          let errMsg = "Erreur lors de l'upload"
+          let errMsg = `Erreur ${res.status} lors de l'upload`
           try {
             const errData = await res.json()
             if (errData?.error) errMsg = errData.error
-          } catch { /* ignore */ }
+          } catch { /* response was not JSON (likely a 500 HTML page) */ }
           setMsg(errMsg)
           setForm(prev => ({ ...prev, avatar: '' }))
         }

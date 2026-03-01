@@ -34,6 +34,8 @@ export const authConfig: NextAuthConfig = {
 
       // Always allow NextAuth internal routes
       if (pathname.startsWith('/api/auth')) return true
+      // Always allow setup route (first-time DB initialization)
+      if (pathname === '/setup' || pathname.startsWith('/api/setup')) return true
       // Always allow API routes for logged-in users
       if (pathname.startsWith('/api/')) return isLoggedIn
       // Always allow public assets

@@ -98,6 +98,7 @@ export function MessageriePopup() {
   const [loadingConvs, setLoadingConvs] = useState(false)
   const [loadingMessages, setLoadingMessages] = useState(false)
   const [menuConvId, setMenuConvId] = useState<string | null>(null)
+  const [convStep, setConvStep] = useState(1)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -204,7 +205,17 @@ export function MessageriePopup() {
     finally { setSending(false) }
   }
 
+  function closeNewConvModal() {
+    setShowNewConvModal(false)
+    setSelectedParticipants([])
+    setNewConvName('')
+    setConvStep(1)
+  }
+
   async function openNewConvModal() {
+    setSelectedParticipants([])
+    setNewConvName('')
+    setConvStep(1)
     setShowNewConvModal(true)
     try {
       const res = await fetch('/api/users')
@@ -213,8 +224,7 @@ export function MessageriePopup() {
     } catch { /* silent */ }
   }
 
-  async function handleCreateConversation(e: React.FormEvent) {
-    e.preventDefault()
+  async function createConversation() {
     if (selectedParticipants.length === 0) return
     try {
       const res = await fetch('/api/conversations', {
@@ -229,10 +239,13 @@ export function MessageriePopup() {
       const conv = await res.json()
       setConversations(prev => [conv, ...prev])
       setSelectedConvId(conv.id)
-      setShowNewConvModal(false)
-      setSelectedParticipants([])
-      setNewConvName('')
+      closeNewConvModal()
     } catch { /* silent */ }
+  }
+
+  async function handleCreateConversation(e: React.FormEvent) {
+    e.preventDefault()
+    await createConversation()
   }
 
   async function handleArchiveConv(convId: string) {
@@ -637,79 +650,145 @@ export function MessageriePopup() {
       {showNewConvModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
           <div className="bg-[#111118] border border-slate-800 rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+            {/* Modal header */}
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-white font-semibold text-base">Nouvelle conversation</h2>
-              <button
-                onClick={() => { setShowNewConvModal(false); setSelectedParticipants([]); setNewConvName('') }}
-                className="text-slate-500 hover:text-white transition-colors"
-              >
+              <div className="flex items-center gap-2">
+                {convStep === 2 && (
+                  <button
+                    onClick={() => setConvStep(1)}
+                    className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800/50 transition-colors"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                )}
+                <h2 className="text-white font-semibold text-base">
+                  {convStep === 1 ? 'Nouvelle conversation' : 'Nom du groupe'}
+                </h2>
+              </div>
+              <button onClick={closeNewConvModal} className="text-slate-500 hover:text-white transition-colors">
                 <X size={18} />
               </button>
             </div>
-            <form onSubmit={handleCreateConversation} className="space-y-3">
-              <div>
-                <label className="block text-slate-400 text-xs mb-1.5">Nom du groupe (optionnel)</label>
-                <input
-                  type="text"
-                  value={newConvName}
-                  onChange={e => setNewConvName(e.target.value)}
-                  placeholder="Nom de la conversation..."
-                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-white text-sm placeholder-slate-600 focus:outline-none focus:border-[#E14B89] transition-colors"
-                />
-              </div>
-              <div>
-                <label className="block text-slate-400 text-xs mb-1.5">
-                  Participants * ({selectedParticipants.length} sélectionné{selectedParticipants.length > 1 ? 's' : ''})
-                </label>
-                <div className="bg-[#1a1a24] border border-slate-700 rounded-xl overflow-hidden max-h-48 overflow-y-auto">
-                  {allUsers.length === 0 ? (
-                    <div className="p-3 text-slate-500 text-sm text-center">Chargement...</div>
+
+            {convStep === 1 ? (
+              /* ── Step 1 : participant selection ── */
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-slate-400 text-xs mb-1.5">
+                    Avec qui ?{' '}
+                    {selectedParticipants.length > 0 && (
+                      <span className="text-[#E14B89] font-medium">
+                        {selectedParticipants.length} sélectionné{selectedParticipants.length > 1 ? 's' : ''}
+                      </span>
+                    )}
+                  </label>
+                  <div className="bg-[#1a1a24] border border-slate-700 rounded-xl overflow-hidden max-h-56 overflow-y-auto">
+                    {allUsers.length === 0 ? (
+                      <div className="p-3 text-slate-500 text-sm text-center">Chargement...</div>
+                    ) : (
+                      allUsers.map(user => {
+                        const selected = selectedParticipants.includes(user.id)
+                        return (
+                          <button
+                            key={user.id}
+                            type="button"
+                            onClick={() => setSelectedParticipants(prev =>
+                              prev.includes(user.id) ? prev.filter(id => id !== user.id) : [...prev, user.id]
+                            )}
+                            className={cn(
+                              'w-full flex items-center gap-3 px-3 py-2.5 text-left border-b border-slate-800/50 last:border-0 hover:bg-slate-800/30 transition-colors',
+                              selected && 'bg-[#E14B89]/10'
+                            )}
+                          >
+                            <div className={cn(
+                              'w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0',
+                              selected ? 'bg-[#E14B89] text-white' : 'bg-slate-800 text-slate-400'
+                            )}>
+                              {getInitials(user.name)}
+                            </div>
+                            <span className={cn('text-sm', selected ? 'text-white' : 'text-slate-300')}>{user.name}</span>
+                            {selected && <span className="ml-auto text-[#E14B89] text-xs">✓</span>}
+                          </button>
+                        )
+                      })
+                    )}
+                  </div>
+                </div>
+                <div className="flex gap-3 pt-1">
+                  <button
+                    type="button"
+                    onClick={closeNewConvModal}
+                    className="flex-1 border border-slate-700 text-slate-400 hover:text-white py-2 rounded-xl text-sm transition-colors"
+                  >
+                    Annuler
+                  </button>
+                  {selectedParticipants.length === 1 ? (
+                    /* 1 participant → create private conversation directly */
+                    <button
+                      type="button"
+                      onClick={createConversation}
+                      className="flex-1 bg-[#E14B89] hover:opacity-90 text-white py-2 rounded-xl text-sm font-medium transition-colors"
+                    >
+                      Démarrer
+                    </button>
                   ) : (
-                    allUsers.map(user => {
-                      const selected = selectedParticipants.includes(user.id)
-                      return (
-                        <button
-                          key={user.id}
-                          type="button"
-                          onClick={() => setSelectedParticipants(prev =>
-                            prev.includes(user.id) ? prev.filter(id => id !== user.id) : [...prev, user.id]
-                          )}
-                          className={cn(
-                            'w-full flex items-center gap-3 px-3 py-2.5 text-left border-b border-slate-800/50 last:border-0 hover:bg-slate-800/30 transition-colors',
-                            selected && 'bg-[#E14B89]/10'
-                          )}
-                        >
-                          <div className={cn(
-                            'w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0',
-                            selected ? 'bg-[#E14B89] text-white' : 'bg-slate-800 text-slate-400'
-                          )}>
-                            {getInitials(user.name)}
-                          </div>
-                          <span className={cn('text-sm', selected ? 'text-white' : 'text-slate-300')}>{user.name}</span>
-                          {selected && <span className="ml-auto text-[#E14B89] text-xs">✓</span>}
-                        </button>
-                      )
-                    })
+                    /* 2+ participants → go to step 2 for group name */
+                    <button
+                      type="button"
+                      onClick={() => setConvStep(2)}
+                      disabled={selectedParticipants.length === 0}
+                      className="flex-1 bg-[#E14B89] hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed text-white py-2 rounded-xl text-sm font-medium transition-colors"
+                    >
+                      Suivant →
+                    </button>
                   )}
                 </div>
               </div>
-              <div className="flex gap-3 pt-1">
-                <button
-                  type="button"
-                  onClick={() => { setShowNewConvModal(false); setSelectedParticipants([]); setNewConvName('') }}
-                  className="flex-1 border border-slate-700 text-slate-400 hover:text-white py-2 rounded-xl text-sm transition-colors"
-                >
-                  Annuler
-                </button>
-                <button
-                  type="submit"
-                  disabled={selectedParticipants.length === 0}
-                  className="flex-1 bg-[#E14B89] hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed text-white py-2 rounded-xl text-sm font-medium transition-colors"
-                >
-                  Créer
-                </button>
-              </div>
-            </form>
+            ) : (
+              /* ── Step 2 : group name (only when 2+ participants) ── */
+              <form onSubmit={handleCreateConversation} className="space-y-3">
+                {/* Participants chips */}
+                <div className="flex flex-wrap gap-1.5">
+                  {selectedParticipants.map(id => {
+                    const u = allUsers.find(u => u.id === id)
+                    return u ? (
+                      <span key={id} className="flex items-center gap-1.5 px-2.5 py-1 bg-[#E14B89]/10 text-[#E14B89] text-xs rounded-full border border-[#E14B89]/20">
+                        <span className="w-4 h-4 rounded-full bg-[#E14B89]/30 flex items-center justify-center text-[9px] font-bold">
+                          {getInitials(u.name)}
+                        </span>
+                        {u.name}
+                      </span>
+                    ) : null
+                  })}
+                </div>
+                <div>
+                  <label className="block text-slate-400 text-xs mb-1.5">Nom du groupe</label>
+                  <input
+                    type="text"
+                    value={newConvName}
+                    onChange={e => setNewConvName(e.target.value)}
+                    placeholder="Ex : Équipe projet, Design…"
+                    autoFocus
+                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-white text-sm placeholder-slate-600 focus:outline-none focus:border-[#E14B89] transition-colors"
+                  />
+                </div>
+                <div className="flex gap-3 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setConvStep(1)}
+                    className="flex-1 border border-slate-700 text-slate-400 hover:text-white py-2 rounded-xl text-sm transition-colors"
+                  >
+                    Retour
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 bg-[#E14B89] hover:opacity-90 text-white py-2 rounded-xl text-sm font-medium transition-colors"
+                  >
+                    Créer le groupe
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}

@@ -107,10 +107,16 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'Aucune donnée à mettre à jour' }, { status: 400 })
   }
 
-  const user = await prisma.user.update({
-    where: { id: session.user.id },
-    data,
-    select: { id: true, name: true, email: true, role: true, avatar: true },
-  })
-  return NextResponse.json(user)
+  try {
+    const user = await prisma.user.update({
+      where: { id: session.user.id },
+      data,
+      select: { id: true, name: true, email: true, role: true, avatar: true },
+    })
+    return NextResponse.json(user)
+  } catch (err) {
+    console.error('[profile PATCH]', err)
+    const message = err instanceof Error ? err.message : 'Erreur interne'
+    return NextResponse.json({ error: `Erreur lors de la mise à jour : ${message}` }, { status: 500 })
+  }
 }
