@@ -329,7 +329,7 @@ export default function ProjectsPage() {
                 </select>
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <div>
+                <div className="col-span-2">
                   <label className="block text-slate-400 text-xs mb-1.5">Type</label>
                   <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}
                     className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors">
@@ -337,13 +337,6 @@ export default function ProjectsPage() {
                     <option value="FRAMER">Framer</option>
                     <option value="CUSTOM">Sur mesure</option>
                     <option value="ECOMMERCE">E-commerce</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-slate-400 text-xs mb-1.5">Statut</label>
-                  <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}
-                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors">
-                    {STATUS_ORDER.map(s => <option key={s} value={s}>{PROJECT_STATUS_LABELS[s]}</option>)}
                   </select>
                 </div>
                 <div>
