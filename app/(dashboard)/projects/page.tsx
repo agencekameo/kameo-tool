@@ -369,10 +369,10 @@ export default function ProjectsPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-slate-400 text-xs mb-1.5">Prestation *</label>
+                <label className="block text-slate-400 text-xs mb-1.5">Type de mission *</label>
                 <select required value={form.services[0] || ''} onChange={e => setForm({ ...form, services: e.target.value ? [e.target.value] : [] })}
                   className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors">
-                  <option value="">Sélectionner une prestation</option>
+                  <option value="">Sélectionner un type de mission</option>
                   {PRESTATIONS.map(p => <option key={p} value={p}>{p}</option>)}
                 </select>
               </div>

@@ -32,6 +32,7 @@ import {
   Star,
   MapPin,
   ClipboardList,
+  Calendar,
 } from 'lucide-react'
 import { cn, ROLE_LABELS } from '@/lib/utils'
 import { useState, useRef, useEffect } from 'react'
@@ -45,6 +46,7 @@ const sections = [
       { href: '/clients', label: 'Clients', icon: Users },
       { href: '/tasks', label: 'Tâches', icon: CheckSquare },
       { href: '/avis', label: 'Avis', icon: Star },
+      { href: '/agenda', label: 'Agenda', icon: Calendar },
     ],
   },
   {
