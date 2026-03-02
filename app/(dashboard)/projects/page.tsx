@@ -62,11 +62,14 @@ export default function ProjectsPage() {
       p.client.name.toLowerCase().includes(search.toLowerCase())
     if (filterStatus === 'EN_COURS') return matchSearch && IN_PROGRESS_STATUSES.includes(p.status)
     if (filterStatus === 'TERMINES') return matchSearch && DONE_STATUSES.includes(p.status)
+    if (filterStatus === 'AVEC_MAINTENANCE') return matchSearch && p.status === 'MAINTENANCE'
+    if (filterStatus === 'SANS_MAINTENANCE') return matchSearch && DONE_STATUSES.includes(p.status) && p.status !== 'MAINTENANCE'
     return matchSearch && p.status === filterStatus
   })
 
   const inProgressCount = projects.filter(p => IN_PROGRESS_STATUSES.includes(p.status)).length
   const doneCount = projects.filter(p => DONE_STATUSES.includes(p.status)).length
+  const isTerminesView = ['TERMINES', 'AVEC_MAINTENANCE', 'SANS_MAINTENANCE'].includes(filterStatus)
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
@@ -162,11 +165,11 @@ export default function ProjectsPage() {
         {/* Vue toggle */}
         <div className="flex items-center bg-[#111118] border border-slate-800 rounded-xl p-1">
           <button onClick={() => setFilterStatus('EN_COURS')}
-            className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-colors ${filterStatus === 'EN_COURS' ? 'bg-[#E14B89] text-white' : 'text-slate-400 hover:text-white'}`}>
+            className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-colors ${!isTerminesView ? 'bg-[#E14B89] text-white' : 'text-slate-400 hover:text-white'}`}>
             En cours <span className="ml-1 opacity-70">{inProgressCount}</span>
           </button>
           <button onClick={() => setFilterStatus('TERMINES')}
-            className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-colors ${filterStatus === 'TERMINES' ? 'bg-[#E14B89] text-white' : 'text-slate-400 hover:text-white'}`}>
+            className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-colors ${isTerminesView ? 'bg-[#E14B89] text-white' : 'text-slate-400 hover:text-white'}`}>
             Terminés <span className="ml-1 opacity-70">{doneCount}</span>
           </button>
         </div>
@@ -179,16 +182,35 @@ export default function ProjectsPage() {
 
         {/* Filtre par statut précis */}
         <div className="flex items-center gap-1 bg-[#111118] border border-slate-800 rounded-xl p-1 flex-wrap">
-          <button onClick={() => setFilterStatus('EN_COURS')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filterStatus === 'EN_COURS' ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-white'}`}>
-            Tous
-          </button>
-          {(filterStatus === 'TERMINES' ? DONE_STATUSES : IN_PROGRESS_STATUSES).map(s => (
-            <button key={s} onClick={() => setFilterStatus(s)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filterStatus === s ? 'bg-[#E14B89] text-white' : 'text-slate-400 hover:text-white'}`}>
-              {PROJECT_STATUS_LABELS[s]}
-            </button>
-          ))}
+          {isTerminesView ? (
+            <>
+              <button onClick={() => setFilterStatus('TERMINES')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filterStatus === 'TERMINES' ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-white'}`}>
+                Tous
+              </button>
+              <button onClick={() => setFilterStatus('AVEC_MAINTENANCE')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filterStatus === 'AVEC_MAINTENANCE' ? 'bg-[#E14B89] text-white' : 'text-slate-400 hover:text-white'}`}>
+                Avec maintenance
+              </button>
+              <button onClick={() => setFilterStatus('SANS_MAINTENANCE')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filterStatus === 'SANS_MAINTENANCE' ? 'bg-[#E14B89] text-white' : 'text-slate-400 hover:text-white'}`}>
+                Sans maintenance
+              </button>
+            </>
+          ) : (
+            <>
+              <button onClick={() => setFilterStatus('EN_COURS')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filterStatus === 'EN_COURS' ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-white'}`}>
+                Tous
+              </button>
+              {IN_PROGRESS_STATUSES.map(s => (
+                <button key={s} onClick={() => setFilterStatus(s)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filterStatus === s ? 'bg-[#E14B89] text-white' : 'text-slate-400 hover:text-white'}`}>
+                  {PROJECT_STATUS_LABELS[s]}
+                </button>
+              ))}
+            </>
+          )}
         </div>
       </div>
 
