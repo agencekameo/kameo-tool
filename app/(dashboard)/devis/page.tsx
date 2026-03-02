@@ -45,6 +45,11 @@ interface ArticleTemplate {
 interface Client {
   id: string
   name: string
+  company?: string
+  email?: string
+  address?: string
+  postalCode?: string
+  city?: string
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -151,7 +156,7 @@ function PrintView({ quote, onClose }: { quote: Quote; onClose: () => void }) {
         <div className="mb-8">
           <div className="text-[10px] uppercase tracking-widest text-gray-400 mb-2 font-bold">À l&apos;attention de</div>
           <div className="border border-gray-200 rounded-lg px-5 py-4 inline-block min-w-[220px]">
-            <div className="font-bold text-gray-900 text-base">{quote.clientName}</div>
+            <div className="font-bold text-gray-900 text-base whitespace-pre-line">{quote.clientName}</div>
             {quote.clientEmail && <div className="text-sm text-gray-600 mt-1">{quote.clientEmail}</div>}
             {quote.clientAddress && (
               <div className="text-sm text-gray-600 mt-1 whitespace-pre-line">{quote.clientAddress}</div>
@@ -316,6 +321,12 @@ function PrintView({ quote, onClose }: { quote: Quote; onClose: () => void }) {
 
 // ─── Empty quote form state ────────────────────────────────────────────────────
 
+function defaultValidUntil() {
+  const d = new Date()
+  d.setMonth(d.getMonth() + 1)
+  return d.toISOString().slice(0, 10)
+}
+
 function emptyForm() {
   return {
     clientId: '',
@@ -324,10 +335,11 @@ function emptyForm() {
     clientAddress: '',
     subject: '',
     status: 'BROUILLON' as Quote['status'],
-    validUntil: '',
+    validUntil: defaultValidUntil(),
     notes: '',
     discount: 0,
     items: [] as QuoteItem[],
+    showClientName: false,
   }
 }
 
@@ -408,6 +420,7 @@ export default function DevisPage() {
       notes: q.notes || '',
       discount: q.discount ?? 0,
       items: q.items.map(i => ({ ...i })),
+      showClientName: false,
     })
     setShowTemplatesPanel(false)
     setShowModal(true)
@@ -429,7 +442,14 @@ export default function DevisPage() {
     } else {
       setUseOtherClient(false)
       const found = clients.find(c => c.id === val)
-      setForm(f => ({ ...f, clientId: val, clientName: found?.name || '' }))
+      const addrParts = [found?.address, found?.postalCode && found?.city ? `${found.postalCode} ${found.city}` : (found?.postalCode || found?.city)].filter(Boolean).join('\n')
+      setForm(f => ({
+        ...f,
+        clientId: val,
+        clientName: found?.company || found?.name || '',
+        clientEmail: found?.email || '',
+        clientAddress: addrParts || '',
+      }))
     }
   }
 
@@ -469,14 +489,24 @@ export default function DevisPage() {
   // ── Save quote ─────────────────────────────────────────────────────────────
 
   async function handleSave() {
-    if (!form.clientName.trim()) { alert('Veuillez renseigner un nom de client.'); return }
+    if (!form.clientName.trim()) { alert('Veuillez renseigner un nom de client / entreprise.'); return }
+    if (!form.clientAddress.trim()) { alert('Veuillez renseigner l\'adresse du client.'); return }
+    if (!form.validUntil) { alert('Veuillez renseigner une date de validité.'); return }
     if (!form.subject.trim()) { alert('Veuillez renseigner un objet.'); return }
 
     setSaving(true)
     try {
+      // Build display name: company + optional contact name
+      let displayName = form.clientName
+      if (form.showClientName && form.clientId) {
+        const cl = clients.find(c => c.id === form.clientId)
+        if (cl && cl.company && cl.name !== form.clientName) {
+          displayName = `${form.clientName}\n${cl.name}`
+        }
+      }
       const payload = {
         clientId: form.clientId || undefined,
-        clientName: form.clientName,
+        clientName: displayName,
         clientEmail: form.clientEmail || undefined,
         clientAddress: form.clientAddress || undefined,
         subject: form.subject,
@@ -577,11 +607,18 @@ export default function DevisPage() {
   // ── Build preview quote object ─────────────────────────────────────────────
 
   function buildPreviewQuote(): Quote {
+    let previewName = form.clientName
+    if (form.showClientName && form.clientId) {
+      const cl = clients.find(c => c.id === form.clientId)
+      if (cl && cl.company && cl.name !== form.clientName) {
+        previewName = `${form.clientName}\n${cl.name}`
+      }
+    }
     return {
       id: editingQuote?.id || '',
       number: editingQuote?.number || 'APERÇU',
       clientId: form.clientId || undefined,
-      clientName: form.clientName,
+      clientName: previewName,
       clientEmail: form.clientEmail || undefined,
       clientAddress: form.clientAddress || undefined,
       subject: form.subject,
@@ -731,7 +768,7 @@ export default function DevisPage() {
                     >
                       <option value="">— Sélectionner un client —</option>
                       {clients.map(c => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
+                        <option key={c.id} value={c.id}>{c.company ? `${c.company} — ${c.name}` : c.name}</option>
                       ))}
                       <option value="__other__">Autre (saisie manuelle)</option>
                     </select>
@@ -739,11 +776,11 @@ export default function DevisPage() {
                   </div>
                 </div>
 
-                {/* Manual client fields */}
-                {useOtherClient && (
+                {/* Client detail fields — always visible when client selected or manual */}
+                {(form.clientId || useOtherClient) && (
                   <div className="space-y-3 p-4 bg-[#0d0d14] rounded-xl border border-slate-800">
                     <div>
-                      <label className="block text-slate-400 text-xs mb-1.5">Nom du client *</label>
+                      <label className="block text-slate-400 text-xs mb-1.5">Entreprise / Nom sur le devis *</label>
                       <input
                         value={form.clientName}
                         onChange={e => setForm(f => ({ ...f, clientName: e.target.value }))}
@@ -762,14 +799,30 @@ export default function DevisPage() {
                         />
                       </div>
                       <div>
-                        <label className="block text-slate-400 text-xs mb-1.5">Adresse</label>
-                        <input
+                        <label className="block text-slate-400 text-xs mb-1.5">Adresse *</label>
+                        <textarea
                           value={form.clientAddress}
                           onChange={e => setForm(f => ({ ...f, clientAddress: e.target.value }))}
-                          className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
+                          rows={2}
+                          placeholder="Adresse complète"
+                          className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors resize-none"
                         />
                       </div>
                     </div>
+                    {form.clientId && (() => {
+                      const cl = clients.find(c => c.id === form.clientId)
+                      return cl && cl.company ? (
+                        <label className="flex items-center gap-2 text-slate-400 text-xs cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={form.showClientName}
+                            onChange={e => setForm(f => ({ ...f, showClientName: e.target.checked }))}
+                            className="accent-[#E14B89]"
+                          />
+                          Afficher aussi le nom du contact ({cl.name}) sur le devis
+                        </label>
+                      ) : null
+                    })()}
                   </div>
                 )}
 
@@ -946,7 +999,7 @@ export default function DevisPage() {
                 {/* ── Validité + Remise ────────────────────────────────────── */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-slate-400 text-xs mb-1.5 font-medium">Valide jusqu&apos;au</label>
+                    <label className="block text-slate-400 text-xs mb-1.5 font-medium">Valide jusqu&apos;au *</label>
                     <input
                       type="date"
                       value={form.validUntil}

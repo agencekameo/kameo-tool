@@ -187,6 +187,8 @@ model Client {
   company          String?
   website          String?
   address          String?
+  postalCode       String?
+  city             String?
   notes            String?
   maintenancePlan  MaintenancePlan @default(NONE)
   maintenancePrice Float?

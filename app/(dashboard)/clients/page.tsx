@@ -37,7 +37,7 @@ export default function ClientsPage() {
   const [submitting, setSubmitting] = useState(false)
   const [createError, setCreateError] = useState('')
   const [form, setForm] = useState({
-    name: '', email: '', phone: '', company: '', website: '', notes: '',
+    name: '', email: '', phone: '', company: '', website: '', address: '', postalCode: '', city: '', notes: '',
     maintenancePlan: 'NONE', maintenancePrice: '',
   })
   const importFileRef = useRef<HTMLInputElement>(null)
@@ -85,7 +85,7 @@ export default function ClientsPage() {
       const client = await res.json()
       setClients(prev => [client, ...prev])
       setShowModal(false)
-      setForm({ name: '', email: '', phone: '', company: '', website: '', notes: '', maintenancePlan: 'NONE', maintenancePrice: '' })
+      setForm({ name: '', email: '', phone: '', company: '', website: '', address: '', postalCode: '', city: '', notes: '', maintenancePlan: 'NONE', maintenancePrice: '' })
     } finally {
       setSubmitting(false)
     }
@@ -553,6 +553,23 @@ export default function ClientsPage() {
                 <label className="block text-slate-400 text-xs mb-1.5">Site web</label>
                 <input value={form.website} onChange={e => setForm({ ...form, website: e.target.value })} placeholder="https://"
                   className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+              </div>
+              <div>
+                <label className="block text-slate-400 text-xs mb-1.5">Adresse</label>
+                <input value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} placeholder="Rue, numéro..."
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-slate-400 text-xs mb-1.5">Code postal</label>
+                  <input value={form.postalCode} onChange={e => setForm({ ...form, postalCode: e.target.value })} placeholder="75002"
+                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+                </div>
+                <div>
+                  <label className="block text-slate-400 text-xs mb-1.5">Ville</label>
+                  <input value={form.city} onChange={e => setForm({ ...form, city: e.target.value })} placeholder="Paris"
+                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+                </div>
               </div>
               <div>
                 <label className="block text-slate-400 text-xs mb-1.5">Notes</label>
