@@ -5,14 +5,13 @@ import { useParams, useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
 import {
-  ArrowLeft, Plus, Trash2, CheckCircle2, Circle, Save, Pencil, ExternalLink,
+  ArrowLeft, Plus, Trash2, CheckCircle2, Save, Pencil, ExternalLink,
   FileText, X, Globe, Figma, Upload, ChevronDown, ChevronRight,
   FileCheck, Info, Palette, Scale, FolderOpen, Link2, Maximize2,
-  LayoutDashboard, BookOpen, Users,
+  LayoutDashboard, BookOpen,
 } from 'lucide-react'
 import {
   PROJECT_STATUS_COLORS, PROJECT_STATUS_LABELS, PROJECT_TYPE_COLORS, PROJECT_TYPE_LABELS,
-  TASK_PRIORITY_COLORS, TASK_PRIORITY_LABELS, TASK_STATUS_LABELS,
   ROLE_AVATAR_COLORS, ROLE_LABELS,
   formatCurrency, formatDate,
 } from '@/lib/utils'
@@ -86,11 +85,9 @@ export default function ProjectDetailPage() {
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState<Partial<Project & { price: string; deadline: string }>>({})
 
-  const [showTaskModal, setShowTaskModal]       = useState(false)
   const [showInvoiceModal, setShowInvoiceModal] = useState(false)
   const [showDocModal, setShowDocModal]         = useState(false)
 
-  const [taskForm, setTaskForm]       = useState({ title: '', priority: 'MEDIUM', assigneeId: '', dueDate: '', description: '' })
   const [invoiceForm, setInvoiceForm] = useState({ filename: '', fileUrl: '', amount: '', notes: '' })
   const [docForm, setDocForm]         = useState({ name: '', url: '', category: 'CAHIER_DES_CHARGES' })
 
@@ -176,30 +173,6 @@ export default function ProjectDetailPage() {
     setEditingContent(false)
   }
 
-  // ── Tasks ──────────────────────────────────────────────────────────────────
-  async function handleCreateTask(e: React.FormEvent) {
-    e.preventDefault()
-    const res = await fetch('/api/tasks', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...taskForm, projectId: id, assigneeId: taskForm.assigneeId || null, dueDate: taskForm.dueDate || null }),
-    })
-    const task = await res.json()
-    setProject(prev => prev ? { ...prev, tasks: [task, ...prev.tasks] } : prev)
-    setShowTaskModal(false)
-    setTaskForm({ title: '', priority: 'MEDIUM', assigneeId: '', dueDate: '', description: '' })
-  }
-
-  async function toggleTaskStatus(task: Task) {
-    const newStatus = task.status === 'DONE' ? 'TODO' : 'DONE'
-    await fetch(`/api/tasks/${task.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: newStatus }) })
-    setProject(prev => prev ? { ...prev, tasks: prev.tasks.map(t => t.id === task.id ? { ...t, status: newStatus } : t) } : prev)
-  }
-
-  async function deleteTask(taskId: string) {
-    await fetch(`/api/tasks/${taskId}`, { method: 'DELETE' })
-    setProject(prev => prev ? { ...prev, tasks: prev.tasks.filter(t => t.id !== taskId) } : prev)
-  }
-
   // ── Assignees ──────────────────────────────────────────────────────────────
   async function handleAddAssignee(userId: string) {
     await fetch(`/api/projects/${id}/assignees`, {
@@ -281,8 +254,6 @@ export default function ProjectDetailPage() {
     </div>
   )
 
-  const doneTasks       = project.tasks.filter(t => t.status === 'DONE').length
-  const progress        = project.tasks.length ? Math.round((doneTasks / project.tasks.length) * 100) : 0
   const unassignedUsers = users.filter(u => !project.assignees.find(a => a.id === u.id))
   const getFigmaEmbedUrl = (url: string) => `https://www.figma.com/embed?embed_host=kameo&url=${encodeURIComponent(url)}`
   const canEditContent  = isAdmin || userRole === 'REDACTEUR'
@@ -329,6 +300,30 @@ export default function ProjectDetailPage() {
                 </a>
               )}
             </div>
+
+            {/* Compact project details */}
+            {!editing && (
+              <div className="flex items-center flex-wrap gap-x-4 gap-y-1 mt-2">
+                {isAdmin && project.price != null && (
+                  <span className="text-white font-semibold text-sm">{formatCurrency(project.price)}</span>
+                )}
+                {project.deadline && (
+                  <span className="text-slate-400 text-xs">Deadline : {formatDate(project.deadline)}</span>
+                )}
+                {project.startDate && (
+                  <span className="text-slate-400 text-xs">Début : {formatDate(project.startDate)}</span>
+                )}
+                {project.services.map(s => (
+                  <span key={s} className="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full">{s}</span>
+                ))}
+                {project.notes && (
+                  <span className="text-slate-500 text-xs max-w-xs truncate">{project.notes}</span>
+                )}
+              </div>
+            )}
+
+            {/* Créé par — discreet */}
+            <p className="text-slate-600 text-xs mt-1.5">Créé par {project.createdBy.name}</p>
           </div>
           <div className="flex gap-2 flex-shrink-0">
             {editing ? (
@@ -363,37 +358,6 @@ export default function ProjectDetailPage() {
               </button>
             )}
           </div>
-        </div>
-      </div>
-
-      {/* ── Pipeline ───────────────────────────────────────────────────────── */}
-      <div className="px-6 lg:px-10 py-3 border-b border-slate-800/60 bg-[#0d0d14]/40">
-        <div className="flex items-center gap-1">
-          {STATUS_ORDER.filter(s => s !== 'ARCHIVE').map((s, i) => {
-            const currentIdx = STATUS_ORDER.indexOf(project.status)
-            const sIdx       = STATUS_ORDER.indexOf(s)
-            const isActive   = s === project.status
-            const isDone     = sIdx < currentIdx
-            return (
-              <div key={s} className="flex items-center flex-1">
-                <button
-                  onClick={() => handleStatusClick(s)}
-                  className={`flex-1 text-center py-2 px-1 rounded-lg text-xs font-medium transition-all ${
-                    isActive
-                      ? 'bg-[#E14B89] text-white shadow-lg shadow-[#E14B89]/20'
-                      : isDone
-                      ? 'bg-[#E14B89]/20 text-[#E14B89] hover:bg-[#E14B89]/30'
-                      : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800'
-                  }`}
-                >
-                  {PROJECT_STATUS_LABELS[s]}
-                </button>
-                {i < STATUS_ORDER.filter(s => s !== 'ARCHIVE').length - 1 && (
-                  <div className={`h-px w-2 mx-0.5 flex-shrink-0 ${isDone ? 'bg-[#E14B89]/50' : 'bg-slate-700'}`} />
-                )}
-              </div>
-            )
-          })}
         </div>
       </div>
 
@@ -437,251 +401,132 @@ export default function ProjectDetailPage() {
             APERÇU
         ════════════════════════════════════════════════════════════════════ */}
         {activeTab === 'apercu' && (
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+          <div className="space-y-6">
 
-            {/* ── Left: Suivi des tâches ─────────────────────────────────── */}
-            <div className="xl:col-span-2">
+            {/* ── Edit form (shown when editing) ──────────────────────────── */}
+            {editing && (
               <div className="bg-[#111118] border border-slate-800 rounded-2xl p-5">
-                <div className="flex items-center justify-between mb-5">
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <h2 className="text-white font-semibold">Suivi des tâches</h2>
-                    {project.tasks.length > 0 && (
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-32 h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-[#E14B89] rounded-full transition-all duration-500"
-                            style={{ width: `${progress}%` }}
-                          />
-                        </div>
-                        <span className="text-slate-400 text-xs font-medium">
-                          {doneTasks}/{project.tasks.length} · {progress}%
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                  <button
-                    onClick={() => setShowTaskModal(true)}
-                    className="flex items-center gap-1.5 text-[#E14B89] hover:text-[#F8903C] text-sm transition-colors"
-                  >
-                    <Plus size={15} /> Ajouter
-                  </button>
-                </div>
-
-                {project.tasks.length === 0 ? (
-                  <div className="text-center py-14">
-                    <Circle size={36} className="text-slate-700 mx-auto mb-3" />
-                    <p className="text-slate-500 text-sm">Aucune tâche pour ce projet</p>
-                    <button
-                      onClick={() => setShowTaskModal(true)}
-                      className="mt-3 text-[#E14B89] text-sm hover:underline"
-                    >
-                      Créer la première tâche →
-                    </button>
-                  </div>
-                ) : (
-                  <div className="space-y-1.5">
-                    {project.tasks.map(task => (
-                      <div
-                        key={task.id}
-                        className={`flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-800/30 group transition-colors ${task.status === 'DONE' ? 'opacity-50' : ''}`}
-                      >
-                        {/* Checkbox */}
-                        <button onClick={() => toggleTaskStatus(task)} className="flex-shrink-0">
-                          {task.status === 'DONE'
-                            ? <CheckCircle2 size={18} className="text-green-400" />
-                            : <Circle size={18} className="text-slate-600 group-hover:text-[#E14B89] transition-colors" />
-                          }
-                        </button>
-
-                        {/* Title */}
-                        <div className="flex-1 min-w-0">
-                          <p className={`text-sm font-medium truncate ${task.status === 'DONE' ? 'line-through text-slate-500' : 'text-white'}`}>
-                            {task.title}
-                          </p>
-                          {task.description && (
-                            <p className="text-slate-500 text-xs mt-0.5 truncate">{task.description}</p>
-                          )}
-                        </div>
-
-                        {/* Right: priority + status + assignee + date */}
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium hidden sm:block ${TASK_PRIORITY_COLORS[task.priority]}`}>
-                            {TASK_PRIORITY_LABELS[task.priority]}
-                          </span>
-                          <span className="text-slate-600 text-xs hidden md:block">
-                            {TASK_STATUS_LABELS[task.status]}
-                          </span>
-
-                          {/* Assignee chip */}
-                          {task.assignee ? (
-                            <div className="flex items-center gap-1.5 bg-slate-800/80 border border-slate-700/50 rounded-full px-2.5 py-1">
-                              <div className="w-4 h-4 rounded-full bg-[#E14B89]/25 flex items-center justify-center text-[9px] font-bold text-[#E14B89] flex-shrink-0">
-                                {getInitials(task.assignee.name)}
-                              </div>
-                              <span className="text-slate-300 text-xs whitespace-nowrap">
-                                {task.assignee.name.split(' ')[0]}
-                              </span>
-                            </div>
-                          ) : (
-                            <div className="hidden group-hover:flex items-center gap-1.5 bg-slate-800/40 border border-dashed border-slate-700 rounded-full px-2.5 py-1">
-                              <Users size={11} className="text-slate-600" />
-                              <span className="text-slate-600 text-xs">Non assigné</span>
-                            </div>
-                          )}
-
-                          {task.dueDate && (
-                            <span className="text-slate-500 text-xs hidden lg:block">
-                              {formatDate(task.dueDate)}
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Delete */}
-                        <button
-                          onClick={() => deleteTask(task.id)}
-                          className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 transition-all flex-shrink-0 ml-1"
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* ── Right sidebar: Détails + Équipe ─────────────────────────── */}
-            <div className="space-y-4">
-
-              {/* Détails */}
-              <div className="bg-[#111118] border border-slate-800 rounded-2xl p-5">
-                <h2 className="text-white font-semibold mb-4">Détails</h2>
-                {editing ? (
-                  <div className="space-y-3">
-                    {isAdmin && (
-                      <div>
-                        <label className="block text-slate-400 text-xs mb-1">Prix (€)</label>
-                        <input
-                          type="number"
-                          value={(form.price as unknown as string) ?? ''}
-                          onChange={e => setForm({ ...form, price: e.target.value as unknown as undefined })}
-                          className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
-                        />
-                      </div>
-                    )}
+                <h2 className="text-white font-semibold mb-4">Modifier les détails</h2>
+                <div className="space-y-3 max-w-lg">
+                  {isAdmin && (
                     <div>
-                      <label className="block text-slate-400 text-xs mb-1">Deadline</label>
+                      <label className="block text-slate-400 text-xs mb-1">Prix (€)</label>
                       <input
-                        type="date"
-                        value={form.deadline as string ?? ''}
-                        onChange={e => setForm({ ...form, deadline: e.target.value })}
+                        type="number"
+                        value={(form.price as unknown as string) ?? ''}
+                        onChange={e => setForm({ ...form, price: e.target.value as unknown as undefined })}
                         className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
                       />
                     </div>
-                    <div>
-                      <label className="block text-slate-400 text-xs mb-1">Notes</label>
-                      <textarea
-                        value={form.notes ?? ''}
-                        rows={4}
-                        onChange={e => setForm({ ...form, notes: e.target.value })}
-                        className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors resize-none"
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-4 text-sm">
-                    {isAdmin && project.price != null && (
-                      <div>
-                        <p className="text-slate-400 text-xs mb-0.5">Prix</p>
-                        <p className="text-white font-semibold text-lg">{formatCurrency(project.price)}</p>
-                      </div>
-                    )}
-                    {project.deadline && (
-                      <div>
-                        <p className="text-slate-400 text-xs mb-0.5">Deadline</p>
-                        <p className="text-white">{formatDate(project.deadline)}</p>
-                      </div>
-                    )}
-                    {project.startDate && (
-                      <div>
-                        <p className="text-slate-400 text-xs mb-0.5">Début</p>
-                        <p className="text-white">{formatDate(project.startDate)}</p>
-                      </div>
-                    )}
-                    {project.services.length > 0 && (
-                      <div>
-                        <p className="text-slate-400 text-xs mb-1.5">Services</p>
-                        <div className="flex flex-wrap gap-1">
-                          {project.services.map(s => (
-                            <span key={s} className="text-xs bg-slate-800 text-slate-300 px-2.5 py-1 rounded-full">{s}</span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {project.notes && (
-                      <div>
-                        <p className="text-slate-400 text-xs mb-1">Notes</p>
-                        <p className="text-slate-300 text-sm whitespace-pre-wrap leading-relaxed">{project.notes}</p>
-                      </div>
-                    )}
-                    {!project.price && !project.deadline && !project.services.length && !project.notes && (
-                      <p className="text-slate-600 text-xs italic">Aucun détail renseigné</p>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Équipe */}
-              <div className="bg-[#111118] border border-slate-800 rounded-2xl p-5">
-                <h2 className="text-white font-semibold mb-4">Équipe</h2>
-                <div className="space-y-2.5 mb-4">
-                  {project.assignees.length === 0 && (
-                    <p className="text-slate-500 text-xs italic">Aucun membre assigné</p>
                   )}
-                  {project.assignees.map(a => {
-                    const gradient = ROLE_AVATAR_COLORS[a.role] ?? 'from-slate-400 to-slate-600'
+                  <div>
+                    <label className="block text-slate-400 text-xs mb-1">Deadline</label>
+                    <input
+                      type="date"
+                      value={form.deadline as string ?? ''}
+                      onChange={e => setForm({ ...form, deadline: e.target.value })}
+                      className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-400 text-xs mb-1">Notes</label>
+                    <textarea
+                      value={form.notes ?? ''}
+                      rows={4}
+                      onChange={e => setForm({ ...form, notes: e.target.value })}
+                      className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors resize-none"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── Équipe ─────────────────────────────────────────────────── */}
+            <div className="bg-[#111118] border border-slate-800 rounded-2xl p-5 max-w-sm">
+              <h2 className="text-white font-semibold mb-4">Équipe</h2>
+              <div className="space-y-2.5 mb-4">
+                {project.assignees.length === 0 && (
+                  <p className="text-slate-500 text-xs italic">Aucun membre assigné</p>
+                )}
+                {project.assignees.map(a => {
+                  const gradient = ROLE_AVATAR_COLORS[a.role] ?? 'from-slate-400 to-slate-600'
+                  return (
+                    <div key={a.id} className="flex items-center gap-2.5 group">
+                      <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${gradient} flex items-center justify-center flex-shrink-0 overflow-hidden`}>
+                        {a.avatar
+                          ? <img src={a.avatar} alt="" className="w-full h-full object-cover" />
+                          : <span className="text-white text-xs font-semibold">{a.name[0]?.toUpperCase()}</span>
+                        }
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white text-sm font-medium truncate">{a.name}</p>
+                        <p className="text-slate-500 text-xs">{ROLE_LABELS[a.role] ?? a.role}</p>
+                      </div>
+                      {isAdmin && (
+                        <button
+                          onClick={() => handleRemoveAssignee(a.id)}
+                          className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 transition-all"
+                        >
+                          <X size={13} />
+                        </button>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+              {isAdmin && unassignedUsers.length > 0 && (
+                <div>
+                  <p className="text-slate-500 text-xs mb-2">Ajouter un membre</p>
+                  <select
+                    onChange={e => { if (e.target.value) { handleAddAssignee(e.target.value); e.target.value = '' } }}
+                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-slate-400 text-xs focus:outline-none focus:border-[#E14B89] transition-colors"
+                  >
+                    <option value="">Sélectionner...</option>
+                    {unassignedUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                  </select>
+                </div>
+              )}
+            </div>
+
+            {/* ── Avancement / Pipeline ───────────────────────────────────── */}
+            <div className="bg-[#111118] border border-slate-800 rounded-2xl p-6">
+              <h2 className="text-white font-semibold mb-6">Avancement</h2>
+              <div className="relative">
+                {/* Connecting line */}
+                <div className="absolute top-5 left-5 right-5 h-px bg-slate-800 z-0" />
+                <div className="flex justify-between relative z-10">
+                  {STATUS_ORDER.filter(s => s !== 'ARCHIVE').map((s, i) => {
+                    const currentIdx = STATUS_ORDER.indexOf(project.status)
+                    const sIdx       = STATUS_ORDER.indexOf(s)
+                    const isActive   = s === project.status
+                    const isDone     = sIdx < currentIdx
                     return (
-                      <div key={a.id} className="flex items-center gap-2.5 group">
-                        <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${gradient} flex items-center justify-center flex-shrink-0 overflow-hidden`}>
-                          {a.avatar
-                            ? <img src={a.avatar} alt="" className="w-full h-full object-cover" />
-                            : <span className="text-white text-xs font-semibold">{a.name[0]?.toUpperCase()}</span>
+                      <button
+                        key={s}
+                        onClick={() => handleStatusClick(s)}
+                        className="flex flex-col items-center gap-2 group"
+                      >
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all border-2 ${
+                          isActive
+                            ? 'bg-gradient-to-br from-[#E14B89] to-[#F8903C] border-transparent shadow-lg shadow-[#E14B89]/30'
+                            : isDone
+                            ? 'bg-[#E14B89]/15 border-[#E14B89]/40'
+                            : 'bg-slate-800 border-slate-700 group-hover:border-slate-500'
+                        }`}>
+                          {isDone
+                            ? <CheckCircle2 size={16} className="text-[#E14B89]" />
+                            : <span className={`text-xs font-semibold ${isActive ? 'text-white' : 'text-slate-500 group-hover:text-slate-300'}`}>{i + 1}</span>
                           }
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-white text-sm font-medium truncate">{a.name}</p>
-                          <p className="text-slate-500 text-xs">{ROLE_LABELS[a.role] ?? a.role}</p>
-                        </div>
-                        {isAdmin && (
-                          <button
-                            onClick={() => handleRemoveAssignee(a.id)}
-                            className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 transition-all"
-                          >
-                            <X size={13} />
-                          </button>
-                        )}
-                      </div>
+                        <span className={`text-xs font-medium text-center leading-tight ${
+                          isActive ? 'text-white' : isDone ? 'text-[#E14B89]/70' : 'text-slate-600 group-hover:text-slate-400'
+                        }`}>
+                          {PROJECT_STATUS_LABELS[s]}
+                        </span>
+                      </button>
                     )
                   })}
                 </div>
-                {isAdmin && unassignedUsers.length > 0 && (
-                  <div>
-                    <p className="text-slate-500 text-xs mb-2">Ajouter un membre</p>
-                    <select
-                      onChange={e => { if (e.target.value) { handleAddAssignee(e.target.value); e.target.value = '' } }}
-                      className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-slate-400 text-xs focus:outline-none focus:border-[#E14B89] transition-colors"
-                    >
-                      <option value="">Sélectionner...</option>
-                      {unassignedUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                    </select>
-                  </div>
-                )}
-              </div>
-
-              {/* Créé par */}
-              <div className="bg-[#111118] border border-slate-800 rounded-2xl px-5 py-4">
-                <p className="text-slate-500 text-xs">Créé par</p>
-                <p className="text-white text-sm font-medium mt-1">{project.createdBy.name}</p>
               </div>
             </div>
           </div>
@@ -989,85 +834,6 @@ export default function ProjectDetailPage() {
       {/* ══════════════════════════════════════════════════════════════════════
           MODALS
       ══════════════════════════════════════════════════════════════════════ */}
-
-      {/* Task modal */}
-      {showTaskModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#111118] border border-slate-800 rounded-2xl p-6 w-full max-w-md shadow-2xl">
-            <h2 className="text-white font-semibold text-lg mb-5">Nouvelle tâche</h2>
-            <form onSubmit={handleCreateTask} className="space-y-4">
-              <div>
-                <label className="block text-slate-400 text-xs mb-1.5">Titre *</label>
-                <input
-                  required
-                  value={taskForm.title}
-                  onChange={e => setTaskForm({ ...taskForm, title: e.target.value })}
-                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-400 text-xs mb-1.5">Priorité</label>
-                  <select
-                    value={taskForm.priority}
-                    onChange={e => setTaskForm({ ...taskForm, priority: e.target.value })}
-                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
-                  >
-                    <option value="LOW">Faible</option>
-                    <option value="MEDIUM">Normale</option>
-                    <option value="HIGH">Haute</option>
-                    <option value="CRITICAL">Critique</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-slate-400 text-xs mb-1.5">Assigné à</label>
-                  <select
-                    value={taskForm.assigneeId}
-                    onChange={e => setTaskForm({ ...taskForm, assigneeId: e.target.value })}
-                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
-                  >
-                    <option value="">Non assigné</option>
-                    {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label className="block text-slate-400 text-xs mb-1.5">Échéance</label>
-                <input
-                  type="date"
-                  value={taskForm.dueDate}
-                  onChange={e => setTaskForm({ ...taskForm, dueDate: e.target.value })}
-                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
-                />
-              </div>
-              <div>
-                <label className="block text-slate-400 text-xs mb-1.5">Description</label>
-                <textarea
-                  value={taskForm.description}
-                  onChange={e => setTaskForm({ ...taskForm, description: e.target.value })}
-                  rows={3}
-                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors resize-none"
-                />
-              </div>
-              <div className="flex gap-3 pt-1">
-                <button
-                  type="button"
-                  onClick={() => setShowTaskModal(false)}
-                  className="flex-1 border border-slate-700 text-slate-400 hover:text-white py-2.5 rounded-xl text-sm transition-colors"
-                >
-                  Annuler
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 bg-[#E14B89] hover:opacity-90 text-white py-2.5 rounded-xl text-sm font-medium transition-colors"
-                >
-                  Créer
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* Document modal */}
       {showDocModal && (

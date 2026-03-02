@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
-import { Plus, Search, Globe, Mail, Phone, ChevronRight, Wrench, Upload, CheckCircle2, XCircle, Loader2, Trash2 } from 'lucide-react'
+import { Plus, Search, Globe, Mail, Phone, ChevronRight, Wrench, Upload, CheckCircle2, XCircle, Loader2, Trash2, Pencil } from 'lucide-react'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { MAINTENANCE_LABELS } from '@/lib/utils'
@@ -53,6 +53,13 @@ export default function ClientsPage() {
   const [deleteModal, setDeleteModal] = useState<{ client: Client; step: 1 | 2 } | null>(null)
   const [deleteConfirmText, setDeleteConfirmText] = useState('')
   const [deleting, setDeleting] = useState(false)
+
+  const [editModal, setEditModal] = useState<Client | null>(null)
+  const [editForm, setEditForm] = useState({
+    name: '', email: '', phone: '', company: '', website: '',
+    maintenancePlan: 'NONE', maintenancePrice: '',
+  })
+  const [updating, setUpdating] = useState(false)
 
   useEffect(() => {
     fetch('/api/clients').then(r => r.json()).then(setClients).finally(() => setLoading(false))
@@ -178,6 +185,40 @@ export default function ClientsPage() {
     }
   }
 
+  function openEditModal(client: Client) {
+    setEditModal(client)
+    setEditForm({
+      name: client.name,
+      email: client.email ?? '',
+      phone: client.phone ?? '',
+      company: client.company ?? '',
+      website: client.website ?? '',
+      maintenancePlan: client.maintenancePlan,
+      maintenancePrice: client.maintenancePrice?.toString() ?? '',
+    })
+  }
+
+  async function handleUpdate(e: React.FormEvent) {
+    e.preventDefault()
+    if (!editModal || updating) return
+    setUpdating(true)
+    try {
+      const res = await fetch(`/api/clients/${editModal.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...editForm,
+          maintenancePrice: editForm.maintenancePrice ? parseFloat(editForm.maintenancePrice) : null,
+        }),
+      })
+      const updated = await res.json()
+      setClients(prev => prev.map(c => c.id === updated.id ? { ...c, ...updated } : c))
+      setEditModal(null)
+    } finally {
+      setUpdating(false)
+    }
+  }
+
   return (
     <div className="p-8">
       <div className="flex items-center justify-between mb-8">
@@ -284,16 +325,28 @@ export default function ClientsPage() {
                 </div>
               </Link>
               {isAdmin && (
-                <button
-                  onClick={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    openDeleteModal(client)
-                  }}
-                  className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 transition-all p-1 rounded-lg hover:bg-red-400/10"
-                >
-                  <Trash2 size={14} />
-                </button>
+                <div className="absolute top-4 right-4 flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      openEditModal(client)
+                    }}
+                    className="text-slate-600 hover:text-[#E14B89] p-1 rounded-lg hover:bg-[#E14B89]/10 transition-all"
+                  >
+                    <Pencil size={14} />
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      openDeleteModal(client)
+                    }}
+                    className="text-slate-600 hover:text-red-400 p-1 rounded-lg hover:bg-red-400/10 transition-all"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
               )}
             </div>
           ))}
@@ -414,6 +467,70 @@ export default function ClientsPage() {
       {/* Format hint */}
       {showImportModal && importing && (
         <div />
+      )}
+
+      {editModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#111118] border border-slate-800 rounded-2xl p-6 w-full max-w-lg">
+            <h2 className="text-white font-semibold text-lg mb-5">Modifier le client</h2>
+            <form onSubmit={handleUpdate} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-slate-400 text-xs mb-1.5">Nom *</label>
+                  <input required value={editForm.name} onChange={e => setEditForm({ ...editForm, name: e.target.value })}
+                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+                </div>
+                <div>
+                  <label className="block text-slate-400 text-xs mb-1.5">Entreprise</label>
+                  <input value={editForm.company} onChange={e => setEditForm({ ...editForm, company: e.target.value })}
+                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+                </div>
+                <div>
+                  <label className="block text-slate-400 text-xs mb-1.5">Email</label>
+                  <input type="email" value={editForm.email} onChange={e => setEditForm({ ...editForm, email: e.target.value })}
+                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+                </div>
+                <div>
+                  <label className="block text-slate-400 text-xs mb-1.5">Téléphone</label>
+                  <input value={editForm.phone} onChange={e => setEditForm({ ...editForm, phone: e.target.value })}
+                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-slate-400 text-xs mb-1.5">Site web</label>
+                <input value={editForm.website} onChange={e => setEditForm({ ...editForm, website: e.target.value })} placeholder="https://"
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-slate-400 text-xs mb-1.5">Maintenance</label>
+                  <select value={editForm.maintenancePlan} onChange={e => setEditForm({ ...editForm, maintenancePlan: e.target.value })}
+                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors">
+                    <option value="NONE">Aucune</option>
+                    <option value="ESSENTIELLE">Essentielle (59,99€)</option>
+                    <option value="DEVELOPPEMENT">Développement (99,99€)</option>
+                    <option value="SEO">SEO (179,99€)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-slate-400 text-xs mb-1.5">Prix mensuel (€)</label>
+                  <input type="number" value={editForm.maintenancePrice} onChange={e => setEditForm({ ...editForm, maintenancePrice: e.target.value })}
+                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+                </div>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setEditModal(null)}
+                  className="flex-1 border border-slate-700 text-slate-400 hover:text-white py-2.5 rounded-xl text-sm transition-colors">
+                  Annuler
+                </button>
+                <button type="submit" disabled={updating}
+                  className="flex-1 bg-[#E14B89] hover:opacity-90 text-white py-2.5 rounded-xl text-sm font-medium transition-colors disabled:opacity-60">
+                  {updating ? 'Sauvegarde...' : 'Sauvegarder'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
 
       {showModal && (

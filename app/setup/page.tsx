@@ -106,9 +106,8 @@ export default function SetupPage() {
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-10">
-          <div className="inline-flex items-center gap-3 mb-2">
-            <Image src="/kameo-logo.svg" alt="Kameo" width={34} height={30} />
-            <span className="text-white font-bold text-2xl tracking-tight">Kameo</span>
+          <div className="flex justify-center mb-2">
+            <Image src="/kameo-logo.svg" alt="Kameo" width={140} height={44} style={{ objectFit: 'contain' }} />
           </div>
           <p className="text-slate-500 text-sm mt-1">Initialisation de la base de données</p>
         </div>
