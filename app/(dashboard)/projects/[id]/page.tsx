@@ -8,7 +8,7 @@ import {
   ArrowLeft, Plus, Trash2, CheckCircle2, Save, Pencil, ExternalLink,
   FileText, X, Globe, Figma, Upload, ChevronDown, ChevronRight,
   FileCheck, Info, Palette, Scale, FolderOpen, Link2, Maximize2,
-  LayoutDashboard, BookOpen,
+  LayoutDashboard,
 } from 'lucide-react'
 import {
   PROJECT_STATUS_COLORS, PROJECT_STATUS_LABELS, PROJECT_TYPE_COLORS, PROJECT_TYPE_LABELS,
@@ -25,6 +25,7 @@ interface Task {
 interface Invoice {
   id: string; filename: string; fileUrl: string; amount?: number; notes?: string
   createdAt: string; uploader: { id: string; name: string }
+  assigneeId?: string | null; assignee?: { id: string; name: string; role: string; avatar?: string } | null
 }
 interface ProjectUser {
   id: string; name: string; role: string; avatar?: string
@@ -41,9 +42,6 @@ interface Project {
   tasks: Task[]; createdBy: { id: string; name: string }
   assignees: ProjectUser[]; documents: ProjectDoc[]
 }
-interface CahierDesCharges {
-  id: string; title: string; createdAt: string; projectId?: string | null
-}
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -57,12 +55,11 @@ const DOC_CATEGORIES = [
   { key: 'AUTRE',              label: 'Autres',              icon: FolderOpen, color: 'text-slate-400'  },
 ]
 
-type TabId = 'avancement' | 'documents' | 'ressources' | 'factures'
+type TabId = 'avancement' | 'documents' | 'factures'
 
 const TABS: { id: TabId; label: string; icon: React.ElementType }[] = [
   { id: 'avancement', label: 'Avancement', icon: LayoutDashboard },
   { id: 'documents',  label: 'Documents',  icon: Upload           },
-  { id: 'ressources', label: 'Ressources', icon: BookOpen         },
   { id: 'factures',   label: 'Factures',   icon: FileText         },
 ]
 
@@ -80,7 +77,6 @@ export default function ProjectDetailPage() {
   const [project, setProject]   = useState<Project | null>(null)
   const [users, setUsers]       = useState<ProjectUser[]>([])
   const [invoices, setInvoices] = useState<Invoice[]>([])
-  const [cahiers, setCahiers]   = useState<CahierDesCharges[]>([])
   const [activeTab, setActiveTab] = useState<TabId>('avancement')
 
   const [editing, setEditing] = useState(false)
@@ -88,6 +84,8 @@ export default function ProjectDetailPage() {
 
   const [showInvoiceModal, setShowInvoiceModal] = useState(false)
   const [showDocModal, setShowDocModal]         = useState(false)
+  const [invoiceTargetAssignee, setInvoiceTargetAssignee] = useState<ProjectUser | null>(null)
+  const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null)
 
   const [invoiceForm, setInvoiceForm] = useState({ filename: '', fileUrl: '', amount: '', notes: '' })
   const [docForm, setDocForm]         = useState({ name: '', url: '', category: 'CAHIER_DES_CHARGES' })
@@ -107,13 +105,11 @@ export default function ProjectDetailPage() {
       fetch(`/api/projects/${id}`).then(r => r.json()),
       fetch('/api/users').then(r => r.json()),
       fetch(`/api/projects/${id}/invoices`).then(r => r.json()),
-      fetch('/api/cahier-des-charges').then(r => r.json()).catch(() => []),
-    ]).then(([p, u, inv, cdcs]) => {
+    ]).then(([p, u, inv]) => {
       setProject(p)
       setForm({ ...p, price: p.price?.toString() ?? '', deadline: p.deadline ? p.deadline.split('T')[0] : '' })
       setUsers(u)
       setInvoices(inv)
-      setCahiers(Array.isArray(cdcs) ? cdcs.filter((c: CahierDesCharges) => c.projectId === id) : [])
       setFigmaInput(p.figmaUrl ?? '')
       setContentInput(p.contentUrl ?? '')
     })
@@ -191,16 +187,60 @@ export default function ProjectDetailPage() {
   }
 
   // ── Invoices ───────────────────────────────────────────────────────────────
+  function openInvoiceModal(assignee: ProjectUser, existingInvoice?: Invoice) {
+    setInvoiceTargetAssignee(assignee)
+    if (existingInvoice) {
+      setEditingInvoiceId(existingInvoice.id)
+      setInvoiceForm({
+        filename: existingInvoice.filename,
+        fileUrl: existingInvoice.fileUrl,
+        amount: existingInvoice.amount?.toString() ?? '',
+        notes: existingInvoice.notes ?? '',
+      })
+    } else {
+      setEditingInvoiceId(null)
+      setInvoiceForm({ filename: '', fileUrl: '', amount: '', notes: '' })
+    }
+    setShowInvoiceModal(true)
+  }
+
   async function handleCreateInvoice(e: React.FormEvent) {
     e.preventDefault()
-    const res = await fetch(`/api/projects/${id}/invoices`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...invoiceForm, amount: invoiceForm.amount ? parseFloat(invoiceForm.amount) : null }),
-    })
-    const invoice = await res.json()
-    setInvoices(prev => [invoice, ...prev])
+    const payload = {
+      ...invoiceForm,
+      amount: invoiceForm.amount ? parseFloat(invoiceForm.amount) : null,
+      assigneeId: invoiceTargetAssignee?.id ?? null,
+    }
+    if (editingInvoiceId) {
+      // Update existing invoice
+      const res = await fetch(`/api/projects/${id}/invoices`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ invoiceId: editingInvoiceId, ...payload }),
+      })
+      const updated = await res.json()
+      setInvoices(prev => prev.map(inv => inv.id === editingInvoiceId ? updated : inv))
+    } else {
+      // Create new invoice
+      const res = await fetch(`/api/projects/${id}/invoices`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const invoice = await res.json()
+      setInvoices(prev => [invoice, ...prev])
+    }
     setShowInvoiceModal(false)
+    setInvoiceTargetAssignee(null)
+    setEditingInvoiceId(null)
     setInvoiceForm({ filename: '', fileUrl: '', amount: '', notes: '' })
+  }
+
+  async function handleDeleteInvoice(invoiceId: string) {
+    if (!confirm('Supprimer cette facture ?')) return
+    await fetch(`/api/projects/${id}/invoices`, {
+      method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ invoiceId }),
+    })
+    setInvoices(prev => prev.filter(inv => inv.id !== invoiceId))
   }
 
   // ── Documents ─────────────────────────────────────────────────────────────
@@ -422,9 +462,9 @@ export default function ProjectDetailPage() {
                     {project.documents.length}
                   </span>
                 )}
-                {tab.id === 'ressources' && cahiers.length > 0 && (
-                  <span className="ml-1 text-[10px] bg-violet-500/20 text-violet-400 rounded-full px-1.5 py-px">
-                    {cahiers.length}
+                {tab.id === 'factures' && invoices.length > 0 && (
+                  <span className="ml-1 text-[10px] bg-[#E14B89]/20 text-[#E14B89] rounded-full px-1.5 py-px">
+                    {invoices.length}
                   </span>
                 )}
               </button>
@@ -716,126 +756,119 @@ export default function ProjectDetailPage() {
             FACTURES
         ════════════════════════════════════════════════════════════════════ */}
         {activeTab === 'factures' && (
-          <div className="max-w-2xl">
+          <div className="max-w-3xl">
             <div className="flex items-center justify-between mb-5">
               <div>
-                <h2 className="text-white font-semibold text-lg">Factures</h2>
-                <p className="text-slate-400 text-sm mt-0.5">{invoices.length} facture{invoices.length > 1 ? 's' : ''}</p>
+                <h2 className="text-white font-semibold text-lg">Factures par intervenant</h2>
+                <p className="text-slate-400 text-sm mt-0.5">
+                  {invoices.length} facture{invoices.length > 1 ? 's' : ''} · {project?.assignees.length ?? 0} intervenant{(project?.assignees.length ?? 0) > 1 ? 's' : ''}
+                </p>
               </div>
-              {isAdmin && (
-                <button
-                  onClick={() => setShowInvoiceModal(true)}
-                  className="flex items-center gap-2 bg-[#E14B89] hover:opacity-90 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors"
-                >
-                  <Plus size={14} /> Ajouter une facture
-                </button>
-              )}
             </div>
-            {invoices.length === 0 ? (
+
+            {(!project?.assignees || project.assignees.length === 0) ? (
               <div className="bg-[#111118] border border-slate-800 rounded-2xl p-14 text-center">
                 <FileText size={32} className="text-slate-700 mx-auto mb-3" />
-                <p className="text-slate-500 text-sm">Aucune facture pour ce projet</p>
-                {isAdmin && (
-                  <button
-                    onClick={() => setShowInvoiceModal(true)}
-                    className="mt-3 text-[#E14B89] text-sm hover:underline"
-                  >
-                    Ajouter la première facture →
-                  </button>
+                <p className="text-slate-500 text-sm">Aucun intervenant assigné à ce projet</p>
+                <p className="text-slate-600 text-xs mt-1">Ajoutez des membres pour gérer les factures</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {project.assignees.map(assignee => {
+                  const inv = invoices.find(i => i.assigneeId === assignee.id)
+                  const gradientClass = ROLE_AVATAR_COLORS[assignee.role] || 'from-slate-400 to-slate-600'
+                  return (
+                    <div key={assignee.id} className="bg-[#111118] border border-slate-800 rounded-2xl overflow-hidden">
+                      {/* Header: assignee info */}
+                      <div className="flex items-center gap-3 p-4 border-b border-slate-800/50">
+                        <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${gradientClass} flex items-center justify-center text-white text-xs font-bold flex-shrink-0`}>
+                          {assignee.avatar ? (
+                            <img src={assignee.avatar} alt="" className="w-full h-full rounded-xl object-cover" />
+                          ) : (
+                            getInitials(assignee.name)
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-white text-sm font-medium">{assignee.name}</p>
+                          <p className="text-slate-500 text-xs">{ROLE_LABELS[assignee.role] || assignee.role}</p>
+                        </div>
+                        {inv && isAdmin && inv.amount && (
+                          <span className="text-white font-semibold text-sm">{formatCurrency(inv.amount)}</span>
+                        )}
+                      </div>
+
+                      {/* Content: invoice or empty state */}
+                      {inv ? (
+                        <div className="p-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-xl bg-[#E14B89]/10 flex items-center justify-center flex-shrink-0">
+                              <FileText size={16} className="text-[#E14B89]" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <a
+                                href={inv.fileUrl}
+                                target="_blank" rel="noopener noreferrer"
+                                className="text-white text-sm font-medium hover:text-[#E14B89] transition-colors flex items-center gap-1.5"
+                              >
+                                {inv.filename}
+                                <ExternalLink size={11} className="text-slate-500" />
+                              </a>
+                              <p className="text-slate-500 text-xs mt-0.5">
+                                {formatDate(inv.createdAt)}{inv.notes ? ` · ${inv.notes}` : ''}
+                              </p>
+                            </div>
+                            {isAdmin && (
+                              <div className="flex items-center gap-1.5 flex-shrink-0">
+                                <button
+                                  onClick={() => openInvoiceModal(assignee, inv)}
+                                  className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-500 hover:text-white transition-colors"
+                                  title="Modifier"
+                                >
+                                  <Pencil size={13} />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteInvoice(inv.id)}
+                                  className="p-1.5 rounded-lg hover:bg-red-500/10 text-slate-500 hover:text-red-400 transition-colors"
+                                  title="Supprimer"
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="p-4">
+                          {isAdmin ? (
+                            <button
+                              onClick={() => openInvoiceModal(assignee)}
+                              className="w-full flex items-center justify-center gap-2 border border-dashed border-slate-700 hover:border-[#E14B89]/50 text-slate-500 hover:text-[#E14B89] py-3 rounded-xl text-sm transition-colors"
+                            >
+                              <Plus size={14} /> Ajouter la facture
+                            </button>
+                          ) : (
+                            <p className="text-slate-600 text-xs text-center py-2">Aucune facture</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+
+                {/* Total */}
+                {isAdmin && invoices.some(inv => inv.amount) && (
+                  <div className="bg-[#111118] border border-slate-800 rounded-2xl p-4 flex items-center justify-between">
+                    <span className="text-slate-400 text-sm font-medium">Total factures</span>
+                    <span className="text-white font-bold text-lg">
+                      {formatCurrency(invoices.reduce((sum, inv) => sum + (inv.amount ?? 0), 0))}
+                    </span>
+                  </div>
                 )}
               </div>
-            ) : (
-              <div className="bg-[#111118] border border-slate-800 rounded-2xl divide-y divide-slate-800">
-                {invoices.map(inv => (
-                  <div key={inv.id} className="flex items-center gap-4 p-4 hover:bg-slate-800/20 transition-colors">
-                    <div className="w-9 h-9 rounded-xl bg-[#E14B89]/10 flex items-center justify-center flex-shrink-0">
-                      <FileText size={16} className="text-[#E14B89]" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <a
-                        href={inv.fileUrl}
-                        target="_blank" rel="noopener noreferrer"
-                        className="text-white text-sm font-medium hover:text-[#E14B89] transition-colors flex items-center gap-1.5"
-                      >
-                        {inv.filename}
-                        <ExternalLink size={11} className="text-slate-500" />
-                      </a>
-                      <p className="text-slate-500 text-xs mt-0.5">
-                        Par {inv.uploader.name} · {formatDate(inv.createdAt)}
-                      </p>
-                    </div>
-                    {inv.amount && isAdmin && (
-                      <span className="text-white font-semibold text-sm flex-shrink-0">{formatCurrency(inv.amount)}</span>
-                    )}
-                  </div>
-                ))}
-              </div>
             )}
           </div>
         )}
 
-        {/* ════════════════════════════════════════════════════════════════════
-            RESSOURCES
-        ════════════════════════════════════════════════════════════════════ */}
-        {activeTab === 'ressources' && (
-          <div className="space-y-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-white font-semibold text-lg">Cahiers des charges</h2>
-                <p className="text-slate-400 text-sm mt-1">Ressources IA liées à ce projet</p>
-              </div>
-              <Link
-                href="/ressources"
-                className="flex items-center gap-2 bg-[#E14B89] hover:opacity-90 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors"
-              >
-                <Plus size={14} /> Gérer les ressources
-              </Link>
-            </div>
-
-            {cahiers.length === 0 ? (
-              <div className="bg-[#111118] border border-slate-800 rounded-2xl p-16 text-center">
-                <div className="w-16 h-16 bg-violet-500/10 rounded-2xl flex items-center justify-center mx-auto mb-5">
-                  <BookOpen size={28} className="text-violet-400" />
-                </div>
-                <h3 className="text-white font-semibold text-base mb-2">Aucun cahier des charges</h3>
-                <p className="text-slate-500 text-sm mb-6 max-w-xs mx-auto">
-                  Générez un cahier des charges avec l&apos;IA depuis la page Ressources et associez-le à ce projet.
-                </p>
-                <Link
-                  href="/ressources"
-                  className="inline-flex items-center gap-2 bg-[#E14B89] hover:opacity-90 text-white px-5 py-2.5 rounded-xl text-sm font-medium transition-colors"
-                >
-                  <Plus size={14} /> Créer un cahier des charges
-                </Link>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {cahiers.map(cdc => (
-                  <div
-                    key={cdc.id}
-                    className="bg-[#111118] border border-slate-800 rounded-2xl p-5 hover:border-slate-700 transition-colors"
-                  >
-                    <div className="flex items-start gap-3 mb-4">
-                      <div className="w-10 h-10 rounded-xl bg-violet-500/10 flex items-center justify-center flex-shrink-0">
-                        <BookOpen size={18} className="text-violet-400" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h3 className="text-white font-medium text-sm truncate">{cdc.title}</h3>
-                        <p className="text-slate-500 text-xs mt-0.5">{formatDate(cdc.createdAt)}</p>
-                      </div>
-                    </div>
-                    <Link
-                      href="/ressources"
-                      className="flex items-center justify-center gap-2 border border-slate-700 hover:border-[#E14B89]/50 hover:text-[#E14B89] text-slate-400 py-2 rounded-xl text-xs transition-colors"
-                    >
-                      Voir dans Ressources <ExternalLink size={11} />
-                    </Link>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
       {/* ══════════════════════════════════════════════════════════════════════
@@ -899,10 +932,15 @@ export default function ProjectDetailPage() {
       )}
 
       {/* Invoice modal */}
-      {showInvoiceModal && (
+      {showInvoiceModal && invoiceTargetAssignee && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-[#111118] border border-slate-800 rounded-2xl p-6 w-full max-w-md shadow-2xl">
-            <h2 className="text-white font-semibold text-lg mb-5">Ajouter une facture</h2>
+            <h2 className="text-white font-semibold text-lg mb-1">
+              {editingInvoiceId ? 'Modifier la facture' : 'Ajouter une facture'}
+            </h2>
+            <p className="text-slate-500 text-sm mb-5">
+              Pour {invoiceTargetAssignee.name} · {ROLE_LABELS[invoiceTargetAssignee.role] || invoiceTargetAssignee.role}
+            </p>
             <form onSubmit={handleCreateInvoice} className="space-y-4">
               <div>
                 <label className="block text-slate-400 text-xs mb-1.5">Nom du fichier *</label>
@@ -945,7 +983,7 @@ export default function ProjectDetailPage() {
               <div className="flex gap-3 pt-1">
                 <button
                   type="button"
-                  onClick={() => setShowInvoiceModal(false)}
+                  onClick={() => { setShowInvoiceModal(false); setInvoiceTargetAssignee(null); setEditingInvoiceId(null) }}
                   className="flex-1 border border-slate-700 text-slate-400 hover:text-white py-2.5 rounded-xl text-sm transition-colors"
                 >
                   Annuler
@@ -954,7 +992,7 @@ export default function ProjectDetailPage() {
                   type="submit"
                   className="flex-1 bg-[#E14B89] hover:opacity-90 text-white py-2.5 rounded-xl text-sm font-medium transition-colors"
                 >
-                  Ajouter
+                  {editingInvoiceId ? 'Enregistrer' : 'Ajouter'}
                 </button>
               </div>
             </form>

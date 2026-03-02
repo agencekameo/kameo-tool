@@ -152,6 +152,7 @@ model User {
   audits                  Audit[]
   prospects               Prospect[]
   invoicesUploaded        ProjectInvoice[]     @relation("InvoiceUploader")
+  invoicesAssigned        ProjectInvoice[]     @relation("InvoiceAssignee")
   projectDocuments        ProjectDocument[]    @relation("DocUploader")
   logs                    Log[]
   absences                Absence[]
@@ -344,6 +345,7 @@ model ProjectInvoice {
   id          String   @id @default(cuid())
   projectId   String
   uploadedBy  String
+  assigneeId  String?
   filename    String
   fileUrl     String
   amount      Float?
@@ -352,6 +354,7 @@ model ProjectInvoice {
 
   project  Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   uploader User    @relation("InvoiceUploader", fields: [uploadedBy], references: [id])
+  assignee User?   @relation("InvoiceAssignee", fields: [assigneeId], references: [id])
 }
 
 model ProjectDocument {
