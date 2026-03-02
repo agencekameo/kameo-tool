@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Plus, Trash2, Pencil, ExternalLink, LogIn, Copy, Check, Globe, Search, Share2, BookOpen } from 'lucide-react'
+import { Plus, Trash2, Pencil, ExternalLink, LogIn, Copy, Check, Globe, Search, Share2, BookOpen, Server } from 'lucide-react'
 import { formatCurrency, formatDate } from '@/lib/utils'
 
 interface Maintenance {
@@ -31,6 +31,7 @@ const TABS = [
   { key: 'GOOGLE', label: 'Google', icon: Search },
   { key: 'RESEAUX', label: 'Réseaux', icon: Share2 },
   { key: 'BLOG', label: 'Blog', icon: BookOpen },
+  { key: 'HEBERGEMENT', label: 'Hébergement', icon: Server },
 ]
 
 const BILLING_LABELS: Record<string, string> = {
@@ -297,6 +298,7 @@ export default function MaintenancesPage() {
                     <option value="GOOGLE">Google</option>
                     <option value="RESEAUX">Réseaux</option>
                     <option value="BLOG">Blog</option>
+                    <option value="HEBERGEMENT">Hébergement</option>
                   </select>
                 </div>
               </div>

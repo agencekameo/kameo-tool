@@ -56,18 +56,18 @@ select option {
 }
 
 /* Page backgrounds */
-[data-theme="light"] .bg-\[#0a0a0f\],
-[data-theme="light"] .bg-\[#0d0d14\] {
+[data-theme="light"] .bg-\[\#0a0a0f\],
+[data-theme="light"] .bg-\[\#0d0d14\] {
   background-color: #f1f5f9 !important;
 }
 
 /* Card backgrounds */
-[data-theme="light"] .bg-\[#111118\] {
+[data-theme="light"] .bg-\[\#111118\] {
   background-color: #ffffff !important;
 }
 
 /* Input / sub-panel backgrounds */
-[data-theme="light"] .bg-\[#1a1a24\] {
+[data-theme="light"] .bg-\[\#1a1a24\] {
   background-color: #f8fafc !important;
 }
 
@@ -117,7 +117,7 @@ select option {
 [data-theme="light"] .bg-slate-800\/70 {
   background-color: #f1f5f9 !important;
 }
-[data-theme="light"] .bg-\[#0d0d14\] {
+[data-theme="light"] .bg-\[\#0d0d14\] {
   background-color: #f8fafc !important;
 }
 
@@ -137,7 +137,7 @@ select option {
 }
 
 /* ---- Score rings / audit bg ---- */
-[data-theme="light"] .stroke-\[#1e1e2e\] {
+[data-theme="light"] .stroke-\[\#1e1e2e\] {
   stroke: #e2e8f0 !important;
 }
 
@@ -156,7 +156,7 @@ select option {
 }
 
 /* ---- Login page ---- */
-[data-theme="light"] .min-h-screen.bg-\[#0a0a0f\] {
+[data-theme="light"] .min-h-screen.bg-\[\#0a0a0f\] {
   background: #f1f5f9 !important;
 }
 
@@ -164,9 +164,9 @@ select option {
 body,
 aside,
 main,
-.bg-\[#111118\],
-.bg-\[#1a1a24\],
-.bg-\[#0d0d14\] {
+.bg-\[\#111118\],
+.bg-\[\#1a1a24\],
+.bg-\[\#0d0d14\] {
   transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 }
 
@@ -268,7 +268,7 @@ main,
 }
 
 /* ---- bg-[#0a0a0f] full coverage ---- */
-[data-theme="light"] .bg-\[#0a0a0f\] {
+[data-theme="light"] .bg-\[\#0a0a0f\] {
   background-color: #f1f5f9 !important;
 }
 
@@ -289,7 +289,7 @@ main,
 }
 
 /* ---- Modal / popover panels ---- */
-[data-theme="light"] .bg-\[#0d0d14\] {
+[data-theme="light"] .bg-\[\#0d0d14\] {
   background-color: #f8fafc !important;
 }
 
@@ -314,12 +314,12 @@ main,
 }
 
 /* ---- bg-[#111118] hover variant ---- */
-[data-theme="light"] .hover\:bg-\[#111118\]:hover {
+[data-theme="light"] .hover\:bg-\[\#111118\]:hover {
   background-color: #f8fafc !important;
 }
 
 /* ---- Tooltip / dropdown bg ---- */
-[data-theme="light"] .bg-\[#1e1e2e\] {
+[data-theme="light"] .bg-\[\#1e1e2e\] {
   background-color: #ffffff !important;
   border-color: #e2e8f0 !important;
   color: #0f172a !important;
@@ -441,7 +441,7 @@ main,
 }
 
 /* ---- Messagerie popup in light mode ---- */
-[data-theme="light"] .bg-\[#111118\].rounded-2xl {
+[data-theme="light"] .bg-\[\#111118\].rounded-2xl {
   background-color: #ffffff !important;
   border-color: #e2e8f0 !important;
 }
@@ -467,13 +467,13 @@ main,
 }
 
 /* ---- Fix white text in buttons that have explicit bg colors (brand pink etc.) ---- */
-[data-theme="light"] .bg-\[#E14B89\] {
+[data-theme="light"] .bg-\[\#E14B89\] {
   color: #ffffff !important;
 }
-[data-theme="light"] .bg-\[#E14B89\]\/10 {
+[data-theme="light"] .bg-\[\#E14B89\]\/10 {
   background-color: rgba(225, 75, 137, 0.1) !important;
 }
-[data-theme="light"] .bg-\[#E14B89\]\/20 {
+[data-theme="light"] .bg-\[\#E14B89\]\/20 {
   background-color: rgba(225, 75, 137, 0.15) !important;
 }
 
@@ -509,23 +509,23 @@ main,
    ══════════════════════════════════════════════════ */
 
 /* Solid brand bg → gradient */
-.bg-\[#E14B89\] {
+.bg-\[\#E14B89\] {
   background: linear-gradient(135deg, #E14B89 0%, #F8903C 100%) !important;
 }
 
 /* Tinted brand bg */
-.bg-\[#E14B89\]\/10 {
+.bg-\[\#E14B89\]\/10 {
   background: linear-gradient(135deg, rgba(225,75,137,0.10) 0%, rgba(248,144,60,0.10) 100%) !important;
 }
-.bg-\[#E14B89\]\/20 {
+.bg-\[\#E14B89\]\/20 {
   background: linear-gradient(135deg, rgba(225,75,137,0.14) 0%, rgba(248,144,60,0.14) 100%) !important;
 }
-.bg-\[#E14B89\]\/5 {
+.bg-\[\#E14B89\]\/5 {
   background: linear-gradient(135deg, rgba(225,75,137,0.05) 0%, rgba(248,144,60,0.05) 100%) !important;
 }
 
 /* Hover variants */
-.hover\:bg-\[#E14B89\]\/10:hover {
+.hover\:bg-\[\#E14B89\]\/10:hover {
   background: linear-gradient(135deg, rgba(225,75,137,0.10) 0%, rgba(248,144,60,0.10) 100%) !important;
 }
 

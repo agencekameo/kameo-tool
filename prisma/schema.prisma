@@ -69,6 +69,7 @@ enum MaintenanceType {
   GOOGLE
   RESEAUX
   BLOG
+  HEBERGEMENT
 }
 
 enum MaintenanceBilling {

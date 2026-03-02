@@ -57,12 +57,13 @@ const DOC_CATEGORIES = [
   { key: 'AUTRE',              label: 'Autres',              icon: FolderOpen, color: 'text-slate-400'  },
 ]
 
-type TabId = 'apercu' | 'documents' | 'ressources'
+type TabId = 'avancement' | 'documents' | 'ressources' | 'factures'
 
 const TABS: { id: TabId; label: string; icon: React.ElementType }[] = [
-  { id: 'apercu',     label: 'Aperçu',     icon: LayoutDashboard },
+  { id: 'avancement', label: 'Avancement', icon: LayoutDashboard },
   { id: 'documents',  label: 'Documents',  icon: Upload           },
   { id: 'ressources', label: 'Ressources', icon: BookOpen         },
+  { id: 'factures',   label: 'Factures',   icon: FileText         },
 ]
 
 function getInitials(name: string) {
@@ -80,7 +81,7 @@ export default function ProjectDetailPage() {
   const [users, setUsers]       = useState<ProjectUser[]>([])
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [cahiers, setCahiers]   = useState<CahierDesCharges[]>([])
-  const [activeTab, setActiveTab] = useState<TabId>('apercu')
+  const [activeTab, setActiveTab] = useState<TabId>('avancement')
 
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState<Partial<Project & { price: string; deadline: string }>>({})
@@ -325,6 +326,44 @@ export default function ProjectDetailPage() {
             {/* Créé par — discreet */}
             <p className="text-slate-600 text-xs mt-1.5">Créé par {project.createdBy.name}</p>
           </div>
+
+          {/* ── Team avatars ────────────────────────────────────────────── */}
+          <div className="flex flex-col items-end gap-2 flex-shrink-0">
+            {project.assignees.length > 0 && (
+              <div className="flex items-center">
+                {project.assignees.slice(0, 4).map((a, i) => {
+                  const gradient = ROLE_AVATAR_COLORS[a.role] ?? 'from-slate-400 to-slate-600'
+                  return (
+                    <div
+                      key={a.id}
+                      title={`${a.name} · ${ROLE_LABELS[a.role] ?? a.role}`}
+                      className={`w-8 h-8 rounded-full bg-gradient-to-br ${gradient} flex items-center justify-center border-2 border-[#0d0d14] overflow-hidden flex-shrink-0 ${i > 0 ? '-ml-2' : ''}`}
+                    >
+                      {a.avatar
+                        ? <img src={a.avatar} alt="" className="w-full h-full object-cover" />
+                        : <span className="text-white text-xs font-semibold">{a.name[0]?.toUpperCase()}</span>
+                      }
+                    </div>
+                  )
+                })}
+                {project.assignees.length > 4 && (
+                  <div className="w-8 h-8 rounded-full bg-slate-700 border-2 border-[#0d0d14] -ml-2 flex items-center justify-center flex-shrink-0">
+                    <span className="text-slate-300 text-xs font-medium">+{project.assignees.length - 4}</span>
+                  </div>
+                )}
+              </div>
+            )}
+            {isAdmin && unassignedUsers.length > 0 && (
+              <select
+                onChange={e => { if (e.target.value) { handleAddAssignee(e.target.value); e.target.value = '' } }}
+                className="text-xs text-slate-500 hover:text-white bg-[#111118] border border-slate-700 rounded-lg px-2 py-1 focus:outline-none focus:border-[#E14B89] transition-colors cursor-pointer"
+              >
+                <option value="">+ Ajouter membre</option>
+                {unassignedUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+              </select>
+            )}
+          </div>
+
           <div className="flex gap-2 flex-shrink-0">
             {editing ? (
               <>
@@ -398,9 +437,9 @@ export default function ProjectDetailPage() {
       <div className="flex-1 px-6 lg:px-10 py-6">
 
         {/* ════════════════════════════════════════════════════════════════════
-            APERÇU
+            AVANCEMENT
         ════════════════════════════════════════════════════════════════════ */}
-        {activeTab === 'apercu' && (
+        {activeTab === 'avancement' && (
           <div className="space-y-6">
 
             {/* ── Edit form (shown when editing) ──────────────────────────── */}
@@ -441,104 +480,7 @@ export default function ProjectDetailPage() {
               </div>
             )}
 
-            {/* ── Équipe ─────────────────────────────────────────────────── */}
-            <div className="bg-[#111118] border border-slate-800 rounded-2xl p-5 max-w-sm">
-              <h2 className="text-white font-semibold mb-4">Équipe</h2>
-              <div className="space-y-2.5 mb-4">
-                {project.assignees.length === 0 && (
-                  <p className="text-slate-500 text-xs italic">Aucun membre assigné</p>
-                )}
-                {project.assignees.map(a => {
-                  const gradient = ROLE_AVATAR_COLORS[a.role] ?? 'from-slate-400 to-slate-600'
-                  return (
-                    <div key={a.id} className="flex items-center gap-2.5 group">
-                      <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${gradient} flex items-center justify-center flex-shrink-0 overflow-hidden`}>
-                        {a.avatar
-                          ? <img src={a.avatar} alt="" className="w-full h-full object-cover" />
-                          : <span className="text-white text-xs font-semibold">{a.name[0]?.toUpperCase()}</span>
-                        }
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-white text-sm font-medium truncate">{a.name}</p>
-                        <p className="text-slate-500 text-xs">{ROLE_LABELS[a.role] ?? a.role}</p>
-                      </div>
-                      {isAdmin && (
-                        <button
-                          onClick={() => handleRemoveAssignee(a.id)}
-                          className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 transition-all"
-                        >
-                          <X size={13} />
-                        </button>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-              {isAdmin && unassignedUsers.length > 0 && (
-                <div>
-                  <p className="text-slate-500 text-xs mb-2">Ajouter un membre</p>
-                  <select
-                    onChange={e => { if (e.target.value) { handleAddAssignee(e.target.value); e.target.value = '' } }}
-                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-slate-400 text-xs focus:outline-none focus:border-[#E14B89] transition-colors"
-                  >
-                    <option value="">Sélectionner...</option>
-                    {unassignedUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                  </select>
-                </div>
-              )}
-            </div>
-
-            {/* ── Avancement / Pipeline ───────────────────────────────────── */}
-            <div className="bg-[#111118] border border-slate-800 rounded-2xl p-6">
-              <h2 className="text-white font-semibold mb-6">Avancement</h2>
-              <div className="relative">
-                {/* Connecting line */}
-                <div className="absolute top-5 left-5 right-5 h-px bg-slate-800 z-0" />
-                <div className="flex justify-between relative z-10">
-                  {STATUS_ORDER.filter(s => s !== 'ARCHIVE').map((s, i) => {
-                    const currentIdx = STATUS_ORDER.indexOf(project.status)
-                    const sIdx       = STATUS_ORDER.indexOf(s)
-                    const isActive   = s === project.status
-                    const isDone     = sIdx < currentIdx
-                    return (
-                      <button
-                        key={s}
-                        onClick={() => handleStatusClick(s)}
-                        className="flex flex-col items-center gap-2 group"
-                      >
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all border-2 ${
-                          isActive
-                            ? 'bg-gradient-to-br from-[#E14B89] to-[#F8903C] border-transparent shadow-lg shadow-[#E14B89]/30'
-                            : isDone
-                            ? 'bg-[#E14B89]/15 border-[#E14B89]/40'
-                            : 'bg-slate-800 border-slate-700 group-hover:border-slate-500'
-                        }`}>
-                          {isDone
-                            ? <CheckCircle2 size={16} className="text-[#E14B89]" />
-                            : <span className={`text-xs font-semibold ${isActive ? 'text-white' : 'text-slate-500 group-hover:text-slate-300'}`}>{i + 1}</span>
-                          }
-                        </div>
-                        <span className={`text-xs font-medium text-center leading-tight ${
-                          isActive ? 'text-white' : isDone ? 'text-[#E14B89]/70' : 'text-slate-600 group-hover:text-slate-400'
-                        }`}>
-                          {PROJECT_STATUS_LABELS[s]}
-                        </span>
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ════════════════════════════════════════════════════════════════════
-            DOCUMENTS
-        ════════════════════════════════════════════════════════════════════ */}
-        {activeTab === 'documents' && (
-          <div className="space-y-5">
-
-            {/* Figma + Contenu rédactionnel */}
+            {/* ── Figma + Contenu rédactionnel ────────────────────────────── */}
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
 
               {/* Figma */}
@@ -654,116 +596,181 @@ export default function ProjectDetailPage() {
               </div>
             </div>
 
-            {/* Documents + Factures */}
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-
-              {/* Documents */}
-              <div className="bg-[#111118] border border-slate-800 rounded-2xl p-5">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2">
-                    <Upload size={16} className="text-slate-400" />
-                    <h2 className="text-white font-medium">Documents</h2>
-                    <span className="text-slate-600 text-xs">({project.documents.length})</span>
-                  </div>
-                  <button
-                    onClick={() => setShowDocModal(true)}
-                    className="flex items-center gap-1.5 text-[#E14B89] hover:text-[#F8903C] text-sm transition-colors"
-                  >
-                    <Plus size={15} /> Ajouter
-                  </button>
-                </div>
-                <div className="space-y-1">
-                  {DOC_CATEGORIES.map(cat => {
-                    const docs       = project.documents.filter(d => d.category === cat.key)
-                    const isExpanded = expandedCats[cat.key] !== false
-                    const CatIcon    = cat.icon
+            {/* ── Pipeline stepper ────────────────────────────────────────── */}
+            <div className="bg-[#111118] border border-slate-800 rounded-2xl p-6">
+              <h2 className="text-white font-semibold mb-6">Suivi de l&apos;avancement</h2>
+              <div className="relative">
+                <div className="absolute top-5 left-5 right-5 h-px bg-slate-800 z-0" />
+                <div className="flex justify-between relative z-10">
+                  {STATUS_ORDER.filter(s => s !== 'ARCHIVE').map((s, i) => {
+                    const currentIdx = STATUS_ORDER.indexOf(project.status)
+                    const sIdx       = STATUS_ORDER.indexOf(s)
+                    const isActive   = s === project.status
+                    const isDone     = sIdx < currentIdx
                     return (
-                      <div key={cat.key}>
-                        <button
-                          onClick={() => toggleCat(cat.key)}
-                          className="w-full flex items-center gap-2.5 py-2 px-1 rounded-lg hover:bg-slate-800/40 transition-colors group"
-                        >
-                          <CatIcon size={14} className={cat.color} />
-                          <span className="flex-1 text-left text-sm text-slate-300 group-hover:text-white transition-colors">
-                            {cat.label}
-                          </span>
-                          <span className="text-slate-600 text-xs mr-1">{docs.length}</span>
-                          {isExpanded
-                            ? <ChevronDown size={13} className="text-slate-600" />
-                            : <ChevronRight size={13} className="text-slate-600" />
+                      <button
+                        key={s}
+                        onClick={() => handleStatusClick(s)}
+                        className="flex flex-col items-center gap-2 group"
+                      >
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all border-2 ${
+                          isActive
+                            ? 'bg-gradient-to-br from-[#E14B89] to-[#F8903C] border-transparent shadow-lg shadow-[#E14B89]/30'
+                            : isDone
+                            ? 'bg-[#E14B89]/15 border-[#E14B89]/40'
+                            : 'bg-slate-800 border-slate-700 group-hover:border-slate-500'
+                        }`}>
+                          {isDone
+                            ? <CheckCircle2 size={16} className="text-[#E14B89]" />
+                            : <span className={`text-xs font-semibold ${isActive ? 'text-white' : 'text-slate-500 group-hover:text-slate-300'}`}>{i + 1}</span>
                           }
-                        </button>
-                        {isExpanded && (
-                          <div className="ml-6 mb-1 space-y-1">
-                            {docs.length === 0 ? (
-                              <p className="text-slate-600 text-xs py-1 italic">Aucun document</p>
-                            ) : docs.map(doc => (
-                              <div key={doc.id} className="flex items-center gap-2 group py-1">
-                                <Link2 size={12} className="text-slate-600 flex-shrink-0" />
-                                <a
-                                  href={doc.url}
-                                  target="_blank" rel="noopener noreferrer"
-                                  className="flex-1 text-sm text-slate-300 hover:text-white truncate transition-colors"
-                                >
-                                  {doc.name}
-                                </a>
-                                <span className="text-slate-600 text-xs flex-shrink-0">{doc.uploadedBy.name}</span>
-                                <button
-                                  onClick={() => handleDeleteDoc(doc.id)}
-                                  className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 transition-all flex-shrink-0"
-                                >
-                                  <X size={12} />
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
+                        </div>
+                        <span className={`text-xs font-medium text-center leading-tight ${
+                          isActive ? 'text-white' : isDone ? 'text-[#E14B89]/70' : 'text-slate-600 group-hover:text-slate-400'
+                        }`}>
+                          {PROJECT_STATUS_LABELS[s]}
+                        </span>
+                      </button>
                     )
                   })}
                 </div>
               </div>
+            </div>
+          </div>
+        )}
 
-              {/* Factures */}
-              <div className="bg-[#111118] border border-slate-800 rounded-2xl p-5">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-white font-medium">Factures</h2>
-                  {isAdmin && (
-                    <button
-                      onClick={() => setShowInvoiceModal(true)}
-                      className="flex items-center gap-1.5 text-[#E14B89] hover:text-[#F8903C] text-sm transition-colors"
-                    >
-                      <Plus size={15} /> Ajouter
-                    </button>
-                  )}
+        {/* ════════════════════════════════════════════════════════════════════
+            DOCUMENTS
+        ════════════════════════════════════════════════════════════════════ */}
+        {activeTab === 'documents' && (
+          <div className="max-w-2xl">
+            <div className="bg-[#111118] border border-slate-800 rounded-2xl p-5">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Upload size={16} className="text-slate-400" />
+                  <h2 className="text-white font-medium">Documents</h2>
+                  <span className="text-slate-600 text-xs">({project.documents.length})</span>
                 </div>
-                {invoices.length === 0 ? (
-                  <p className="text-slate-500 text-sm italic">Aucune facture</p>
-                ) : (
-                  <div className="space-y-2">
-                    {invoices.map(inv => (
-                      <div key={inv.id} className="flex items-center gap-3 p-3 rounded-xl hover:bg-slate-800/30 transition-colors">
-                        <FileText size={16} className="text-slate-500 flex-shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <a
-                            href={inv.fileUrl}
-                            target="_blank" rel="noopener noreferrer"
-                            className="text-white text-sm hover:text-[#E14B89] transition-colors flex items-center gap-1"
-                          >
-                            {inv.filename}
-                            <ExternalLink size={11} className="text-slate-500" />
-                          </a>
-                          <p className="text-slate-500 text-xs mt-0.5">
-                            Par {inv.uploader.name} · {formatDate(inv.createdAt)}
-                            {inv.amount && isAdmin ? ` · ${formatCurrency(inv.amount)}` : ''}
-                          </p>
+                <button
+                  onClick={() => setShowDocModal(true)}
+                  className="flex items-center gap-1.5 text-[#E14B89] hover:text-[#F8903C] text-sm transition-colors"
+                >
+                  <Plus size={15} /> Ajouter
+                </button>
+              </div>
+              <div className="space-y-1">
+                {DOC_CATEGORIES.map(cat => {
+                  const docs       = project.documents.filter(d => d.category === cat.key)
+                  const isExpanded = expandedCats[cat.key] !== false
+                  const CatIcon    = cat.icon
+                  return (
+                    <div key={cat.key}>
+                      <button
+                        onClick={() => toggleCat(cat.key)}
+                        className="w-full flex items-center gap-2.5 py-2 px-1 rounded-lg hover:bg-slate-800/40 transition-colors group"
+                      >
+                        <CatIcon size={14} className={cat.color} />
+                        <span className="flex-1 text-left text-sm text-slate-300 group-hover:text-white transition-colors">
+                          {cat.label}
+                        </span>
+                        <span className="text-slate-600 text-xs mr-1">{docs.length}</span>
+                        {isExpanded
+                          ? <ChevronDown size={13} className="text-slate-600" />
+                          : <ChevronRight size={13} className="text-slate-600" />
+                        }
+                      </button>
+                      {isExpanded && (
+                        <div className="ml-6 mb-1 space-y-1">
+                          {docs.length === 0 ? (
+                            <p className="text-slate-600 text-xs py-1 italic">Aucun document</p>
+                          ) : docs.map(doc => (
+                            <div key={doc.id} className="flex items-center gap-2 group py-1">
+                              <Link2 size={12} className="text-slate-600 flex-shrink-0" />
+                              <a
+                                href={doc.url}
+                                target="_blank" rel="noopener noreferrer"
+                                className="flex-1 text-sm text-slate-300 hover:text-white truncate transition-colors"
+                              >
+                                {doc.name}
+                              </a>
+                              <span className="text-slate-600 text-xs flex-shrink-0">{doc.uploadedBy.name}</span>
+                              <button
+                                onClick={() => handleDeleteDoc(doc.id)}
+                                className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 transition-all flex-shrink-0"
+                              >
+                                <X size={12} />
+                              </button>
+                            </div>
+                          ))}
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             </div>
+          </div>
+        )}
+
+        {/* ════════════════════════════════════════════════════════════════════
+            FACTURES
+        ════════════════════════════════════════════════════════════════════ */}
+        {activeTab === 'factures' && (
+          <div className="max-w-2xl">
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <h2 className="text-white font-semibold text-lg">Factures</h2>
+                <p className="text-slate-400 text-sm mt-0.5">{invoices.length} facture{invoices.length > 1 ? 's' : ''}</p>
+              </div>
+              {isAdmin && (
+                <button
+                  onClick={() => setShowInvoiceModal(true)}
+                  className="flex items-center gap-2 bg-[#E14B89] hover:opacity-90 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors"
+                >
+                  <Plus size={14} /> Ajouter une facture
+                </button>
+              )}
+            </div>
+            {invoices.length === 0 ? (
+              <div className="bg-[#111118] border border-slate-800 rounded-2xl p-14 text-center">
+                <FileText size={32} className="text-slate-700 mx-auto mb-3" />
+                <p className="text-slate-500 text-sm">Aucune facture pour ce projet</p>
+                {isAdmin && (
+                  <button
+                    onClick={() => setShowInvoiceModal(true)}
+                    className="mt-3 text-[#E14B89] text-sm hover:underline"
+                  >
+                    Ajouter la première facture →
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="bg-[#111118] border border-slate-800 rounded-2xl divide-y divide-slate-800">
+                {invoices.map(inv => (
+                  <div key={inv.id} className="flex items-center gap-4 p-4 hover:bg-slate-800/20 transition-colors">
+                    <div className="w-9 h-9 rounded-xl bg-[#E14B89]/10 flex items-center justify-center flex-shrink-0">
+                      <FileText size={16} className="text-[#E14B89]" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <a
+                        href={inv.fileUrl}
+                        target="_blank" rel="noopener noreferrer"
+                        className="text-white text-sm font-medium hover:text-[#E14B89] transition-colors flex items-center gap-1.5"
+                      >
+                        {inv.filename}
+                        <ExternalLink size={11} className="text-slate-500" />
+                      </a>
+                      <p className="text-slate-500 text-xs mt-0.5">
+                        Par {inv.uploader.name} · {formatDate(inv.createdAt)}
+                      </p>
+                    </div>
+                    {inv.amount && isAdmin && (
+                      <span className="text-white font-semibold text-sm flex-shrink-0">{formatCurrency(inv.amount)}</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
