@@ -94,7 +94,7 @@ export default function ProjectDetailPage() {
 
   const [showMaintenanceModal, setShowMaintenanceModal] = useState(false)
   const [maintenanceForm, setMaintenanceForm] = useState({
-    plan: 'ESSENTIELLE', price: '', start: '', end: '',
+    plan: 'HEBERGEMENT', price: '', start: '', end: '',
   })
   const [maintenanceSubmitting, setMaintenanceSubmitting] = useState(false)
 
@@ -129,7 +129,7 @@ export default function ProjectDetailPage() {
     // Intercept MAINTENANCE: open confirmation modal
     if (newStatus === 'MAINTENANCE') {
       setMaintenanceForm({
-        plan: project.maintenancePlan && project.maintenancePlan !== 'NONE' ? project.maintenancePlan : 'ESSENTIELLE',
+        plan: project.maintenancePlan && project.maintenancePlan !== 'NONE' ? project.maintenancePlan : 'HEBERGEMENT',
         price: project.maintenancePrice?.toString() ?? '',
         start: project.maintenanceStart ? project.maintenanceStart.split('T')[0] : new Date().toISOString().split('T')[0],
         end: project.maintenanceEnd ? project.maintenanceEnd.split('T')[0] : '',
@@ -1078,9 +1078,10 @@ export default function ProjectDetailPage() {
                   onChange={e => setMaintenanceForm({ ...maintenanceForm, plan: e.target.value })}
                   className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
                 >
-                  <option value="ESSENTIELLE">Essentielle (59,99€/mois)</option>
-                  <option value="DEVELOPPEMENT">Développement (99,99€/mois)</option>
-                  <option value="SEO">SEO (179,99€/mois)</option>
+                  <option value="HEBERGEMENT">Hébergement web</option>
+                  <option value="CLASSIQUE">Classique (hébergement + mises à jour)</option>
+                  <option value="CONTENU">Contenu (classique + contenu)</option>
+                  <option value="SEO">SEO (contenu + SEO)</option>
                 </select>
               </div>
               <div>

@@ -495,9 +495,10 @@ export default function ClientsPage() {
                   <select value={editForm.maintenancePlan} onChange={e => setEditForm({ ...editForm, maintenancePlan: e.target.value })}
                     className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors">
                     <option value="NONE">Aucune</option>
-                    <option value="ESSENTIELLE">Essentielle (59,99€)</option>
-                    <option value="DEVELOPPEMENT">Développement (99,99€)</option>
-                    <option value="SEO">SEO (179,99€)</option>
+                    <option value="HEBERGEMENT">Hébergement web</option>
+                    <option value="CLASSIQUE">Classique (hébergement + mises à jour)</option>
+                    <option value="CONTENU">Contenu (classique + contenu)</option>
+                    <option value="SEO">SEO (contenu + SEO)</option>
                   </select>
                 </div>
                 <div>

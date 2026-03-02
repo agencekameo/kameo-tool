@@ -58,8 +58,9 @@ interface QuoteItem {
 
 const MAINTENANCE_COLORS: Record<string, string> = {
   NONE: 'bg-slate-800 text-slate-400',
-  ESSENTIELLE: 'bg-teal-500/15 text-teal-400',
-  DEVELOPPEMENT: 'bg-blue-500/15 text-blue-400',
+  HEBERGEMENT: 'bg-slate-500/15 text-slate-300',
+  CLASSIQUE: 'bg-teal-500/15 text-teal-400',
+  CONTENU: 'bg-blue-500/15 text-blue-400',
   SEO: 'bg-[#E14B89]/10 text-[#E14B89]',
 }
 

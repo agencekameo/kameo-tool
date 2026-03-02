@@ -81,8 +81,9 @@ export const TASK_STATUS_LABELS: Record<string, string> = {
 
 export const MAINTENANCE_LABELS: Record<string, string> = {
   NONE: 'Aucune',
-  ESSENTIELLE: 'Essentielle',
-  DEVELOPPEMENT: 'Développement',
+  HEBERGEMENT: 'Hébergement web',
+  CLASSIQUE: 'Classique',
+  CONTENU: 'Contenu',
   SEO: 'SEO',
 }
 

@@ -49,8 +49,9 @@ enum TaskPriority {
 
 enum MaintenancePlan {
   NONE
-  ESSENTIELLE
-  DEVELOPPEMENT
+  HEBERGEMENT
+  CLASSIQUE
+  CONTENU
   SEO
 }
 
