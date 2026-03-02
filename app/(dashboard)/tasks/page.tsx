@@ -45,6 +45,8 @@ export default function TasksPage() {
   const [tasks, setTasks] = useState<Task[]>([])
   const [loading, setLoading] = useState(true)
   const [quickAdd, setQuickAdd] = useState('')
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null)
+  const [editTitle, setEditTitle] = useState('')
   const dragItem = useRef<number | null>(null)
   const dragOver = useRef<number | null>(null)
 
@@ -120,6 +122,30 @@ export default function TasksPage() {
     })
     dragItem.current = null
     dragOver.current = null
+  }
+
+  function startRename(task: Task) {
+    setEditingTaskId(task.id)
+    setEditTitle(task.title)
+  }
+
+  async function submitRename(taskId: string) {
+    const trimmed = editTitle.trim()
+    if (!trimmed || trimmed === tasks.find(t => t.id === taskId)?.title) {
+      setEditingTaskId(null)
+      return
+    }
+    await fetch(`/api/tasks/${taskId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: trimmed }),
+    })
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, title: trimmed } : t))
+    setEditingTaskId(null)
+  }
+
+  function handleRenameKeyDown(e: React.KeyboardEvent<HTMLInputElement>, taskId: string) {
+    if (e.key === 'Enter') submitRename(taskId)
+    if (e.key === 'Escape') setEditingTaskId(null)
   }
 
   return (
@@ -202,7 +228,18 @@ export default function TasksPage() {
 
               {/* Title + subtitle */}
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-white truncate">{task.title}</p>
+                {editingTaskId === task.id ? (
+                  <input
+                    autoFocus
+                    value={editTitle}
+                    onChange={e => setEditTitle(e.target.value)}
+                    onKeyDown={e => handleRenameKeyDown(e, task.id)}
+                    onBlur={() => submitRename(task.id)}
+                    className="text-sm font-medium text-white bg-[#1a1a24] border border-[#E14B89] rounded-lg px-2 py-0.5 w-full focus:outline-none"
+                  />
+                ) : (
+                  <p className="text-sm font-medium text-white truncate cursor-pointer" onDoubleClick={() => startRename(task)}>{task.title}</p>
+                )}
                 {task.project && (
                   <p className="text-slate-500 text-xs mt-0.5 truncate">
                     <Link href={`/projects/${task.project.id}`} className="hover:text-[#E14B89] transition-colors">
@@ -258,7 +295,18 @@ export default function TasksPage() {
                     <button onClick={() => cycleStatus(task)} className="flex-shrink-0">
                       <CheckCircle2 size={16} className="text-green-400" />
                     </button>
-                    <p className="text-slate-500 text-sm line-through flex-1 truncate">{task.title}</p>
+                    {editingTaskId === task.id ? (
+                      <input
+                        autoFocus
+                        value={editTitle}
+                        onChange={e => setEditTitle(e.target.value)}
+                        onKeyDown={e => handleRenameKeyDown(e, task.id)}
+                        onBlur={() => submitRename(task.id)}
+                        className="text-sm text-slate-400 bg-[#1a1a24] border border-[#E14B89] rounded-lg px-2 py-0.5 flex-1 focus:outline-none"
+                      />
+                    ) : (
+                      <p className="text-slate-500 text-sm line-through flex-1 truncate cursor-pointer" onDoubleClick={() => startRename(task)}>{task.title}</p>
+                    )}
                     {task.project && (
                       <span className="text-slate-600 text-xs flex-shrink-0">
                         {task.project.client.name} · {task.project.name}
