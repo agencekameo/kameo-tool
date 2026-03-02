@@ -32,7 +32,7 @@ const PROSPECT_STATUS_BG: Record<string, string> = {
 async function getDashboardData(userId: string) {
   const [projects, tasks, clients, totalRevenue, prospects] = await Promise.all([
     prisma.project.findMany({
-      where: { status: { notIn: ['ARCHIVE'] } },
+      where: { status: { in: ['BRIEF', 'REDACTION', 'MAQUETTE', 'DEVELOPPEMENT', 'REVIEW'] } },
       select: {
         id: true,
         name: true,
@@ -67,7 +67,7 @@ async function getDashboardData(userId: string) {
   const projectsByStatus = await prisma.project.groupBy({
     by: ['status'],
     _count: true,
-    where: { status: { not: 'ARCHIVE' } },
+    where: { status: { in: ['BRIEF', 'REDACTION', 'MAQUETTE', 'DEVELOPPEMENT', 'REVIEW'] } },
   })
 
   return { projects, tasks, clients, totalRevenue: totalRevenue._sum.price ?? 0, projectsByStatus, prospects }
