@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
-import { Plus, GripVertical, Circle, CheckCircle2, Clock, RotateCcw, Trash2, Filter } from 'lucide-react'
-import { TASK_PRIORITY_COLORS, TASK_PRIORITY_LABELS, TASK_STATUS_LABELS, formatDate } from '@/lib/utils'
+import { Plus, GripVertical, Circle, CheckCircle2, Clock, Trash2 } from 'lucide-react'
+import { TASK_STATUS_LABELS, formatDate } from '@/lib/utils'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
 
@@ -16,9 +16,6 @@ interface Task {
   project?: { id: string; name: string; client: { name: string } } | null
   assignee?: { id: string; name: string }
 }
-
-interface Project { id: string; name: string; client: { name: string } }
-interface User { id: string; name: string }
 
 const PRIORITY_ORDER = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']
 
@@ -46,25 +43,13 @@ const STATUS_BG: Record<string, string> = {
 export default function TasksPage() {
   const { data: session } = useSession()
   const [tasks, setTasks] = useState<Task[]>([])
-  const [projects, setProjects] = useState<Project[]>([])
-  const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
-  const [showModal, setShowModal] = useState(false)
   const [quickAdd, setQuickAdd] = useState('')
-  const [filterUser, setFilterUser] = useState('TOUS')
-  const [form, setForm] = useState({
-    title: '', description: '', status: 'TODO', priority: 'MEDIUM',
-    projectId: '', assigneeId: '', dueDate: '',
-  })
   const dragItem = useRef<number | null>(null)
   const dragOver = useRef<number | null>(null)
 
   useEffect(() => {
-    Promise.all([
-      fetch('/api/tasks').then(r => r.json()),
-      fetch('/api/projects').then(r => r.json()),
-      fetch('/api/users').then(r => r.json()),
-    ]).then(([t, p, u]) => {
+    fetch('/api/tasks').then(r => r.json()).then(t => {
       const sorted = [...t].sort((a: Task, b: Task) => {
         const pa = PRIORITY_ORDER.indexOf(a.priority)
         const pb = PRIORITY_ORDER.indexOf(b.priority)
@@ -72,20 +57,14 @@ export default function TasksPage() {
         return a.status.localeCompare(b.status)
       })
       setTasks(sorted)
-      setProjects(p)
-      setUsers(u)
     }).finally(() => setLoading(false))
   }, [])
 
   const activeTasks = tasks.filter(t => t.status !== 'DONE')
   const doneTasks = tasks.filter(t => t.status === 'DONE')
 
-  const filteredActive = activeTasks.filter(t =>
-    filterUser === 'TOUS' || t.assignee?.id === filterUser
-  )
-  const filteredDone = doneTasks.filter(t =>
-    filterUser === 'TOUS' || t.assignee?.id === filterUser
-  )
+  const filteredActive = activeTasks
+  const filteredDone = doneTasks
 
   async function cycleStatus(task: Task) {
     const newStatus = STATUS_CYCLE[task.status]
@@ -101,16 +80,12 @@ export default function TasksPage() {
     setTasks(prev => prev.filter(t => t.id !== id))
   }
 
-  async function handleCreate(e: React.FormEvent) {
-    e.preventDefault()
+  async function handleQuickCreate(title: string) {
+    if (!title.trim()) return
     const res = await fetch('/api/tasks', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ...form,
-        assigneeId: form.assigneeId || null,
-        dueDate: form.dueDate || null,
-      }),
+      body: JSON.stringify({ title: title.trim(), status: 'TODO', priority: 'MEDIUM' }),
     })
     const task = await res.json()
     setTasks(prev => {
@@ -122,19 +97,12 @@ export default function TasksPage() {
       })
       return next
     })
-    setShowModal(false)
-    setForm({ title: '', description: '', status: 'TODO', priority: 'MEDIUM', projectId: '', assigneeId: '', dueDate: '' })
     setQuickAdd('')
-  }
-
-  function openModalWithTitle(title: string) {
-    setForm(f => ({ ...f, title }))
-    setShowModal(true)
   }
 
   function handleQuickAddKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'Enter' && quickAdd.trim()) {
-      openModalWithTitle(quickAdd.trim())
+      handleQuickCreate(quickAdd.trim())
     }
   }
 
@@ -164,28 +132,6 @@ export default function TasksPage() {
             {filteredActive.length} en cours · {filteredDone.length} terminée{filteredDone.length > 1 ? 's' : ''}
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          {/* Member filter */}
-          <div className="flex items-center gap-2 bg-[#111118] border border-slate-800 rounded-xl px-3 py-2">
-            <Filter size={14} className="text-slate-500" />
-            <select
-              value={filterUser}
-              onChange={e => setFilterUser(e.target.value)}
-              className="bg-transparent text-slate-400 text-sm focus:outline-none cursor-pointer"
-            >
-              <option value="TOUS">Tous les membres</option>
-              {users.map(u => (
-                <option key={u.id} value={u.id}>{u.name}</option>
-              ))}
-            </select>
-          </div>
-          <button
-            onClick={() => { setForm(f => ({ ...f, title: quickAdd })); setShowModal(true) }}
-            className="flex items-center gap-2 bg-[#E14B89] hover:opacity-90 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-colors"
-          >
-            <Plus size={16} /> Nouvelle tâche
-          </button>
-        </div>
       </div>
 
       {loading ? (
@@ -213,15 +159,15 @@ export default function TasksPage() {
               value={quickAdd}
               onChange={e => setQuickAdd(e.target.value)}
               onKeyDown={handleQuickAddKeyDown}
-              placeholder="Ajouter une tâche... (Entrée pour ouvrir le formulaire)"
+              placeholder="Ajouter une tâche... (Entrée pour créer)"
               className="flex-1 bg-transparent text-sm text-white placeholder:text-slate-600 focus:outline-none"
             />
             {quickAdd.trim() && (
               <button
-                onClick={() => openModalWithTitle(quickAdd.trim())}
+                onClick={() => handleQuickCreate(quickAdd.trim())}
                 className="text-xs text-[#E14B89] hover:opacity-80 transition-opacity flex-shrink-0"
               >
-                Ouvrir
+                Créer
               </button>
             )}
           </div>
@@ -335,96 +281,6 @@ export default function TasksPage() {
         </div>
       )}
 
-      {/* Create modal */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#111118] border border-slate-800 rounded-2xl p-6 w-full max-w-md">
-            <h2 className="text-white font-semibold text-lg mb-5">Nouvelle tâche</h2>
-            <form onSubmit={handleCreate} className="space-y-4">
-              <div>
-                <label className="block text-slate-400 text-xs mb-1.5">Titre *</label>
-                <input
-                  required
-                  value={form.title}
-                  onChange={e => setForm({ ...form, title: e.target.value })}
-                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
-                />
-              </div>
-              <div>
-                <label className="block text-slate-400 text-xs mb-1.5">Projet</label>
-                <select
-                  value={form.projectId}
-                  onChange={e => setForm({ ...form, projectId: e.target.value })}
-                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
-                >
-                  <option value="">Sans projet</option>
-                  {projects.map(p => (
-                    <option key={p.id} value={p.id}>{p.client.name} · {p.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-slate-400 text-xs mb-1.5">Statut</label>
-                <select
-                  value={form.status}
-                  onChange={e => setForm({ ...form, status: e.target.value })}
-                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
-                >
-                  <option value="TODO">À faire</option>
-                  <option value="IN_PROGRESS">En cours</option>
-                  <option value="DONE">Terminé</option>
-                </select>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-slate-400 text-xs mb-1.5">Assigné à</label>
-                  <select
-                    value={form.assigneeId}
-                    onChange={e => setForm({ ...form, assigneeId: e.target.value })}
-                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
-                  >
-                    <option value="">Non assigné</option>
-                    {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-slate-400 text-xs mb-1.5">Échéance</label>
-                  <input
-                    type="date"
-                    value={form.dueDate}
-                    onChange={e => setForm({ ...form, dueDate: e.target.value })}
-                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-slate-400 text-xs mb-1.5">Description</label>
-                <textarea
-                  value={form.description}
-                  onChange={e => setForm({ ...form, description: e.target.value })}
-                  rows={3}
-                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors resize-none"
-                />
-              </div>
-              <div className="flex gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => { setShowModal(false); setForm({ title: '', description: '', status: 'TODO', priority: 'MEDIUM', projectId: '', assigneeId: '', dueDate: '' }) }}
-                  className="flex-1 border border-slate-700 text-slate-400 hover:text-white py-2.5 rounded-xl text-sm transition-colors"
-                >
-                  Annuler
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 bg-[#E14B89] hover:opacity-90 text-white py-2.5 rounded-xl text-sm font-medium transition-colors"
-                >
-                  Créer
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

@@ -308,7 +308,7 @@ export default function ClientsPage() {
                     </div>
                   )}
                 </div>
-                <div className="mt-4 pt-4 border-t border-slate-800 flex items-center justify-end">
+                <div className="mt-4 pt-4 border-t border-slate-800 flex items-center justify-start">
                   <span className="text-slate-500 text-xs">{client.projects.length} projet{client.projects.length > 1 ? 's' : ''}</span>
                 </div>
               </Link>
