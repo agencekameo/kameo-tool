@@ -97,6 +97,7 @@ enum ExpenseCategory {
 }
 
 enum QuoteStatus {
+  EN_ATTENTE
   BROUILLON
   ENVOYE
   ACCEPTE
@@ -395,7 +396,7 @@ model Quote {
   clientEmail   String?
   clientAddress String?
   subject       String
-  status        QuoteStatus @default(BROUILLON)
+  status        QuoteStatus @default(EN_ATTENTE)
   validUntil    DateTime?
   notes         String?
   discount      Float       @default(0)

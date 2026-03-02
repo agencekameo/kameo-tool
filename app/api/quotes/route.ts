@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
         clientEmail: body.clientEmail || null,
         clientAddress: body.clientAddress || null,
         subject: body.subject,
-        status: body.status || 'BROUILLON',
+        status: body.status || 'EN_ATTENTE',
         validUntil: body.validUntil ? new Date(body.validUntil) : null,
         notes: body.notes || null,
         discount: body.discount || 0,

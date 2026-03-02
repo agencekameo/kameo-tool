@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import {
-  Plus, Trash2, Pencil, Eye, Printer, X, ChevronDown, FileText, Check,
+  Plus, Trash2, Pencil, Eye, Printer, X, ChevronDown, FileText, Check, Send, Loader2,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 
@@ -24,7 +24,7 @@ interface Quote {
   clientEmail?: string
   clientAddress?: string
   subject: string
-  status: 'BROUILLON' | 'ENVOYE' | 'ACCEPTE' | 'REFUSE' | 'EXPIRE'
+  status: 'EN_ATTENTE' | 'BROUILLON' | 'ENVOYE' | 'ACCEPTE' | 'REFUSE' | 'EXPIRE'
   validUntil?: string
   notes?: string
   discount: number
@@ -55,6 +55,7 @@ interface Client {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const STATUS_LABELS: Record<Quote['status'], string> = {
+  EN_ATTENTE: 'En attente',
   BROUILLON: 'Brouillon',
   ENVOYE: 'Envoyé',
   ACCEPTE: 'Accepté',
@@ -63,6 +64,7 @@ const STATUS_LABELS: Record<Quote['status'], string> = {
 }
 
 const STATUS_COLORS: Record<Quote['status'], string> = {
+  EN_ATTENTE: 'bg-amber-500/15 text-amber-400 border-amber-500/20',
   BROUILLON: 'bg-slate-500/15 text-slate-400 border-slate-500/20',
   ENVOYE:    'bg-blue-500/15 text-blue-400 border-blue-500/20',
   ACCEPTE:   'bg-green-500/15 text-green-400 border-green-500/20',
@@ -116,38 +118,44 @@ function PrintView({ quote, onClose }: { quote: Quote; onClose: () => void }) {
       {/* Print content */}
       <div className="max-w-[800px] mx-auto px-12 py-10 print:p-0 print:max-w-none text-gray-900">
 
-        {/* Header: Agency left, Devis info right */}
-        <div className="flex items-start justify-between mb-10 pb-8 border-b-[3px]" style={{ borderColor: '#F8903C' }}>
-          <div>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/kameo-logo-light.svg" alt="Kameo" className="h-9 mb-2" />
-            <div className="text-2xl font-extrabold tracking-tight" style={{ color: '#E14B89' }}>
-              Agence Kameo
-            </div>
-            <div className="text-xs text-gray-500 mt-2 leading-relaxed">
-              <div>9 rue des colonnes, Paris 75002</div>
-              <div>Tél : 06 76 23 00 37 — contact@agencekameo.fr</div>
-              <div className="mt-1.5 text-gray-400 text-[10px]">
-                SIRET : 980 573 984 00013 &nbsp;|&nbsp; APE : 62.01Z<br />
-                TVA Intracommunautaire : FR54980573984<br />
-                RCS Paris 980 573 984
+        {/* Header: Agency left, Devis title center, info right */}
+        <div className="mb-10 pb-8 border-b-[3px]" style={{ borderColor: '#F8903C' }}>
+          {/* Devis title centered */}
+          <div className="text-center mb-6">
+            <div className="text-4xl font-black tracking-tight text-gray-800 uppercase">Devis</div>
+          </div>
+
+          <div className="flex items-start justify-between">
+            <div>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/kameo-logo-light.svg" alt="Kameo" className="h-9 mb-4" />
+              <div className="text-sm font-semibold text-gray-500">
+                Agence Kameo
+              </div>
+              <div className="text-xs text-gray-500 mt-2 leading-relaxed">
+                <div>9 rue des colonnes, Paris 75002</div>
+                <div>Tél : 06 76 23 00 37 — contact@agencekameo.fr</div>
+                <div className="mt-1.5 text-gray-400 text-[10px]">
+                  SIRET : 980 573 984 00013 &nbsp;|&nbsp; APE : 62.01Z<br />
+                  TVA Intracommunautaire : FR54980573984<br />
+                  RCS Paris 980 573 984
+                </div>
               </div>
             </div>
-          </div>
-          <div className="text-right">
-            <div className="text-4xl font-black tracking-tight text-gray-800 uppercase">Devis</div>
-            <div className="text-lg font-bold mt-1" style={{ color: '#E14B89' }}>N° {quote.number}</div>
-            <div className="text-sm text-gray-500 mt-2 space-y-0.5">
-              <div>Émis le : {today}</div>
-              {quote.validUntil && (
-                <div>Valide jusqu&apos;au : {new Date(quote.validUntil).toLocaleDateString('fr-FR')}</div>
-              )}
-            </div>
-            <div className="mt-3">
-              <span className="text-xs px-3 py-1 rounded font-semibold border"
-                style={{ borderColor: '#F8903C', color: '#E14B89', background: 'rgba(248,144,60,0.06)' }}>
-                {STATUS_LABELS[quote.status]}
-              </span>
+            <div className="text-right">
+              <div className="text-lg font-bold" style={{ color: '#E14B89' }}>N° {quote.number}</div>
+              <div className="text-sm text-gray-500 mt-2 space-y-0.5">
+                <div>Émis le : {today}</div>
+                {quote.validUntil && (
+                  <div>Valide jusqu&apos;au : {new Date(quote.validUntil).toLocaleDateString('fr-FR')}</div>
+                )}
+              </div>
+              <div className="mt-3">
+                <span className="text-xs px-3 py-1 rounded font-semibold border"
+                  style={{ borderColor: '#F8903C', color: '#E14B89', background: 'rgba(248,144,60,0.06)' }}>
+                  {STATUS_LABELS[quote.status]}
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -334,7 +342,7 @@ function emptyForm() {
     clientEmail: '',
     clientAddress: '',
     subject: '',
-    status: 'BROUILLON' as Quote['status'],
+    status: 'EN_ATTENTE' as Quote['status'],
     validUntil: defaultValidUntil(),
     notes: '',
     discount: 0,
@@ -367,6 +375,12 @@ export default function DevisPage() {
   // New template form
   const [newTemplate, setNewTemplate] = useState({ name: '', description: '', unitPrice: '', unit: '' })
   const [savingTemplate, setSavingTemplate] = useState(false)
+
+  // Yousign signature
+  const [yousignModal, setYousignModal] = useState<Quote | null>(null)
+  const [yousignForm, setYousignForm] = useState({ firstName: '', lastName: '', email: '', phone: '' })
+  const [yousignSending, setYousignSending] = useState(false)
+  const [yousignResult, setYousignResult] = useState<{ success?: boolean; message?: string; error?: string } | null>(null)
 
   // Delete template double-confirmation
   const [deleteTemplateModal, setDeleteTemplateModal] = useState<{ id: string; name: string } | null>(null)
@@ -554,6 +568,57 @@ export default function DevisPage() {
     if (editingQuote?.id === id) closeModal()
   }
 
+  // ── Yousign signature ──────────────────────────────────────────────────────
+
+  function openYousign(q: Quote) {
+    setYousignModal(q)
+    // Pre-fill from client name if possible
+    const nameParts = q.clientName.split('\n')
+    const mainName = nameParts[nameParts.length - 1] || nameParts[0] || ''
+    const parts = mainName.trim().split(' ')
+    setYousignForm({
+      firstName: parts[0] || '',
+      lastName: parts.slice(1).join(' ') || '',
+      email: q.clientEmail || '',
+      phone: '',
+    })
+    setYousignResult(null)
+  }
+
+  async function handleYousignSend() {
+    if (!yousignModal) return
+    if (!yousignForm.firstName.trim() || !yousignForm.lastName.trim() || !yousignForm.email.trim()) {
+      alert('Veuillez renseigner le prénom, nom et email du signataire.')
+      return
+    }
+    setYousignSending(true)
+    setYousignResult(null)
+    try {
+      const res = await fetch(`/api/quotes/${yousignModal.id}/yousign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          signerFirstName: yousignForm.firstName,
+          signerLastName: yousignForm.lastName,
+          signerEmail: yousignForm.email,
+          signerPhone: yousignForm.phone || undefined,
+        }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setYousignResult({ success: true, message: data.message || 'Envoyé pour signature !' })
+        // Update the quote status locally
+        setQuotes(prev => prev.map(q => q.id === yousignModal.id ? { ...q, status: 'ENVOYE' as Quote['status'] } : q))
+      } else {
+        setYousignResult({ error: data.error || 'Erreur lors de l\'envoi' })
+      }
+    } catch {
+      setYousignResult({ error: 'Erreur réseau' })
+    } finally {
+      setYousignSending(false)
+    }
+  }
+
   // ── Templates ──────────────────────────────────────────────────────────────
 
   async function handleSaveTemplate(e: React.FormEvent) {
@@ -710,6 +775,13 @@ export default function DevisPage() {
                     </td>
                     <td className="pr-3">
                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={e => { e.stopPropagation(); openYousign(q) }}
+                          className="p-1.5 text-slate-500 hover:text-[#E14B89] transition-colors rounded-lg hover:bg-[#E14B89]/5"
+                          title="Envoyer pour signature"
+                        >
+                          <Send size={14} />
+                        </button>
                         <button
                           onClick={e => { e.stopPropagation(); setPrintQuote(q) }}
                           className="p-1.5 text-slate-500 hover:text-slate-300 transition-colors rounded-lg hover:bg-white/5"
@@ -1167,6 +1239,16 @@ export default function DevisPage() {
                 )}
               </div>
               <div className="flex items-center gap-3">
+                {editingQuote && (
+                  <button
+                    type="button"
+                    onClick={() => { closeModal(); openYousign(editingQuote) }}
+                    className="flex items-center gap-1.5 border border-[#E14B89]/40 text-[#E14B89] hover:bg-[#E14B89]/10 px-4 py-2.5 rounded-xl text-sm font-medium transition-colors"
+                  >
+                    <Send size={14} />
+                    Envoyer pour signature
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setPrintQuote(buildPreviewQuote())}
@@ -1270,6 +1352,116 @@ export default function DevisPage() {
                     className="flex-1 bg-red-500 hover:bg-red-600 disabled:opacity-60 text-white py-2.5 rounded-xl text-sm font-medium transition-colors"
                   >
                     {deletingTemplate ? 'Suppression...' : 'Supprimer définitivement'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ─── Yousign Signature Modal ─────────────────────────────────────── */}
+      {yousignModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
+          <div className="bg-[#111118] border border-slate-800 rounded-2xl p-6 w-full max-w-md">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-10 h-10 rounded-xl bg-[#E14B89]/10 flex items-center justify-center flex-shrink-0">
+                <Send size={18} className="text-[#E14B89]" />
+              </div>
+              <div>
+                <h3 className="text-white font-semibold">Envoyer pour signature</h3>
+                <p className="text-slate-500 text-xs mt-0.5">Devis {yousignModal.number} — via Yousign</p>
+              </div>
+            </div>
+
+            {yousignResult?.success ? (
+              <div className="text-center py-6">
+                <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center mx-auto mb-3">
+                  <Check size={24} className="text-green-400" />
+                </div>
+                <p className="text-green-400 font-medium">{yousignResult.message}</p>
+                <p className="text-slate-500 text-xs mt-2">Le client recevra un email pour signer le devis.</p>
+                <button
+                  onClick={() => setYousignModal(null)}
+                  className="mt-4 border border-slate-700 text-slate-400 hover:text-white px-4 py-2.5 rounded-xl text-sm transition-colors"
+                >
+                  Fermer
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-3 mb-5">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-slate-400 text-xs mb-1.5">Prénom *</label>
+                      <input
+                        value={yousignForm.firstName}
+                        onChange={e => setYousignForm(f => ({ ...f, firstName: e.target.value }))}
+                        placeholder="Jean"
+                        className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-slate-400 text-xs mb-1.5">Nom *</label>
+                      <input
+                        value={yousignForm.lastName}
+                        onChange={e => setYousignForm(f => ({ ...f, lastName: e.target.value }))}
+                        placeholder="Dupont"
+                        className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-slate-400 text-xs mb-1.5">Email *</label>
+                    <input
+                      type="email"
+                      value={yousignForm.email}
+                      onChange={e => setYousignForm(f => ({ ...f, email: e.target.value }))}
+                      placeholder="client@exemple.fr"
+                      className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-400 text-xs mb-1.5">Téléphone (optionnel)</label>
+                    <input
+                      type="tel"
+                      value={yousignForm.phone}
+                      onChange={e => setYousignForm(f => ({ ...f, phone: e.target.value }))}
+                      placeholder="+33 6 ..."
+                      className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
+                    />
+                  </div>
+                </div>
+
+                {yousignResult?.error && (
+                  <div className="mb-4 px-3 py-2.5 bg-red-500/10 border border-red-500/20 rounded-xl">
+                    <p className="text-red-400 text-xs">{yousignResult.error}</p>
+                  </div>
+                )}
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setYousignModal(null)}
+                    className="flex-1 border border-slate-700 text-slate-400 hover:text-white py-2.5 rounded-xl text-sm transition-colors"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    onClick={handleYousignSend}
+                    disabled={yousignSending}
+                    className="flex-1 bg-[#E14B89] hover:opacity-90 disabled:opacity-50 text-white py-2.5 rounded-xl text-sm font-medium transition-opacity flex items-center justify-center gap-2"
+                  >
+                    {yousignSending ? (
+                      <>
+                        <Loader2 size={14} className="animate-spin" />
+                        Envoi en cours...
+                      </>
+                    ) : (
+                      <>
+                        <Send size={14} />
+                        Envoyer
+                      </>
+                    )}
                   </button>
                 </div>
               </>
