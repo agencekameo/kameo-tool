@@ -38,6 +38,8 @@ interface Project {
   id: string; name: string; type: string; status: string; price?: number
   deadline?: string; startDate?: string; services: string[]; notes?: string
   figmaUrl?: string | null; contentUrl?: string | null
+  maintenancePlan?: string; maintenancePrice?: number | null
+  maintenanceStart?: string | null; maintenanceEnd?: string | null
   client: { id: string; name: string; company?: string; website?: string }
   tasks: Task[]; createdBy: { id: string; name: string }
   assignees: ProjectUser[]; documents: ProjectDoc[]
@@ -90,6 +92,12 @@ export default function ProjectDetailPage() {
   const [invoiceForm, setInvoiceForm] = useState({ filename: '', fileUrl: '', amount: '', notes: '' })
   const [docForm, setDocForm]         = useState({ name: '', url: '', category: 'CAHIER_DES_CHARGES' })
 
+  const [showMaintenanceModal, setShowMaintenanceModal] = useState(false)
+  const [maintenanceForm, setMaintenanceForm] = useState({
+    plan: 'ESSENTIELLE', price: '', start: '', end: '',
+  })
+  const [maintenanceSubmitting, setMaintenanceSubmitting] = useState(false)
+
   const [expandedCats, setExpandedCats]     = useState<Record<string, boolean>>({})
   const [figmaExpanded, setFigmaExpanded]   = useState(false)
   const [editingFigma, setEditingFigma]     = useState(false)
@@ -118,6 +126,17 @@ export default function ProjectDetailPage() {
   // ── Status click ───────────────────────────────────────────────────────────
   async function handleStatusClick(newStatus: string) {
     if (!project || project.status === newStatus) return
+    // Intercept MAINTENANCE: open confirmation modal
+    if (newStatus === 'MAINTENANCE') {
+      setMaintenanceForm({
+        plan: project.maintenancePlan && project.maintenancePlan !== 'NONE' ? project.maintenancePlan : 'ESSENTIELLE',
+        price: project.maintenancePrice?.toString() ?? '',
+        start: project.maintenanceStart ? project.maintenanceStart.split('T')[0] : new Date().toISOString().split('T')[0],
+        end: project.maintenanceEnd ? project.maintenanceEnd.split('T')[0] : '',
+      })
+      setShowMaintenanceModal(true)
+      return
+    }
     const prev = project.status
     setProject(p => p ? { ...p, status: newStatus } : p)
     try {
@@ -127,6 +146,36 @@ export default function ProjectDetailPage() {
       })
     } catch {
       setProject(p => p ? { ...p, status: prev } : p)
+    }
+  }
+
+  // ── Confirm maintenance ─────────────────────────────────────────────────────
+  async function handleConfirmMaintenance(e: React.FormEvent) {
+    e.preventDefault()
+    if (maintenanceSubmitting) return
+    setMaintenanceSubmitting(true)
+    try {
+      await fetch(`/api/projects/${id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'MAINTENANCE',
+          maintenancePlan: maintenanceForm.plan,
+          maintenancePrice: maintenanceForm.price || null,
+          maintenanceStart: maintenanceForm.start || null,
+          maintenanceEnd: maintenanceForm.end || null,
+        }),
+      })
+      setProject(p => p ? {
+        ...p,
+        status: 'MAINTENANCE',
+        maintenancePlan: maintenanceForm.plan,
+        maintenancePrice: maintenanceForm.price ? parseFloat(maintenanceForm.price) : null,
+        maintenanceStart: maintenanceForm.start || null,
+        maintenanceEnd: maintenanceForm.end || null,
+      } : p)
+      setShowMaintenanceModal(false)
+    } finally {
+      setMaintenanceSubmitting(false)
     }
   }
 
@@ -993,6 +1042,95 @@ export default function ProjectDetailPage() {
                   className="flex-1 bg-[#E14B89] hover:opacity-90 text-white py-2.5 rounded-xl text-sm font-medium transition-colors"
                 >
                   {editingInvoiceId ? 'Enregistrer' : 'Ajouter'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Maintenance confirmation modal */}
+      {showMaintenanceModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#111118] border border-slate-800 rounded-2xl p-6 w-full max-w-md shadow-2xl">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-10 h-10 rounded-full bg-teal-500/15 flex items-center justify-center">
+                <CheckCircle2 size={20} className="text-teal-400" />
+              </div>
+              <div>
+                <h2 className="text-white font-semibold text-lg">Passer en maintenance</h2>
+                <p className="text-slate-500 text-sm">Confirmez que le projet est terminé</p>
+              </div>
+            </div>
+
+            <div className="bg-teal-500/5 border border-teal-500/20 rounded-xl px-4 py-3 my-4">
+              <p className="text-teal-300 text-sm">
+                Le projet <strong>{project?.name}</strong> va passer en statut <strong>Maintenance</strong>. Renseignez les détails ci-dessous.
+              </p>
+            </div>
+
+            <form onSubmit={handleConfirmMaintenance} className="space-y-4">
+              <div>
+                <label className="block text-slate-400 text-xs mb-1.5">Type de maintenance *</label>
+                <select
+                  required
+                  value={maintenanceForm.plan}
+                  onChange={e => setMaintenanceForm({ ...maintenanceForm, plan: e.target.value })}
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
+                >
+                  <option value="ESSENTIELLE">Essentielle (59,99€/mois)</option>
+                  <option value="DEVELOPPEMENT">Développement (99,99€/mois)</option>
+                  <option value="SEO">SEO (179,99€/mois)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-slate-400 text-xs mb-1.5">Prix mensuel (€) *</label>
+                <input
+                  required
+                  type="number"
+                  step="0.01"
+                  value={maintenanceForm.price}
+                  onChange={e => setMaintenanceForm({ ...maintenanceForm, price: e.target.value })}
+                  placeholder="59.99"
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-slate-400 text-xs mb-1.5">Début *</label>
+                  <input
+                    required
+                    type="date"
+                    value={maintenanceForm.start}
+                    onChange={e => setMaintenanceForm({ ...maintenanceForm, start: e.target.value })}
+                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-400 text-xs mb-1.5">Fin *</label>
+                  <input
+                    required
+                    type="date"
+                    value={maintenanceForm.end}
+                    onChange={e => setMaintenanceForm({ ...maintenanceForm, end: e.target.value })}
+                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
+                  />
+                </div>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowMaintenanceModal(false)}
+                  className="flex-1 border border-slate-700 text-slate-400 hover:text-white py-2.5 rounded-xl text-sm transition-colors"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  disabled={maintenanceSubmitting}
+                  className="flex-1 bg-teal-500 hover:bg-teal-600 text-white py-2.5 rounded-xl text-sm font-medium transition-colors disabled:opacity-60"
+                >
+                  {maintenanceSubmitting ? 'Enregistrement...' : 'Confirmer la maintenance'}
                 </button>
               </div>
             </form>

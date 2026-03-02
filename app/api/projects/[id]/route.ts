@@ -29,7 +29,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { id } = await params
   const body = await req.json()
-  const { name, status, type, price, deadline, notes, services, figmaUrl, contentUrl, startDate } = body
+  const { name, status, type, price, deadline, notes, services, figmaUrl, contentUrl, startDate, maintenancePlan, maintenancePrice, maintenanceStart, maintenanceEnd } = body
   const data: Record<string, unknown> = {}
   if (name !== undefined) data.name = name
   if (status !== undefined) data.status = status
@@ -41,6 +41,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (services !== undefined) data.services = services
   if (figmaUrl !== undefined) data.figmaUrl = figmaUrl || null
   if (contentUrl !== undefined) data.contentUrl = contentUrl || null
+  if (maintenancePlan !== undefined) data.maintenancePlan = maintenancePlan
+  if (maintenancePrice !== undefined) data.maintenancePrice = maintenancePrice !== null && maintenancePrice !== '' ? Number(maintenancePrice) : null
+  if (maintenanceStart !== undefined) data.maintenanceStart = maintenanceStart ? new Date(maintenanceStart) : null
+  if (maintenanceEnd !== undefined) data.maintenanceEnd = maintenanceEnd ? new Date(maintenanceEnd) : null
   const project = await prisma.project.update({
     where: { id },
     data,

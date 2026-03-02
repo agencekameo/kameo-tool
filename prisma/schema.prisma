@@ -213,6 +213,10 @@ model Project {
   contentUrl      String?
   reviewReceived  Boolean       @default(false)
   reviewExcluded  Boolean       @default(false)
+  maintenancePlan  MaintenancePlan @default(NONE)
+  maintenancePrice Float?
+  maintenanceStart DateTime?
+  maintenanceEnd   DateTime?
   createdById String
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
