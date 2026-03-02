@@ -152,9 +152,10 @@ export default function ProjectDetailPage() {
   // ── Confirm maintenance ─────────────────────────────────────────────────────
   async function handleConfirmMaintenance(e: React.FormEvent) {
     e.preventDefault()
-    if (maintenanceSubmitting) return
+    if (maintenanceSubmitting || !project) return
     setMaintenanceSubmitting(true)
     try {
+      // 1. Update project status + maintenance fields
       await fetch(`/api/projects/${id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -163,6 +164,22 @@ export default function ProjectDetailPage() {
           maintenancePrice: maintenanceForm.price || null,
           maintenanceStart: maintenanceForm.start || null,
           maintenanceEnd: maintenanceForm.end || null,
+        }),
+      })
+      // 2. Create a MaintenanceContract (type WEB) in the maintenances page
+      const cmsMap: Record<string, string> = { WORDPRESS: 'WordPress', FRAMER: 'Framer', CUSTOM: 'Sur mesure', ECOMMERCE: 'E-commerce' }
+      await fetch('/api/maintenances', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clientName: project.client.name,
+          url: project.client.website || null,
+          cms: cmsMap[project.type] || null,
+          type: 'WEB',
+          billing: 'MENSUEL',
+          priceHT: maintenanceForm.price ? parseFloat(maintenanceForm.price) : null,
+          startDate: maintenanceForm.start || null,
+          endDate: maintenanceForm.end || null,
+          active: true,
         }),
       })
       setProject(p => p ? {
