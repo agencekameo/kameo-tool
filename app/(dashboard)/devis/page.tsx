@@ -114,6 +114,8 @@ function PrintView({ quote, onClose }: { quote: Quote; onClose: () => void }) {
         {/* Header: Agency left, Devis info right */}
         <div className="flex items-start justify-between mb-10 pb-8 border-b-[3px]" style={{ borderColor: '#F8903C' }}>
           <div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/kameo-logo-light.svg" alt="Kameo" className="h-9 mb-2" />
             <div className="text-2xl font-extrabold tracking-tight" style={{ color: '#E14B89' }}>
               Agence Kameo
             </div>
@@ -237,16 +239,12 @@ function PrintView({ quote, onClose }: { quote: Quote; onClose: () => void }) {
             <div className="mt-4 text-xs text-gray-500 space-y-1 bg-gray-50 rounded-lg px-4 py-3 border border-gray-100">
               <div className="font-semibold text-gray-600 mb-1.5">Échéancier prévisionnel</div>
               <div className="flex justify-between">
-                <span>30% à la commande</span>
-                <span className="font-medium text-gray-700">{formatCurrency(totalTTC * 0.30)}</span>
+                <span>50% à la commande</span>
+                <span className="font-medium text-gray-700">{formatCurrency(totalTTC * 0.50)}</span>
               </div>
               <div className="flex justify-between">
-                <span>30% fin des maquettes</span>
-                <span className="font-medium text-gray-700">{formatCurrency(totalTTC * 0.30)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>40% fin du projet</span>
-                <span className="font-medium text-gray-700">{formatCurrency(totalTTC * 0.40)}</span>
+                <span>50% à la livraison</span>
+                <span className="font-medium text-gray-700">{formatCurrency(totalTTC * 0.50)}</span>
               </div>
             </div>
           </div>
@@ -272,7 +270,7 @@ function PrintView({ quote, onClose }: { quote: Quote; onClose: () => void }) {
               <div className="font-mono text-xs text-gray-700">BIC : AGRIFRPP831</div>
             </div>
             <div className="mt-3 text-xs text-gray-500 leading-relaxed bg-gray-50 rounded px-3 py-2">
-              <strong>Conditions :</strong> 30% à la commande · 30% à la fin des maquettes · 40% à la fin du projet
+              <strong>Conditions :</strong> 50% à la commande · 50% à la livraison
             </div>
           </div>
 
