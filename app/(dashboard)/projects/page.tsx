@@ -23,7 +23,9 @@ interface Client { id: string; name: string }
 const STATUS_ORDER = ['BRIEF', 'REDACTION', 'MAQUETTE', 'DEVELOPPEMENT', 'REVIEW', 'LIVRAISON', 'MAINTENANCE']
 const IN_PROGRESS_STATUSES = ['BRIEF', 'REDACTION', 'MAQUETTE', 'DEVELOPPEMENT', 'REVIEW']
 const DONE_STATUSES = ['LIVRAISON', 'MAINTENANCE', 'ARCHIVE']
-const SERVICES = ['SEO', 'Google Ads', 'Meta Ads', 'Réseaux sociaux', 'Identité visuelle', 'Google Business', 'Rédaction', 'Maintenance']
+const PRESTATIONS = ['Création Site web', 'Refonte site web', 'Identité visuelle']
+
+interface TeamUser { id: string; name: string; role: string; avatar?: string }
 
 export default function ProjectsPage() {
   const { data: session } = useSession()
@@ -31,6 +33,7 @@ export default function ProjectsPage() {
 
   const [projects, setProjects] = useState<Project[]>([])
   const [clients, setClients] = useState<Client[]>([])
+  const [teamUsers, setTeamUsers] = useState<TeamUser[]>([])
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState('EN_COURS')
   const [loading, setLoading] = useState(true)
@@ -39,7 +42,7 @@ export default function ProjectsPage() {
   const [createError, setCreateError] = useState('')
   const [form, setForm] = useState({
     name: '', clientId: '', type: 'WORDPRESS', status: 'BRIEF',
-    price: '', deadline: '', notes: '', services: [] as string[],
+    price: '', deadline: '', notes: '', services: [] as string[], assigneeIds: [] as string[],
   })
 
   const [deleteModal, setDeleteModal] = useState<{ project: Project; step: 1 | 2 } | null>(null)
@@ -50,7 +53,8 @@ export default function ProjectsPage() {
     Promise.all([
       fetch('/api/projects').then(r => r.json()),
       fetch('/api/clients').then(r => r.json()),
-    ]).then(([p, c]) => { setProjects(p); setClients(c) }).finally(() => setLoading(false))
+      fetch('/api/users').then(r => r.json()),
+    ]).then(([p, c, u]) => { setProjects(p); setClients(c); setTeamUsers(u) }).finally(() => setLoading(false))
   }, [])
 
   const filtered = projects.filter(p => {
@@ -67,13 +71,18 @@ export default function ProjectsPage() {
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
     if (submitting) return
+    if (form.assigneeIds.length === 0) {
+      setCreateError('Vous devez assigner au moins un membre de l\'équipe')
+      return
+    }
     setSubmitting(true)
     setCreateError('')
     try {
+      const { assigneeIds, ...projectData } = form
       const res = await fetch('/api/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, price: form.price ? parseFloat(form.price) : null, deadline: form.deadline || null }),
+        body: JSON.stringify({ ...projectData, price: projectData.price ? parseFloat(projectData.price) : null, deadline: projectData.deadline || null }),
       })
       if (!res.ok) {
         const err = await res.json()
@@ -81,16 +90,25 @@ export default function ProjectsPage() {
         return
       }
       const project = await res.json()
+      // Assign team members
+      await Promise.all(
+        assigneeIds.map(userId =>
+          fetch(`/api/projects/${project.id}/assignees`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId }),
+          })
+        )
+      )
       setProjects(prev => [project, ...prev])
       setShowModal(false)
-      setForm({ name: '', clientId: '', type: 'WORDPRESS', status: 'BRIEF', price: '', deadline: '', notes: '', services: [] })
+      setForm({ name: '', clientId: '', type: 'WORDPRESS', status: 'BRIEF', price: '', deadline: '', notes: '', services: [], assigneeIds: [] })
     } finally {
       setSubmitting(false)
     }
   }
 
-  function toggleService(s: string) {
-    setForm(f => ({ ...f, services: f.services.includes(s) ? f.services.filter(x => x !== s) : [...f.services, s] }))
+  function toggleAssignee(userId: string) {
+    setForm(f => ({ ...f, assigneeIds: f.assigneeIds.includes(userId) ? f.assigneeIds.filter(id => id !== userId) : [...f.assigneeIds, userId] }))
   }
 
   const taskProgress = (tasks: { status: string }[]) => {
@@ -328,9 +346,17 @@ export default function ProjectsPage() {
                   {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
+              <div>
+                <label className="block text-slate-400 text-xs mb-1.5">Prestation *</label>
+                <select required value={form.services[0] || ''} onChange={e => setForm({ ...form, services: e.target.value ? [e.target.value] : [] })}
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors">
+                  <option value="">Sélectionner une prestation</option>
+                  {PRESTATIONS.map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2">
-                  <label className="block text-slate-400 text-xs mb-1.5">Type</label>
+                  <label className="block text-slate-400 text-xs mb-1.5">Technologie</label>
                   <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}
                     className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors">
                     <option value="WORDPRESS">WordPress</option>
@@ -351,14 +377,38 @@ export default function ProjectsPage() {
                 </div>
               </div>
               <div>
-                <label className="block text-slate-400 text-xs mb-2">Services inclus</label>
-                <div className="flex flex-wrap gap-2">
-                  {SERVICES.map(s => (
-                    <button key={s} type="button" onClick={() => toggleService(s)}
-                      className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${form.services.includes(s) ? 'bg-[#E14B89]/20 border-[#E14B89] text-[#F8903C]' : 'border-slate-700 text-slate-400 hover:border-slate-600'}`}>
-                      {s}
+                <label className="block text-slate-400 text-xs mb-2">Équipe projet *</label>
+                <div className="space-y-2">
+                  {teamUsers.filter(u => u.role !== 'ADMIN').map(user => (
+                    <button
+                      key={user.id}
+                      type="button"
+                      onClick={() => toggleAssignee(user.id)}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-colors text-left ${
+                        form.assigneeIds.includes(user.id)
+                          ? 'bg-[#E14B89]/10 border-[#E14B89]/50'
+                          : 'border-slate-700 hover:border-slate-600'
+                      }`}
+                    >
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0 ${
+                        form.assigneeIds.includes(user.id) ? 'bg-[#E14B89] text-white' : 'bg-slate-800 text-slate-400'
+                      }`}>
+                        {user.name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-sm font-medium ${form.assigneeIds.includes(user.id) ? 'text-white' : 'text-slate-300'}`}>{user.name}</p>
+                        <p className="text-slate-500 text-xs">
+                          {user.role === 'DEVELOPER' ? 'Développeur' : user.role === 'REDACTEUR' ? 'Rédacteur' : user.role === 'DESIGNER' ? 'Designer' : user.role}
+                        </p>
+                      </div>
+                      {form.assigneeIds.includes(user.id) && (
+                        <span className="text-[#E14B89] text-xs font-medium">✓</span>
+                      )}
                     </button>
                   ))}
+                  {teamUsers.filter(u => u.role !== 'ADMIN').length === 0 && (
+                    <p className="text-slate-500 text-xs py-2">Aucun freelance disponible</p>
+                  )}
                 </div>
               </div>
               <div>

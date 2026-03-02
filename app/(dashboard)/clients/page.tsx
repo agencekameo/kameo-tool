@@ -1,10 +1,9 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
-import { Plus, Search, Globe, Mail, Phone, ChevronRight, Wrench, Upload, CheckCircle2, XCircle, Loader2, Trash2, Pencil } from 'lucide-react'
+import { Plus, Search, Globe, Mail, Phone, ChevronRight, Upload, CheckCircle2, XCircle, Loader2, Trash2, Pencil } from 'lucide-react'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
-import { MAINTENANCE_LABELS } from '@/lib/utils'
 
 interface Client {
   id: string
@@ -22,13 +21,6 @@ interface ImportResult {
   name: string
   success: boolean
   error?: string
-}
-
-const MAINTENANCE_COLORS: Record<string, string> = {
-  NONE: 'bg-slate-800 text-slate-400',
-  ESSENTIELLE: 'bg-teal-500/15 text-teal-400',
-  DEVELOPPEMENT: 'bg-blue-500/15 text-blue-400',
-  SEO: 'bg-[#E14B89]/10 text-[#E14B89]',
 }
 
 export default function ClientsPage() {
@@ -316,11 +308,7 @@ export default function ClientsPage() {
                     </div>
                   )}
                 </div>
-                <div className="mt-4 pt-4 border-t border-slate-800 flex items-center justify-between">
-                  <span className={`text-xs px-2.5 py-1 rounded-full font-medium flex items-center gap-1 ${MAINTENANCE_COLORS[client.maintenancePlan]}`}>
-                    {client.maintenancePlan !== 'NONE' && <Wrench size={10} />}
-                    {MAINTENANCE_LABELS[client.maintenancePlan]}
-                  </span>
+                <div className="mt-4 pt-4 border-t border-slate-800 flex items-center justify-end">
                   <span className="text-slate-500 text-xs">{client.projects.length} projet{client.projects.length > 1 ? 's' : ''}</span>
                 </div>
               </Link>
@@ -564,23 +552,6 @@ export default function ClientsPage() {
                 <label className="block text-slate-400 text-xs mb-1.5">Site web</label>
                 <input value={form.website} onChange={e => setForm({ ...form, website: e.target.value })} placeholder="https://"
                   className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-slate-400 text-xs mb-1.5">Maintenance</label>
-                  <select value={form.maintenancePlan} onChange={e => setForm({ ...form, maintenancePlan: e.target.value })}
-                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors">
-                    <option value="NONE">Aucune</option>
-                    <option value="ESSENTIELLE">Essentielle (59,99€)</option>
-                    <option value="DEVELOPPEMENT">Développement (99,99€)</option>
-                    <option value="SEO">SEO (179,99€)</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-slate-400 text-xs mb-1.5">Prix mensuel (€)</label>
-                  <input type="number" value={form.maintenancePrice} onChange={e => setForm({ ...form, maintenancePrice: e.target.value })}
-                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
-                </div>
               </div>
               <div>
                 <label className="block text-slate-400 text-xs mb-1.5">Notes</label>

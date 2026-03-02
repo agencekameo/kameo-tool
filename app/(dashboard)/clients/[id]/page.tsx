@@ -456,10 +456,10 @@ function ProjectModal({ clientId, clientName, onClose, onSuccess }: ProjectModal
               />
             </div>
 
-            {/* Type + Status */}
+            {/* Technologie + Status */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-slate-400 text-xs mb-1.5">Type</label>
+                <label className="block text-slate-400 text-xs mb-1.5">Technologie</label>
                 <select
                   value={form.type}
                   onChange={e => setForm(f => ({ ...f, type: e.target.value }))}

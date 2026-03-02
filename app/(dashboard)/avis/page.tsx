@@ -297,7 +297,7 @@ export default function AvisPage() {
             </div>
             <div className="w-28 text-center">
               <span className="text-slate-600 text-xs uppercase tracking-wide font-medium">
-                Type
+                Technologie
               </span>
             </div>
             <div className="w-28 text-center">
