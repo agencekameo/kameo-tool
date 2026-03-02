@@ -178,26 +178,6 @@ export default function TasksPage() {
         </div>
       ) : (
         <div className="space-y-2">
-          {/* Quick add row */}
-          <div className="bg-[#111118] border border-dashed border-slate-700 rounded-2xl px-4 py-3 flex items-center gap-3 hover:border-slate-600 transition-colors">
-            <Plus size={16} className="text-slate-600 flex-shrink-0" />
-            <input
-              value={quickAdd}
-              onChange={e => setQuickAdd(e.target.value)}
-              onKeyDown={handleQuickAddKeyDown}
-              placeholder="Ajouter une tâche... (Entrée pour créer)"
-              className="flex-1 bg-transparent text-sm text-white placeholder:text-slate-600 focus:outline-none"
-            />
-            {quickAdd.trim() && (
-              <button
-                onClick={() => handleQuickCreate(quickAdd.trim())}
-                className="text-xs text-[#E14B89] hover:opacity-80 transition-opacity flex-shrink-0"
-              >
-                Créer
-              </button>
-            )}
-          </div>
-
           {/* Active tasks */}
           {filteredActive.length === 0 && (
             <div className="text-center py-12">
@@ -279,6 +259,26 @@ export default function TasksPage() {
               </button>
             </div>
           ))}
+
+          {/* Quick add row — below existing tasks */}
+          <div className="bg-[#111118] border border-dashed border-slate-700 rounded-2xl px-4 py-3 flex items-center gap-3 hover:border-slate-600 transition-colors">
+            <Plus size={16} className="text-slate-600 flex-shrink-0" />
+            <input
+              value={quickAdd}
+              onChange={e => setQuickAdd(e.target.value)}
+              onKeyDown={handleQuickAddKeyDown}
+              placeholder="Ajouter une tâche... (Entrée pour créer)"
+              className="flex-1 bg-transparent text-sm text-white placeholder:text-slate-600 focus:outline-none"
+            />
+            {quickAdd.trim() && (
+              <button
+                onClick={() => handleQuickCreate(quickAdd.trim())}
+                className="text-xs text-[#E14B89] hover:opacity-80 transition-opacity flex-shrink-0"
+              >
+                Créer
+              </button>
+            )}
+          </div>
 
           {/* Done section */}
           {filteredDone.length > 0 && (
