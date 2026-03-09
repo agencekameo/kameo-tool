@@ -20,6 +20,8 @@ interface Prospect {
 }
 
 interface CdcData {
+  missionType?: string
+  technologie?: string
   siteType: 'VITRINE' | 'ECOMMERCE'
   isRefonte: boolean
   arborescence?: string
@@ -333,9 +335,35 @@ export default function CommercialPage() {
               {cdcProspect.company && <> · {cdcProspect.company}</>}
             </p>
             <form onSubmit={handleSubmitCdc} className="space-y-5">
+              {/* Type de mission */}
+              <div>
+                <label className="block text-slate-400 text-xs mb-1.5">Type de mission *</label>
+                <select value={cdcForm.missionType || ''} onChange={e => setCdcForm(p => ({ ...p, missionType: e.target.value }))}
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors">
+                  <option value="">Sélectionner</option>
+                  <option value="Site web">Site web</option>
+                  <option value="Web app">Web app</option>
+                  <option value="Branding">Branding</option>
+                </select>
+              </div>
+
+              {/* Technologie */}
+              {cdcForm.missionType && cdcForm.missionType !== 'Branding' && (
+                <div>
+                  <label className="block text-slate-400 text-xs mb-1.5">Technologie</label>
+                  <select value={cdcForm.technologie || ''} onChange={e => setCdcForm(p => ({ ...p, technologie: e.target.value }))}
+                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors">
+                    <option value="">Sélectionner</option>
+                    <option value="WORDPRESS">WordPress</option>
+                    <option value="FRAMER">Framer</option>
+                    <option value="CUSTOM">Sur mesure</option>
+                  </select>
+                </div>
+              )}
+
               {/* Type de projet */}
               <div>
-                <label className="block text-slate-400 text-xs mb-2">Type de projet</label>
+                <label className="block text-slate-400 text-xs mb-2">Type de site</label>
                 <div className="grid grid-cols-2 gap-3">
                   <button type="button" onClick={() => setCdcForm(p => ({ ...p, siteType: 'VITRINE' }))}
                     className={`p-3 rounded-xl border-2 text-left transition-all ${cdcForm.siteType === 'VITRINE' ? 'border-[#E14B89] bg-[#E14B89]/5' : 'border-slate-800 hover:border-slate-700'}`}>

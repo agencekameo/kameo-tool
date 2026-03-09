@@ -8,14 +8,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params
   try {
     const body = await req.json()
-    // Remove auto-managed / non-updatable fields
-    const { id: _id, createdAt: _ca, updatedAt: _ua, ...rest } = body
-    const data = {
-      ...rest,
-      startDate: rest.startDate ? new Date(rest.startDate) : null,
-      endDate: rest.endDate ? new Date(rest.endDate) : null,
-      priceHT: rest.priceHT != null ? parseFloat(rest.priceHT) : null,
+    const data: Record<string, unknown> = {}
+    const allowedFields = ['clientName', 'url', 'loginUrl', 'cms', 'type', 'billing', 'commercial', 'loginEmail', 'loginPassword', 'contactName', 'contactPhone', 'notes', 'active']
+    for (const key of allowedFields) {
+      if (key in body) data[key] = body[key] || null
     }
+    if ('startDate' in body) data.startDate = body.startDate ? new Date(body.startDate) : null
+    if ('endDate' in body) data.endDate = body.endDate ? new Date(body.endDate) : null
+    if ('priceHT' in body) data.priceHT = body.priceHT != null ? parseFloat(body.priceHT) : null
+    if ('active' in body) data.active = body.active ?? true
     const maintenance = await prisma.maintenanceContract.update({ where: { id }, data })
     return NextResponse.json(maintenance)
   } catch (err) {

@@ -119,7 +119,21 @@ export default function ProjectsPage() {
         if (prospectId) {
           fetch(`/api/prospects/${prospectId}`).then(r => r.ok ? r.json() : null).then(prospect => {
             if (prospect?.cdcData) {
-              setCdc(prospect.cdcData)
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const data = prospect.cdcData as any
+              if (data.missionType) setForm(f => ({ ...f, services: [data.missionType] }))
+              if (data.technologie) setForm(f => ({ ...f, type: data.technologie }))
+              setCdc({
+                siteType: data.siteType || 'VITRINE',
+                isRefonte: data.isRefonte || false,
+                arborescence: data.arborescence || '',
+                espaceClient: data.espaceClient || false,
+                fonctionnalites: data.fonctionnalites || [],
+                catalogueInfo: data.catalogueInfo || '',
+                livraisonInfo: data.livraisonInfo || '',
+                paiementInfo: data.paiementInfo || '',
+                autresInfos: data.autresInfos || '',
+              })
               setProspectHasCdc(true)
             }
           }).catch(() => {})

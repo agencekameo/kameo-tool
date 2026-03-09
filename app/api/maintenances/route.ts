@@ -16,12 +16,24 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   try {
     const body = await req.json()
-    // Convert date strings to Date objects for Prisma
+    // Only pick known fields
     const data = {
-      ...body,
+      clientName: body.clientName,
+      url: body.url || null,
+      loginUrl: body.loginUrl || null,
+      cms: body.cms || null,
+      type: body.type || 'WEB',
+      billing: body.billing || 'MENSUEL',
       startDate: body.startDate ? new Date(body.startDate) : null,
       endDate: body.endDate ? new Date(body.endDate) : null,
       priceHT: body.priceHT ? parseFloat(body.priceHT) : null,
+      commercial: body.commercial || null,
+      loginEmail: body.loginEmail || null,
+      loginPassword: body.loginPassword || null,
+      contactName: body.contactName || null,
+      contactPhone: body.contactPhone || null,
+      notes: body.notes || null,
+      active: body.active ?? true,
     }
     const maintenance = await prisma.maintenanceContract.create({ data })
     return NextResponse.json(maintenance)
