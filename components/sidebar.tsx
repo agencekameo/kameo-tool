@@ -31,7 +31,6 @@ import {
   FileCheck2,
   Star,
   MapPin,
-  ClipboardList,
   Calendar,
   Bell,
   FolderKanban as MissionIcon,
@@ -135,7 +134,6 @@ const sections: { label: string; items: NavItem[] }[] = [
     label: 'Ressources',
     items: [
       { href: '/wiki', label: 'Wiki', icon: BookOpen },
-      { href: '/ressources', label: 'CDC', icon: ClipboardList },
       { href: '/audit', label: 'Audit SEO', icon: Search },
       { href: '/gmb', label: 'GMB', icon: MapPin },
     ],
