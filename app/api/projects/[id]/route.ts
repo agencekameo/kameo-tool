@@ -13,14 +13,28 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
       client: true,
       tasks: { include: { assignee: true }, orderBy: { createdAt: 'desc' } },
       createdBy: true,
-      assignees: true,
+      assignments: {
+        include: { user: { select: { id: true, name: true, email: true, role: true, avatar: true } } },
+        orderBy: { createdAt: 'asc' },
+      },
       documents: {
         include: { uploadedBy: { select: { id: true, name: true } } },
         orderBy: { createdAt: 'desc' },
       },
+      clientForm: {
+        select: { token: true, slug: true, cdcCompleted: true, docsCompleted: true, briefCompleted: true, designCompleted: true, accesCompleted: true, cdcData: true, briefData: true, designData: true, accesData: true, docsData: true },
+      },
     },
   })
   if (!project) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  // Non-admin users can only access projects they're assigned to
+  const role = (session.user as { role?: string }).role
+  if (role !== 'ADMIN') {
+    const isAssigned = project.assignments.some(a => a.userId === session.user.id)
+    if (!isAssigned) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
   return NextResponse.json(project)
 }
 
@@ -29,7 +43,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { id } = await params
   const body = await req.json()
-  const { name, status, type, price, deadline, notes, services, figmaUrl, contentUrl, startDate, maintenancePlan, maintenancePrice, maintenanceStart, maintenanceEnd } = body
+  const { name, status, type, price, deadline, notes, clientBrief, services, figmaUrl, contentUrl, startDate, maintenancePlan, maintenancePrice, maintenanceStart, maintenanceEnd } = body
   const data: Record<string, unknown> = {}
   if (name !== undefined) data.name = name
   if (status !== undefined) data.status = status
@@ -38,6 +52,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (deadline !== undefined) data.deadline = deadline ? new Date(deadline) : null
   if (startDate !== undefined) data.startDate = startDate ? new Date(startDate) : null
   if (notes !== undefined) data.notes = notes || null
+  if (clientBrief !== undefined) data.clientBrief = clientBrief || null
   if (services !== undefined) data.services = services
   if (figmaUrl !== undefined) data.figmaUrl = figmaUrl || null
   if (contentUrl !== undefined) data.contentUrl = contentUrl || null
@@ -58,9 +73,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if ((session.user as any).role !== 'ADMIN') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const { id } = await params
-  const project = await prisma.project.findUnique({ where: { id }, select: { name: true } })
-  await prisma.project.delete({ where: { id } })
-  await createLog(session.user.id, 'SUPPRIMÉ', 'Projet', id, project?.name)
-  return NextResponse.json({ success: true })
+  try {
+    const project = await prisma.project.findUnique({ where: { id }, select: { name: true } })
+    await prisma.project.delete({ where: { id } })
+    await createLog(session.user.id, 'SUPPRIMÉ', 'Projet', id, project?.name)
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    console.error('[DELETE /api/projects]', err)
+    const message = err instanceof Error ? err.message : 'Erreur serveur'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
 }

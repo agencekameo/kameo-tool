@@ -65,6 +65,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if ((session.user as any).role !== 'ADMIN') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   try {
     const { id } = await params
     await prisma.quote.delete({ where: { id } })

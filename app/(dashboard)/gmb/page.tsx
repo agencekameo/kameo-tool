@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   LayoutDashboard,
   Settings,
@@ -18,6 +18,13 @@ import {
   CheckCircle2,
   XCircle,
   Lock,
+  Loader2,
+  Unlink,
+  Building2,
+  X,
+  Globe,
+  ShieldCheck,
+  ShieldAlert,
 } from 'lucide-react'
 
 // ---------------------------------------------------------------------------
@@ -30,6 +37,26 @@ interface Tab {
   key: TabKey
   label: string
   icon: React.ComponentType<{ size?: number; className?: string }>
+}
+
+interface GmbLocation {
+  name?: string
+  title?: string
+  storefrontAddress?: {
+    addressLines?: string[]
+    locality?: string
+    postalCode?: string
+    regionCode?: string
+  }
+  websiteUri?: string
+  phoneNumbers?: { primaryPhone?: string }
+  categories?: { primaryCategory?: { displayName?: string } }
+  metadata?: {
+    hasVoiceOfMerchant?: boolean
+    mapsUri?: string
+    hasGoogleUpdated?: boolean
+  }
+  accountDisplayName?: string
 }
 
 // ---------------------------------------------------------------------------
@@ -546,11 +573,126 @@ function AuditTab() {
 }
 
 // ---------------------------------------------------------------------------
+// Fiche card (for modal)
+// ---------------------------------------------------------------------------
+
+function FicheCard({ location, verified }: { location: GmbLocation; verified: boolean }) {
+  const address = location.storefrontAddress
+  const addressStr = [
+    ...(address?.addressLines ?? []),
+    [address?.postalCode, address?.locality].filter(Boolean).join(' '),
+  ].filter(Boolean).join(', ')
+
+  return (
+    <div className={`bg-[#0d0d14] border rounded-xl p-4 ${verified ? 'border-emerald-500/20' : 'border-amber-500/20'}`}>
+      <div className="flex items-start gap-3">
+        <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${verified ? 'bg-emerald-500/15' : 'bg-amber-500/15'}`}>
+          <Building2 size={18} className={verified ? 'text-emerald-400' : 'text-amber-400'} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <p className="text-white font-medium text-sm truncate">{location.title || 'Sans nom'}</p>
+            <span className={`flex-shrink-0 text-[10px] px-2 py-0.5 rounded-full font-medium ${
+              verified
+                ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20'
+                : 'bg-amber-500/15 text-amber-400 border border-amber-500/20'
+            }`}>
+              {verified ? 'Validée' : 'Non validée'}
+            </span>
+          </div>
+          {location.categories?.primaryCategory?.displayName && (
+            <p className="text-slate-500 text-xs mb-1.5">{location.categories.primaryCategory.displayName}</p>
+          )}
+          {addressStr && (
+            <div className="flex items-center gap-1.5 text-slate-500 text-xs mb-1">
+              <MapPin size={11} className="flex-shrink-0" />
+              <span className="truncate">{addressStr}</span>
+            </div>
+          )}
+          <div className="flex items-center gap-3 mt-2">
+            {location.phoneNumbers?.primaryPhone && (
+              <div className="flex items-center gap-1.5 text-slate-500 text-xs">
+                <Phone size={11} />
+                <span>{location.phoneNumbers.primaryPhone}</span>
+              </div>
+            )}
+            {location.websiteUri && (
+              <a
+                href={location.websiteUri}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 text-slate-500 hover:text-[#E14B89] text-xs transition-colors"
+              >
+                <Globe size={11} />
+                <span className="truncate max-w-[150px]">{location.websiteUri.replace(/^https?:\/\//, '').replace(/\/$/, '')}</span>
+              </a>
+            )}
+            {location.metadata?.mapsUri && (
+              <a
+                href={location.metadata.mapsUri}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 text-slate-500 hover:text-blue-400 text-xs transition-colors"
+              >
+                <MapPin size={11} />
+                <span>Maps</span>
+              </a>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
 
 export default function GmbPage() {
   const [activeTab, setActiveTab] = useState<TabKey>('dashboard')
+  const [gmbConnected, setGmbConnected] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return new URLSearchParams(window.location.search).get('connected') === 'true'
+    }
+    return false
+  })
+  const [gmbData, setGmbData] = useState<{ accounts: unknown[]; locations: GmbLocation[] }>({ accounts: [], locations: [] })
+  const [connecting, setConnecting] = useState(false)
+  const [disconnecting, setDisconnecting] = useState(false)
+  const [showFiches, setShowFiches] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
+
+  async function handleRefresh() {
+    setRefreshing(true)
+    try {
+      const r = await fetch('/api/gmb/data')
+      const data = await r.json()
+      setGmbConnected(data.connected ?? false)
+      setGmbData({ accounts: data.accounts ?? [], locations: data.locations ?? [] })
+    } catch {
+      setGmbConnected(false)
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
+  function handleConnect() {
+    setConnecting(true)
+    window.location.href = '/api/gmb/connect'
+  }
+
+  async function handleDisconnect() {
+    if (!confirm('Déconnecter le compte Google My Business ?')) return
+    setDisconnecting(true)
+    try {
+      await fetch('/api/gmb/data', { method: 'DELETE' })
+      setGmbConnected(false)
+      setGmbData({ accounts: [], locations: [] })
+    } finally {
+      setDisconnecting(false)
+    }
+  }
 
   const tabContent: Record<TabKey, React.ReactNode> = {
     dashboard: <DashboardTab />,
@@ -584,41 +726,90 @@ export default function GmbPage() {
       </div>
 
       {/* Connection banner */}
-      <div className="bg-[#111118] border border-[#4285F4]/30 rounded-2xl p-6 mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-white flex items-center justify-center flex-shrink-0 shadow-md">
-            <span
-              className="text-2xl font-black leading-none"
-              style={{
-                background: 'linear-gradient(135deg, #4285F4, #EA4335, #FBBC05, #34A853)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-              }}
-            >
-              G
-            </span>
+      {gmbConnected ? (
+        <div className="bg-[#111118] border border-emerald-500/30 rounded-2xl p-6 mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-emerald-500/15 flex items-center justify-center flex-shrink-0">
+              <CheckCircle2 size={24} className="text-emerald-400" />
+            </div>
+            <div>
+              <p className="text-white font-medium">Compte Google connecté</p>
+              <p className="text-slate-400 text-sm mt-0.5">
+                {gmbData.accounts.length} compte{gmbData.accounts.length > 1 ? 's' : ''} · {gmbData.locations.length} fiche{gmbData.locations.length > 1 ? 's' : ''}
+              </p>
+            </div>
           </div>
-          <div>
-            <p className="text-white font-medium">Compte Google non connecté</p>
-            <p className="text-slate-400 text-sm mt-0.5">
-              Connectez-vous pour gérer vos fiches Google My Business
-            </p>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="flex items-center justify-center w-10 h-10 border border-slate-700 hover:border-emerald-500/50 text-slate-400 hover:text-emerald-400 rounded-xl transition-colors"
+              title="Rafraîchir les données"
+            >
+              <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
+            </button>
+            <button
+              onClick={() => setShowFiches(true)}
+              className="flex items-center gap-2 border border-slate-700 hover:border-[#E14B89]/50 text-slate-400 hover:text-[#E14B89] font-medium px-4 py-2.5 rounded-xl text-sm transition-colors"
+            >
+              <Building2 size={14} />
+              Fiches
+            </button>
+            <button
+              onClick={handleDisconnect}
+              disabled={disconnecting}
+              className="flex items-center gap-2 border border-slate-700 hover:border-red-500/50 text-slate-400 hover:text-red-400 font-medium px-4 py-2.5 rounded-xl text-sm transition-colors"
+            >
+              {disconnecting ? <Loader2 size={14} className="animate-spin" /> : <Unlink size={14} />}
+              Déconnecter
+            </button>
           </div>
         </div>
-        <button className="flex items-center gap-2 bg-white text-slate-800 font-medium px-5 py-2.5 rounded-xl text-sm hover:bg-slate-100 transition-colors flex-shrink-0 shadow-sm">
-          <span
-            className="text-base font-black leading-none"
-            style={{
-              background: 'linear-gradient(135deg, #4285F4, #EA4335, #FBBC05, #34A853)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-            }}
+      ) : (
+        <div className="bg-[#111118] border border-[#4285F4]/30 rounded-2xl p-6 mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-white flex items-center justify-center flex-shrink-0 shadow-md">
+              <span
+                className="text-2xl font-black leading-none"
+                style={{
+                  background: 'linear-gradient(135deg, #4285F4, #EA4335, #FBBC05, #34A853)',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                }}
+              >
+                G
+              </span>
+            </div>
+            <div>
+              <p className="text-white font-medium">Compte Google non connecté</p>
+              <p className="text-slate-400 text-sm mt-0.5">
+                Connectez-vous pour gérer vos fiches Google My Business
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={handleConnect}
+            disabled={connecting}
+            className="flex items-center gap-2 bg-white text-slate-800 font-medium px-5 py-2.5 rounded-xl text-sm hover:bg-slate-100 disabled:opacity-50 transition-colors flex-shrink-0 shadow-sm"
           >
-            G
-          </span>
-          Connecter Google
-        </button>
-      </div>
+            {connecting ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <span
+                className="text-base font-black leading-none"
+                style={{
+                  background: 'linear-gradient(135deg, #4285F4, #EA4335, #FBBC05, #34A853)',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                }}
+              >
+                G
+              </span>
+            )}
+            Connecter Google
+          </button>
+        </div>
+      )}
 
       {/* Feature tabs */}
       <div className="flex gap-1 bg-[#111118] border border-slate-800 rounded-xl p-1 mb-6 overflow-x-auto">
@@ -643,6 +834,75 @@ export default function GmbPage() {
 
       {/* Tab content */}
       <div>{tabContent[activeTab]}</div>
+
+      {/* Fiches Modal */}
+      {showFiches && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowFiches(false)} />
+          <div className="relative bg-[#111118] border border-slate-800 rounded-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between p-5 border-b border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-[#E14B89]/15 flex items-center justify-center">
+                  <Building2 size={16} className="text-[#E14B89]" />
+                </div>
+                <div>
+                  <h2 className="text-white font-semibold">Fiches Google Business</h2>
+                  <p className="text-slate-500 text-xs mt-0.5">{gmbData.locations.length} fiche{gmbData.locations.length > 1 ? 's' : ''} trouvée{gmbData.locations.length > 1 ? 's' : ''}</p>
+                </div>
+              </div>
+              <button onClick={() => setShowFiches(false)} className="text-slate-500 hover:text-white transition-colors p-1">
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="overflow-y-auto p-5 space-y-3">
+              {gmbData.locations.length === 0 ? (
+                <div className="text-center py-12">
+                  <Building2 size={40} className="text-slate-700 mx-auto mb-3" />
+                  <p className="text-slate-400 text-sm">Aucune fiche trouvée</p>
+                  <p className="text-slate-600 text-xs mt-1">Ce compte Google n&apos;a pas de fiches Google Business associées</p>
+                </div>
+              ) : (
+                <>
+                  {/* Verified */}
+                  {gmbData.locations.filter(l => l.metadata?.hasVoiceOfMerchant).length > 0 && (
+                    <div className="mb-2">
+                      <div className="flex items-center gap-2 mb-3">
+                        <ShieldCheck size={14} className="text-emerald-400" />
+                        <span className="text-emerald-400 text-xs font-semibold uppercase tracking-wider">Validées</span>
+                        <span className="text-slate-600 text-xs">({gmbData.locations.filter(l => l.metadata?.hasVoiceOfMerchant).length})</span>
+                      </div>
+                      <div className="space-y-2">
+                        {gmbData.locations.filter(l => l.metadata?.hasVoiceOfMerchant).map((loc, i) => (
+                          <FicheCard key={i} location={loc} verified />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Not verified */}
+                  {gmbData.locations.filter(l => !l.metadata?.hasVoiceOfMerchant).length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-2 mb-3">
+                        <ShieldAlert size={14} className="text-amber-400" />
+                        <span className="text-amber-400 text-xs font-semibold uppercase tracking-wider">Non validées</span>
+                        <span className="text-slate-600 text-xs">({gmbData.locations.filter(l => !l.metadata?.hasVoiceOfMerchant).length})</span>
+                      </div>
+                      <div className="space-y-2">
+                        {gmbData.locations.filter(l => !l.metadata?.hasVoiceOfMerchant).map((loc, i) => (
+                          <FicheCard key={i} location={loc} verified={false} />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

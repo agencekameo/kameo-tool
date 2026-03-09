@@ -18,10 +18,15 @@ interface Project {
   client: { name: string }
   invoices: Invoice[]
 }
+interface ProjectAssignment {
+  id: string; projectId: string; userId: string
+  price?: number | null; deadline?: string | null; status: string
+  project: Project
+}
 interface UserDetail {
   id: string; name: string; email: string; role: string; avatar?: string
   lastSeen?: string; createdAt: string
-  assignedProjects: Project[]
+  projectAssignments: ProjectAssignment[]
   invoicesUploaded: Invoice[]
 }
 
@@ -63,8 +68,9 @@ export default function UserDetailPage() {
   if (!user) return <div className="p-8 text-slate-500">Utilisateur introuvable</div>
 
   const gradient = ROLE_AVATAR_COLORS[user.role] ?? 'from-slate-400 to-slate-600'
-  const doneProjects = user.assignedProjects.filter(p => DONE_STATUSES.includes(p.status))
-  const activeProjects = user.assignedProjects.filter(p => ACTIVE_STATUSES.includes(p.status))
+  const allProjects = user.projectAssignments.map(a => a.project)
+  const doneProjects = allProjects.filter(p => DONE_STATUSES.includes(p.status))
+  const activeProjects = allProjects.filter(p => ACTIVE_STATUSES.includes(p.status))
   const totalCA = user.invoicesUploaded.reduce((s, inv) => s + (inv.amount ?? 0), 0)
   const pendingInvoices = user.invoicesUploaded.filter(inv => !inv.amount)
 

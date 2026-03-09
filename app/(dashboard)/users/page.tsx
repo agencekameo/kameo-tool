@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { useSession } from 'next-auth/react'
-import { Plus, Trash2, Clock, Eye, X, Users2, Shield, Check, Save } from 'lucide-react'
+import { useSession, signIn } from 'next-auth/react'
+import { Plus, Trash2, Clock, Eye, X, Users2, Shield, Check, Save, Loader2 } from 'lucide-react'
 import { ROLE_LABELS, ROLE_COLORS, ROLE_AVATAR_COLORS } from '@/lib/utils'
 
 interface User {
@@ -15,7 +15,9 @@ interface User {
   createdAt: string
 }
 
-const ROLES = ['ADMIN', 'DEVELOPER', 'REDACTEUR', 'DESIGNER']
+const ROLES = ['ADMIN', 'DEVELOPER', 'REDACTEUR', 'DESIGNER', 'COMMERCIAL']
+const ROLE_ORDER: Record<string, number> = { ADMIN: 0, DESIGNER: 1, DEVELOPER: 2, REDACTEUR: 3, COMMERCIAL: 4 }
+const sortByRole = (a: User, b: User) => (ROLE_ORDER[a.role] ?? 99) - (ROLE_ORDER[b.role] ?? 99)
 
 const ALL_PAGES = [
   'Dashboard', 'Finances', 'Clients', 'Tâches', 'Avis',
@@ -23,13 +25,14 @@ const ALL_PAGES = [
   'Commercial', 'Devis',
   'Wiki', 'Cahier des charges', 'Audit SEO', 'GMB',
   'Équipe', 'Logs', 'Contrats', 'Backups', 'Notes de frais',
+  'Messagerie',
 ]
 
 const DEFAULT_ROLE_ACCESS: Record<string, string[]> = {
   ADMIN: ALL_PAGES,
-  DEVELOPER: ['Dashboard', 'Clients', 'Tâches', 'Projets', 'Wiki'],
-  DESIGNER: ['Dashboard', 'Clients', 'Tâches', 'Projets', 'Wiki'],
-  REDACTEUR: ['Dashboard', 'Clients', 'Tâches', 'Projets', 'Wiki', 'Audit SEO'],
+  DEVELOPER: ['Projets', 'Wiki', 'Audit SEO', 'Messagerie'],
+  REDACTEUR: ['Projets', 'Wiki', 'Audit SEO', 'Messagerie'],
+  DESIGNER: ['Projets', 'Wiki', 'Audit SEO', 'Messagerie', 'Aysha', 'GMB'],
   MEMBER: ['Dashboard', 'Projets', 'Wiki', 'Commercial'],
   COMMERCIAL: ['Dashboard', 'Projets', 'Wiki', 'Commercial'],
 }
@@ -58,6 +61,7 @@ const PAGE_GROUPS = [
   { label: 'Suivi', pages: ['Projets', 'Maintenances', 'Aysha'] },
   { label: 'Commercial', pages: ['Commercial', 'Devis'] },
   { label: 'Ressources', pages: ['Wiki', 'Cahier des charges', 'Audit SEO', 'GMB'] },
+  { label: 'Communication', pages: ['Messagerie'] },
   { label: 'Admin', pages: ['Équipe', 'Logs', 'Contrats', 'Backups', 'Notes de frais'] },
 ]
 
@@ -70,6 +74,7 @@ export default function UsersPage() {
   const [previewUser, setPreviewUser] = useState<User | null>(null)
   const [form, setForm] = useState({ name: '', email: '', password: '', role: 'DEVELOPER' })
   const [error, setError] = useState('')
+  const [impersonating, setImpersonating] = useState<string | null>(null) // userId being impersonated
 
   // Role permissions state
   const [roleAccess, setRoleAccess] = useState<Record<string, string[]>>(DEFAULT_ROLE_ACCESS)
@@ -92,7 +97,7 @@ export default function UsersPage() {
 
   useEffect(() => {
     Promise.all([
-      fetch('/api/users').then(r => r.json()).then(setUsers),
+      fetch('/api/users').then(r => r.json()).then((data: User[]) => setUsers(data.sort(sortByRole))),
       loadRolePermissions(),
     ]).finally(() => setLoading(false))
   }, [loadRolePermissions])
@@ -107,7 +112,7 @@ export default function UsersPage() {
     })
     const data = await res.json()
     if (!res.ok) { setError(data.error || 'Erreur'); return }
-    setUsers(prev => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)))
+    setUsers(prev => [...prev, data].sort(sortByRole))
     setShowModal(false)
     setForm({ name: '', email: '', password: '', role: 'DEVELOPER' })
   }
@@ -118,8 +123,9 @@ export default function UsersPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ role }),
     })
+    if (!res.ok) return // ignore failed role changes
     const updated = await res.json()
-    setUsers(prev => prev.map(u => u.id === userId ? updated : u))
+    setUsers(prev => prev.map(u => u.id === userId ? updated : u).sort(sortByRole))
   }
 
   async function handleDelete(userId: string) {
@@ -152,6 +158,32 @@ export default function UsersPage() {
       setTimeout(() => setRolesSaved(false), 2000)
     } finally {
       setSavingRoles(false)
+    }
+  }
+
+  async function handleImpersonate(userId: string) {
+    setImpersonating(userId)
+    try {
+      const res = await fetch(`/api/users/${userId}/impersonate`, { method: 'POST' })
+      const data = await res.json()
+
+      if (!res.ok) {
+        alert(data.error || 'Erreur lors de l\'impersonation.')
+        setImpersonating(null)
+        return
+      }
+
+      // Sign in as the target user using the impersonation token
+      await signIn('credentials', {
+        impersonationToken: data.token,
+        redirect: false,
+      })
+
+      // Redirect to home to see the app as the impersonated user
+      window.location.href = '/'
+    } catch {
+      alert('Erreur lors de la connexion.')
+      setImpersonating(null)
     }
   }
 
@@ -258,10 +290,16 @@ export default function UsersPage() {
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-1">
                           <button
-                            onClick={() => setPreviewUser(user)}
-                            className="text-slate-600 hover:text-blue-400 transition-colors p-1"
+                            onClick={() => handleImpersonate(user.id)}
+                            disabled={impersonating === user.id}
+                            title={`Se connecter en tant que ${user.name}`}
+                            className="text-slate-600 hover:text-blue-400 disabled:opacity-50 transition-colors p-1"
                           >
-                            <Eye size={14} />
+                            {impersonating === user.id ? (
+                              <Loader2 size={14} className="animate-spin" />
+                            ) : (
+                              <Eye size={14} />
+                            )}
                           </button>
                           {user.id !== (session?.user as { id?: string })?.id && (
                             <button

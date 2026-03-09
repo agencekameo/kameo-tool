@@ -2,8 +2,9 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { formatCurrency, formatDate, PROJECT_STATUS_COLORS, PROJECT_STATUS_LABELS, PROJECT_TYPE_LABELS, TASK_PRIORITY_COLORS, TASK_PRIORITY_LABELS } from '@/lib/utils'
 import Link from 'next/link'
-import { FolderKanban, Users, CheckSquare, TrendingUp, ArrowRight, Clock } from 'lucide-react'
+import { FolderKanban, Users, CheckSquare, ArrowRight, Clock } from 'lucide-react'
 import { CalendarWidget } from '@/components/calendar-widget'
+import { RevenueCard } from '@/components/revenue-card'
 
 const PROSPECT_STATUS_LABELS: Record<string, string> = {
   A_CONTACTER: 'À contacter',
@@ -30,7 +31,7 @@ const PROSPECT_STATUS_BG: Record<string, string> = {
 }
 
 async function getDashboardData(userId: string) {
-  const [projects, tasks, clients, totalRevenue, prospects] = await Promise.all([
+  const [projects, tasks, clients, prospects] = await Promise.all([
     prisma.project.findMany({
       where: { status: { in: ['BRIEF', 'REDACTION', 'MAQUETTE', 'DEVELOPPEMENT', 'REVIEW'] } },
       select: {
@@ -60,7 +61,6 @@ async function getDashboardData(userId: string) {
       take: 6,
     }),
     prisma.client.count(),
-    prisma.project.aggregate({ _sum: { price: true } }),
     prisma.prospect.findMany({ select: { id: true, status: true, budget: true } }),
   ])
 
@@ -70,12 +70,12 @@ async function getDashboardData(userId: string) {
     where: { status: { in: ['BRIEF', 'REDACTION', 'MAQUETTE', 'DEVELOPPEMENT', 'REVIEW'] } },
   })
 
-  return { projects, tasks, clients, totalRevenue: totalRevenue._sum.price ?? 0, projectsByStatus, prospects }
+  return { projects, tasks, clients, projectsByStatus, prospects }
 }
 
 export default async function DashboardPage() {
   const session = await auth()
-  const { projects, tasks, clients, totalRevenue, prospects } = await getDashboardData(session!.user!.id)
+  const { projects, tasks, clients, prospects } = await getDashboardData(session!.user!.id)
 
   const activeProjects = projects.length
   const pendingTasks = tasks.length
@@ -131,14 +131,6 @@ export default async function DashboardPage() {
             bg: 'bg-amber-500/10',
             href: '/tasks',
           },
-          {
-            label: 'CA total',
-            value: formatCurrency(totalRevenue),
-            icon: TrendingUp,
-            color: 'text-green-400',
-            bg: 'bg-green-500/10',
-            href: '/projects',
-          },
         ].map(({ label, value, icon: Icon, color, bg, href }) => (
           <Link
             key={label}
@@ -155,6 +147,7 @@ export default async function DashboardPage() {
             <p className="text-slate-400 text-sm mt-0.5">{label}</p>
           </Link>
         ))}
+        <RevenueCard />
       </div>
 
       {/* Main grid */}

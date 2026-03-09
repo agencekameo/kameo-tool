@@ -15,7 +15,7 @@ interface Resource {
   updatedAt: string
 }
 
-const CATEGORIES = ['PROCESS', 'CAHIER_CHARGES', 'PLUGIN', 'GUIDE', 'PROMPT', 'SEO', 'AUTRE']
+const CATEGORIES = ['PROCESS', 'PLUGIN', 'PROMPT', 'SEO', 'AUTRE']
 
 export default function WikiPage() {
   const [resources, setResources] = useState<Resource[]>([])

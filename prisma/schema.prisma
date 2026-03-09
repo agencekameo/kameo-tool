@@ -12,6 +12,7 @@ enum Role {
   DEVELOPER
   REDACTEUR
   DESIGNER
+  COMMERCIAL
   MEMBER
 }
 
@@ -27,6 +28,10 @@ enum ProjectStatus {
   REDACTION
   MAQUETTE
   DEVELOPPEMENT
+  INTEGRATION
+  OPTIMISATIONS
+  TESTING
+  CONCEPTION
   REVIEW
   LIVRAISON
   MAINTENANCE
@@ -80,8 +85,11 @@ enum MaintenanceBilling {
 
 enum ProspectStatus {
   A_CONTACTER
+  A_RAPPELER
+  VISIO_PLANIFIE
   DEVIS_TRANSMETTRE
   DEVIS_ENVOYE
+  A_RELANCER
   REFUSE
   SIGNE
 }
@@ -125,8 +133,16 @@ enum ProjectDocCategory {
   CAHIER_DES_CHARGES
   INFO_PROJET
   CHARTE_GRAPHIQUE
+  CONTENU_CLIENT
   DOCUMENT_LEGAL
   AUTRE
+}
+
+enum MissionStatus {
+  EN_ATTENTE
+  CONTRE_PROPOSITION
+  VALIDE
+  REFUSE
 }
 
 enum ExpenseStatus {
@@ -149,7 +165,7 @@ model User {
 
   assignedTasks           Task[]               @relation("TaskAssignee")
   createdProjects         Project[]            @relation("ProjectCreator")
-  assignedProjects        Project[]            @relation("ProjectAssignees")
+  projectAssignments      ProjectAssignee[]
   audits                  Audit[]
   prospects               Prospect[]
   invoicesUploaded        ProjectInvoice[]     @relation("InvoiceUploader")
@@ -162,6 +178,11 @@ model User {
   messages                Message[]
   conversationMemberships ConversationMember[]
   cahiersDesCharges       CahierDesCharges[]
+  skillProgress           SkillProgress[]
+  notifications           Notification[]
+  relances                Relance[]              @relation("Relances")
+  speeches                CommercialSpeech[]     @relation("Speeches")
+  commissions             CommercialCommission[] @relation("Commissions")
 }
 
 model Log {
@@ -180,17 +201,38 @@ model Log {
   @@index([createdAt])
 }
 
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String
+  title     String
+  message   String
+  link      String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read])
+  @@index([userId, createdAt])
+}
+
 model Client {
   id               String          @id @default(cuid())
   name             String
   email            String?
   phone            String?
   company          String?
+  siret            String?
   website          String?
   address          String?
   postalCode       String?
   city             String?
+  country          String?         @default("France")
   notes            String?
+  contact2Name     String?
+  contact2Email    String?
+  contact2Phone    String?
   maintenancePlan  MaintenancePlan @default(NONE)
   maintenancePrice Float?
   createdAt        DateTime        @default(now())
@@ -212,6 +254,7 @@ model Project {
   deadline    DateTime?
   startDate   DateTime?
   notes           String?
+  clientBrief     String?   @db.Text
   figmaUrl        String?
   contentUrl      String?
   reviewReceived  Boolean       @default(false)
@@ -228,15 +271,38 @@ model Project {
   createdBy    User             @relation("ProjectCreator", fields: [createdById], references: [id])
   tasks        Task[]
   audits       Audit[]
-  assignees    User[]           @relation("ProjectAssignees")
+  assignments  ProjectAssignee[]
   invoices     ProjectInvoice[]
   documents    ProjectDocument[]
   conversation       Conversation?
   cahiersDesCharges  CahierDesCharges[]
+  clientForm         ClientForm?
 
   @@index([clientId])
   @@index([status])
   @@index([updatedAt])
+}
+
+model ProjectAssignee {
+  id              String        @id @default(cuid())
+  projectId       String
+  userId          String
+  price           Float?
+  deadline        DateTime?
+  status          MissionStatus @default(EN_ATTENTE)
+  counterPrice    Float?
+  counterDeadline DateTime?
+  counterNote     String?
+  respondedAt     DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@index([userId])
+  @@index([projectId])
 }
 
 model Task {
@@ -291,7 +357,7 @@ model Audit {
   improvements       Json?
   createdAt          DateTime @default(now())
 
-  project   Project? @relation(fields: [projectId], references: [id])
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
   createdBy User     @relation(fields: [createdById], references: [id])
 }
 
@@ -317,12 +383,33 @@ model MaintenanceContract {
   updatedAt     DateTime           @updatedAt
 }
 
+model Contract {
+  id           String   @id @default(cuid())
+  clientName   String
+  subject      String?
+  type         String   @default("PRESTATION")
+  billing      String   @default("ONE_SHOT")
+  priceHT      Float?
+  startDate    DateTime?
+  endDate      DateTime?
+  contactName  String?
+  contactPhone String?
+  contactEmail String?
+  notes        String?  @db.Text
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
 model Prospect {
   id         String         @id @default(cuid())
   name       String
   company    String?
   email      String?
   phone      String?
+  address    String?
+  postalCode String?
+  city       String?
   notes      String?
   status     ProspectStatus @default(A_CONTACTER)
   budget     Float?
@@ -331,7 +418,11 @@ model Prospect {
   createdAt  DateTime       @default(now())
   updatedAt  DateTime       @updatedAt
 
-  assignee User? @relation(fields: [assignedTo], references: [id])
+  cdcData    Json?
+
+  assignee    User?                  @relation(fields: [assignedTo], references: [id])
+  relances    Relance[]
+  commissions CommercialCommission[]
 
   @@index([assignedTo])
   @@index([status])
@@ -404,9 +495,10 @@ model Quote {
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 
-  items     QuoteItem[]
-  client    Client?     @relation(fields: [clientId], references: [id])
-  createdBy User        @relation(fields: [createdById], references: [id])
+  items              QuoteItem[]
+  signatureRequests  SignatureRequest[]
+  client             Client?     @relation(fields: [clientId], references: [id])
+  createdBy          User        @relation(fields: [createdById], references: [id])
 
   @@index([clientId])
   @@index([status])
@@ -486,7 +578,7 @@ model Conversation {
 
   messages     Message[]
   participants ConversationMember[]
-  project      Project?             @relation(fields: [projectId], references: [id])
+  project      Project?             @relation(fields: [projectId], references: [id], onDelete: SetNull)
 }
 
 model ConversationMember {
@@ -533,13 +625,14 @@ model CahierDesCharges {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  project   Project? @relation(fields: [projectId], references: [id])
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
   createdBy User     @relation(fields: [createdById], references: [id])
 }
 
 model GoogleCalendarToken {
   id           String   @id @default(cuid())
   email        String   @unique
+  userId       String?
   accessToken  String   @db.Text
   refreshToken String   @db.Text
   expiresAt    DateTime
@@ -547,9 +640,154 @@ model GoogleCalendarToken {
   updatedAt    DateTime @updatedAt
 }
 
+model SignatureRequest {
+  id              String    @id @default(cuid())
+  quoteId         String
+  token           String    @unique
+  signerFirstName String
+  signerLastName  String
+  signerEmail     String
+  signerPhone     String?
+  signedAt        DateTime?
+  signatureData   String?   @db.Text
+  signedCity      String?
+  signedDate      String?
+  signerIp        String?
+  sentAt          DateTime  @default(now())
+  expiresAt       DateTime
+  usedAt          DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  quote Quote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([quoteId])
+}
+
+model ClientForm {
+  id          String   @id @default(cuid())
+  projectId   String   @unique
+  token       String   @unique @default(cuid())
+  slug        String?  @unique
+  cdcData     Json?
+  docsData    Json?
+  briefData   Json?
+  designData  Json?
+  accesData   Json?
+  cdcCompleted  Boolean @default(false)
+  docsCompleted Boolean @default(false)
+  briefCompleted Boolean @default(false)
+  designCompleted Boolean @default(false)
+  accesCompleted Boolean @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+}
+
+model AyshaTask {
+  id             String       @id @default(cuid())
+  title          String
+  status         TaskStatus   @default(TODO)
+  priority       TaskPriority @default(MEDIUM)
+  dueDate        DateTime?
+  recurring      Boolean      @default(false)
+  recurrenceType String?
+  position       Int          @default(0)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  subtasks AyshaSubTask[]
+}
+
+model AyshaSubTask {
+  id        String   @id @default(cuid())
+  taskId    String
+  title     String
+  done      Boolean  @default(false)
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  task AyshaTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+}
+
 model Setting {
   id        String   @id @default(cuid())
   key       String   @unique
   value     String   @db.Text
   updatedAt DateTime @updatedAt
+}
+
+model Relance {
+  id         String   @id @default(cuid())
+  prospectId String
+  userId     String
+  type       String   @default("APPEL")
+  date       DateTime
+  notes      String?
+  done       Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  prospect Prospect @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+  user     User     @relation("Relances", fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([prospectId])
+}
+
+model CommercialVideo {
+  id          String   @id @default(cuid())
+  title       String
+  url         String
+  description String?
+  category    String?
+  createdAt   DateTime @default(now())
+}
+
+model CommercialSpeech {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation("Speeches", fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model CommercialCommission {
+  id         String    @id @default(cuid())
+  userId     String
+  prospectId String?
+  amount     Float
+  type       String    @default("SIGNATURE")
+  date       DateTime
+  notes      String?
+  paid       Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+
+  user     User      @relation("Commissions", fields: [userId], references: [id])
+  prospect Prospect? @relation(fields: [prospectId], references: [id])
+
+  @@index([userId])
+}
+
+model SkillProgress {
+  id        String   @id @default(cuid())
+  userId    String
+  itemKey   String
+  completed Boolean  @default(false)
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, itemKey])
+  @@index([userId])
 }

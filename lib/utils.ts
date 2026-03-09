@@ -1,8 +1,30 @@
 import { type ClassValue, clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
+import { prisma } from '@/lib/db'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
+}
+
+export function slugify(text: string): string {
+  return text
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60)
+}
+
+export async function generateSlug(name: string): Promise<string> {
+  const base = slugify(name)
+  let slug = base
+  let i = 2
+  while (await prisma.clientForm.findUnique({ where: { slug } })) {
+    slug = `${base}-${i}`
+    i++
+  }
+  return slug
 }
 
 export function formatDate(date: Date | string | null | undefined): string {
@@ -12,6 +34,11 @@ export function formatDate(date: Date | string | null | undefined): string {
     month: '2-digit',
     year: 'numeric',
   })
+}
+
+export function formatPhone(value: string): string {
+  const digits = value.replace(/\D/g, '').slice(0, 10)
+  return digits.replace(/(\d{2})(?=\d)/g, '$1 ').trim()
 }
 
 export function formatCurrency(amount: number | null | undefined): string {
@@ -27,6 +54,10 @@ export const PROJECT_STATUS_LABELS: Record<string, string> = {
   REDACTION: 'Rédaction',
   MAQUETTE: 'Maquette',
   DEVELOPPEMENT: 'Développement',
+  INTEGRATION: 'Intégration',
+  OPTIMISATIONS: 'Optimisations',
+  TESTING: 'Testing',
+  CONCEPTION: 'Conception',
   REVIEW: 'Review',
   LIVRAISON: 'Livraison',
   MAINTENANCE: 'Maintenance',
@@ -38,6 +69,10 @@ export const PROJECT_STATUS_COLORS: Record<string, string> = {
   REDACTION: 'bg-amber-100 text-amber-700',
   MAQUETTE: 'bg-purple-100 text-purple-700',
   DEVELOPPEMENT: 'bg-blue-100 text-blue-700',
+  INTEGRATION: 'bg-indigo-100 text-indigo-700',
+  OPTIMISATIONS: 'bg-cyan-100 text-cyan-700',
+  TESTING: 'bg-rose-100 text-rose-700',
+  CONCEPTION: 'bg-fuchsia-100 text-fuchsia-700',
   REVIEW: 'bg-orange-100 text-orange-700',
   LIVRAISON: 'bg-green-100 text-green-700',
   MAINTENANCE: 'bg-teal-100 text-teal-700',
@@ -110,8 +145,9 @@ export const RESOURCE_CATEGORY_COLORS: Record<string, string> = {
 export const ROLE_LABELS: Record<string, string> = {
   ADMIN: 'Président',
   DEVELOPER: 'Développeur',
-  REDACTEUR: 'Rédacteur',
-  DESIGNER: 'Designer',
+  REDACTEUR: 'Rédactrice',
+  DESIGNER: 'Designeuse',
+  COMMERCIAL: 'Commercial',
 }
 
 export const ROLE_COLORS: Record<string, string> = {
@@ -119,6 +155,7 @@ export const ROLE_COLORS: Record<string, string> = {
   DEVELOPER: 'bg-blue-500/15 text-blue-400 border-blue-500/20',
   REDACTEUR: 'bg-amber-500/15 text-amber-400 border-amber-500/20',
   DESIGNER: 'bg-pink-500/15 text-pink-400 border-pink-500/20',
+  COMMERCIAL: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20',
 }
 
 export const ROLE_AVATAR_COLORS: Record<string, string> = {
@@ -126,4 +163,19 @@ export const ROLE_AVATAR_COLORS: Record<string, string> = {
   DEVELOPER: 'from-blue-400 to-blue-600',
   REDACTEUR: 'from-amber-400 to-amber-600',
   DESIGNER: 'from-pink-400 to-pink-600',
+  COMMERCIAL: 'from-emerald-400 to-emerald-600',
+}
+
+export const MISSION_STATUS_LABELS: Record<string, string> = {
+  EN_ATTENTE: 'En attente',
+  CONTRE_PROPOSITION: 'Contre-proposition',
+  VALIDE: 'Validé',
+  REFUSE: 'Refusé',
+}
+
+export const MISSION_STATUS_COLORS: Record<string, string> = {
+  EN_ATTENTE: 'bg-amber-100 text-amber-700 border-amber-200',
+  CONTRE_PROPOSITION: 'bg-orange-100 text-orange-700 border-orange-200',
+  VALIDE: 'bg-green-100 text-green-700 border-green-200',
+  REFUSE: 'bg-red-100 text-red-700 border-red-200',
 }

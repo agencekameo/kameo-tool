@@ -23,18 +23,29 @@ export async function POST(req: NextRequest) {
     auth: { user, pass },
   })
 
+  // Escape HTML to prevent injection
+  function escapeHtml(str: string) {
+    return str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;')
+  }
+
   try {
+    const safeHtml = escapeHtml(body).replace(/\n/g, '<br>')
     await transporter.sendMail({
-      from: `"${session.user.name} — Agence Kameo" <${user}>`,
+      from: `"${escapeHtml(session.user.name || 'Kameo')} — Agence Kameo" <${user}>`,
       to,
       subject,
       text: body,
-      html: body.replace(/\n/g, '<br>'),
+      html: safeHtml,
       replyTo: replyTo || user,
     })
     return NextResponse.json({ success: true })
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Erreur inconnue'
-    return NextResponse.json({ error: message }, { status: 500 })
+    console.error('[POST /api/email/send]', error)
+    return NextResponse.json({ error: 'Erreur lors de l\'envoi de l\'email' }, { status: 500 })
   }
 }

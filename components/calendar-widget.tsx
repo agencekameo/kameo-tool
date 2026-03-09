@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Calendar, MapPin, Clock, ExternalLink, AlertCircle, RefreshCw, Link2 } from 'lucide-react'
+import { Calendar, MapPin, Clock, ExternalLink, RefreshCw, Video } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface CalendarEvent {
@@ -14,11 +14,12 @@ interface CalendarEvent {
   description: string | null
   calendarEmail: string
   htmlLink: string | null
+  meetingLink?: string | null
+  meetingType?: string | null
 }
 
 interface CalendarData {
   events: CalendarEvent[]
-  notConnected: string[]
   calendarEmails: string[]
 }
 
@@ -51,9 +52,13 @@ function getDayBadge(start: string) {
   return null
 }
 
-function getCalendarColor(email: string) {
-  if (email.includes('louison')) return 'bg-purple-500'
-  return 'bg-[#E14B89]'
+const CALENDAR_COLORS = [
+  'bg-[#E14B89]', 'bg-purple-500', 'bg-blue-500', 'bg-emerald-500', 'bg-amber-500',
+]
+
+function getCalendarColor(email: string, allEmails: string[]) {
+  const idx = allEmails.indexOf(email)
+  return CALENDAR_COLORS[idx % CALENDAR_COLORS.length]
 }
 
 export function CalendarWidget() {
@@ -73,6 +78,8 @@ export function CalendarWidget() {
 
   useEffect(() => { fetchEvents() }, [])
 
+  const allEmails = data?.calendarEmails ?? []
+
   return (
     <div className="bg-[#111118] border border-slate-800 rounded-2xl p-6">
       <div className="flex items-center justify-between mb-5">
@@ -88,27 +95,6 @@ export function CalendarWidget() {
           <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
         </button>
       </div>
-
-      {/* Not connected banners */}
-      {data?.notConnected && data.notConnected.length > 0 && (
-        <div className="space-y-2 mb-4">
-          {data.notConnected.map(email => (
-            <div key={email} className="flex items-center justify-between gap-2 px-3 py-2 bg-amber-500/10 border border-amber-500/20 rounded-xl">
-              <div className="flex items-center gap-2">
-                <AlertCircle size={13} className="text-amber-400 flex-shrink-0" />
-                <p className="text-amber-300 text-xs">{email} non connecté</p>
-              </div>
-              <a
-                href={`/api/calendar/connect?email=${encodeURIComponent(email)}`}
-                className="flex items-center gap-1 text-xs text-amber-400 hover:text-amber-300 transition-colors whitespace-nowrap"
-              >
-                <Link2 size={11} />
-                Connecter
-              </a>
-            </div>
-          ))}
-        </div>
-      )}
 
       {loading && (
         <div className="space-y-2.5">
@@ -126,29 +112,24 @@ export function CalendarWidget() {
 
       {!loading && !error && data && (
         <>
-          {data.events.length === 0 && data.notConnected.length === 0 && (
+          {data.events.length === 0 && (
             <div className="text-center py-8">
               <Calendar size={28} className="text-slate-700 mx-auto mb-2" />
-              <p className="text-slate-500 text-sm">Aucun rendez-vous à venir</p>
-            </div>
-          )}
-
-          {data.events.length === 0 && data.notConnected.length > 0 && (
-            <div className="text-center py-4">
-              <p className="text-slate-600 text-xs">Connectez vos agendas pour voir vos rendez-vous</p>
+              <p className="text-slate-500 text-sm">
+                {allEmails.length === 0 ? 'Aucun calendrier connecte' : 'Aucun rendez-vous a venir'}
+              </p>
             </div>
           )}
 
           <div className="space-y-2">
             {data.events.map((event, i) => {
               const badge = getDayBadge(event.start)
-              const calColor = getCalendarColor(event.calendarEmail)
+              const calColor = getCalendarColor(event.calendarEmail, allEmails)
               return (
                 <div
                   key={`${event.id}-${i}`}
                   className="flex items-start gap-3 p-3 rounded-xl hover:bg-slate-800/30 transition-colors group"
                 >
-                  {/* Color dot */}
                   <div className="flex flex-col items-center gap-0.5 flex-shrink-0 mt-1">
                     <div className={cn('w-2 h-2 rounded-full flex-shrink-0', calColor)} />
                   </div>
@@ -182,6 +163,17 @@ export function CalendarWidget() {
                         <Clock size={10} />
                         {formatEventDate(event.start, event.end, event.allDay)}
                       </span>
+                      {event.meetingLink && (
+                        <a
+                          href={event.meetingLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1 text-[11px] font-medium text-blue-400 hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/15 px-1.5 py-0.5 rounded-md transition-colors"
+                        >
+                          <Video size={9} />
+                          {event.meetingType || 'Rejoindre'}
+                        </a>
+                      )}
                       {event.location && (
                         <span className="flex items-center gap-1 text-slate-600 text-[11px] truncate max-w-[160px]">
                           <MapPin size={10} />
@@ -195,12 +187,11 @@ export function CalendarWidget() {
             })}
           </div>
 
-          {/* Calendar legend */}
-          {data.calendarEmails.length > 1 && data.events.length > 0 && (
+          {allEmails.length > 1 && data.events.length > 0 && (
             <div className="mt-4 pt-3 border-t border-slate-800 flex items-center gap-3 flex-wrap">
-              {data.calendarEmails.filter(e => !data.notConnected.includes(e)).map(email => (
+              {allEmails.map(email => (
                 <div key={email} className="flex items-center gap-1.5">
-                  <div className={cn('w-2 h-2 rounded-full', getCalendarColor(email))} />
+                  <div className={cn('w-2 h-2 rounded-full', getCalendarColor(email, allEmails))} />
                   <span className="text-slate-600 text-[10px]">{email}</span>
                 </div>
               ))}

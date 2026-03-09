@@ -1,16 +1,22 @@
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { createLog } from '@/lib/log'
+import { createNotificationForAdmins } from '@/lib/notifications'
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function GET() {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   try {
+    const role = (session.user as { role?: string }).role
+    const isAdmin = role === 'ADMIN'
+
     const projects = await prisma.project.findMany({
+      where: isAdmin ? {} : { assignments: { some: { userId: session.user.id } } },
       include: {
         client: { select: { id: true, name: true, company: true } },
         tasks: { select: { id: true, status: true } },
+        assignments: { select: { user: { select: { id: true, name: true, avatar: true } } } },
       },
       orderBy: { updatedAt: 'desc' },
     })
@@ -70,6 +76,14 @@ export async function POST(req: NextRequest) {
     } catch {
       // Non-blocking
     }
+
+    // Notify admins of the new project
+    createNotificationForAdmins({
+      type: 'PROJECT_NEW',
+      title: 'Nouveau projet',
+      message: `Le projet "${project.name}" a été créé`,
+      link: `/projects/${project.id}`,
+    })
 
     return NextResponse.json(project)
   } catch (err) {

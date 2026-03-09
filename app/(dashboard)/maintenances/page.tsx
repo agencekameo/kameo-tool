@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Plus, Trash2, Pencil, ExternalLink, LogIn, Copy, Check, Globe, Search, Share2, BookOpen } from 'lucide-react'
+import { Plus, Trash2, Pencil, ExternalLink, LogIn, Copy, Check, Globe, Search, Share2, BookOpen, ArrowLeft, X } from 'lucide-react'
 import { formatCurrency, formatDate } from '@/lib/utils'
 
 interface Maintenance {
@@ -43,6 +43,7 @@ const emptyForm = {
   clientName: '', url: '', loginUrl: '', cms: '', type: 'WEB', billing: 'MENSUEL',
   startDate: '', endDate: '', priceHT: '', commercial: '', loginEmail: '',
   loginPassword: '', contactName: '', contactPhone: '', notes: '', active: true,
+  n8nUrl: '', sheetUrl: '',
 }
 
 export default function MaintenancesPage() {
@@ -98,21 +99,30 @@ export default function MaintenancesPage() {
       contactName: form.contactName || null,
       contactPhone: form.contactPhone || null,
       notes: form.notes || null,
+      n8nUrl: form.n8nUrl || null,
+      sheetUrl: form.sheetUrl || null,
     }
-    if (editItem) {
-      const res = await fetch(`/api/maintenances/${editItem.id}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
-      })
-      const updated = await res.json()
-      setMaintenances(prev => prev.map(m => m.id === editItem.id ? updated : m))
-    } else {
-      const res = await fetch('/api/maintenances', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
-      })
-      const created = await res.json()
-      setMaintenances(prev => [...prev, created])
+    try {
+      if (editItem) {
+        const res = await fetch(`/api/maintenances/${editItem.id}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+        })
+        if (!res.ok) { const err = await res.json().catch(() => ({})); alert(err.error || 'Erreur lors de la modification'); return }
+        const updated = await res.json()
+        setMaintenances(prev => prev.map(m => m.id === editItem.id ? updated : m))
+      } else {
+        const res = await fetch('/api/maintenances', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+        })
+        if (!res.ok) { const err = await res.json().catch(() => ({})); alert(err.error || 'Erreur lors de la création'); return }
+        const created = await res.json()
+        setMaintenances(prev => [...prev, created])
+      }
+      setShowModal(false)
+    } catch (err) {
+      console.error('Maintenance submit error:', err)
+      alert('Erreur réseau')
     }
-    setShowModal(false)
   }
 
   async function handleDelete(id: string) {
@@ -122,7 +132,10 @@ export default function MaintenancesPage() {
   }
 
   async function handleAutoLogin(m: Maintenance) {
-    if (m.loginUrl) window.open(m.loginUrl, '_blank')
+    if (m.loginUrl) {
+      const url = m.loginUrl.startsWith('http') ? m.loginUrl : `https://${m.loginUrl}`
+      window.open(url, '_blank')
+    }
     if (m.loginEmail || m.loginPassword) {
       const text = [m.loginEmail, m.loginPassword].filter(Boolean).join('\n')
       await navigator.clipboard.writeText(text)
@@ -136,7 +149,7 @@ export default function MaintenancesPage() {
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-2xl font-semibold text-white">Maintenances</h1>
-          <p className="text-slate-400 text-sm mt-1">{maintenances.filter(m => m.active).length} contrats actifs</p>
+          <p className="text-slate-400 text-sm mt-1">{maintenances.filter(m => m.active).length} effectués ce mois-ci</p>
         </div>
         <button onClick={() => openModal()}
           className="flex items-center gap-2 bg-[#E14B89] hover:opacity-90 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-colors">
@@ -187,6 +200,7 @@ export default function MaintenancesPage() {
                 <th className="text-left px-5 py-3.5 text-slate-400 text-xs font-medium">Prix HT</th>
                 <th className="text-left px-5 py-3.5 text-slate-400 text-xs font-medium">Fin</th>
                 <th className="text-left px-5 py-3.5 text-slate-400 text-xs font-medium">Statut</th>
+                <th className="text-left px-5 py-3.5 text-slate-400 text-xs font-medium">Connexion</th>
                 <th className="px-5 py-3.5" />
               </tr>
             </thead>
@@ -199,7 +213,7 @@ export default function MaintenancesPage() {
                   </td>
                   <td className="px-5 py-3.5">
                     {m.url ? (
-                      <a href={m.url} target="_blank" rel="noopener noreferrer"
+                      <a href={m.url.startsWith('http') ? m.url : `https://${m.url}`} target="_blank" rel="noopener noreferrer"
                         className="text-[#E14B89] hover:text-[#F8903C] text-xs flex items-center gap-1 transition-colors">
                         <ExternalLink size={11} />
                         {m.url.replace(/^https?:\/\//, '').replace(/\/$/, '').substring(0, 25)}
@@ -215,18 +229,32 @@ export default function MaintenancesPage() {
                   </td>
                   <td className="px-5 py-3.5 text-slate-400 text-xs">{m.endDate ? formatDate(m.endDate) : '—'}</td>
                   <td className="px-5 py-3.5">
-                    <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${m.active ? 'bg-green-400/10 text-green-400' : 'bg-slate-800 text-slate-500'}`}>
-                      {m.active ? 'Actif' : 'Inactif'}
-                    </span>
+                    <select
+                      value={m.active ? 'true' : 'false'}
+                      onChange={async (e) => {
+                        const newActive = e.target.value === 'true'
+                        await fetch(`/api/maintenances/${m.id}`, {
+                          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ active: newActive }),
+                        })
+                        setMaintenances(prev => prev.map(x => x.id === m.id ? { ...x, active: newActive } : x))
+                      }}
+                      className={`text-xs px-2.5 py-1 rounded-full font-medium border-0 cursor-pointer focus:outline-none ${m.active ? 'bg-green-400/10 text-green-400' : 'bg-amber-500/10 text-amber-400'}`}
+                    >
+                      <option value="true">Effectué</option>
+                      <option value="false">Pas encore</option>
+                    </select>
+                  </td>
+                  <td className="px-5 py-3.5">
+                    {(m.loginUrl || m.loginEmail) ? (
+                      <button onClick={() => handleAutoLogin(m)} title="Se connecter au site"
+                        className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-[#E14B89]/10 text-[#E14B89] hover:bg-[#E14B89]/20 transition-colors">
+                        {copied === m.id ? <><Check size={12} className="text-green-400" /> Copié</> : <><LogIn size={12} /> Connexion</>}
+                      </button>
+                    ) : <span className="text-slate-600 text-xs">—</span>}
                   </td>
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity justify-end">
-                      {(m.loginUrl || m.loginEmail) && (
-                        <button onClick={() => handleAutoLogin(m)} title="Auto-login"
-                          className="p-1.5 text-slate-500 hover:text-[#E14B89] transition-colors relative">
-                          {copied === m.id ? <Check size={14} className="text-green-400" /> : <LogIn size={14} />}
-                        </button>
-                      )}
                       <button onClick={() => setShowCreds(showCreds === m.id ? null : m.id)}
                         className="p-1.5 text-slate-500 hover:text-slate-300 transition-colors">
                         <Copy size={14} />
@@ -246,7 +274,7 @@ export default function MaintenancesPage() {
                 if (!m) return null
                 return (
                   <tr>
-                    <td colSpan={8} className="px-5 py-4 bg-slate-800/30 border-b border-slate-800/50">
+                    <td colSpan={9} className="px-5 py-4 bg-slate-800/30 border-b border-slate-800/50">
                       <div className="flex items-center gap-6 text-sm">
                         <div>
                           <span className="text-slate-500 text-xs block mb-1">Email</span>
@@ -263,6 +291,10 @@ export default function MaintenancesPage() {
                         }} className="ml-auto flex items-center gap-1.5 text-xs text-[#E14B89] hover:text-[#F8903C] transition-colors">
                           {copied === m.id ? <><Check size={12} />Copié</> : <><Copy size={12} />Copier</>}
                         </button>
+                        <button onClick={() => setShowCreds(null)}
+                          className="text-slate-500 hover:text-white transition-colors p-1">
+                          <X size={14} />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -276,7 +308,12 @@ export default function MaintenancesPage() {
       {showModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-[#111118] border border-slate-800 rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <h2 className="text-white font-semibold text-lg mb-5">{editItem ? 'Modifier le contrat' : 'Nouveau contrat'}</h2>
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-white font-semibold text-lg">{editItem ? 'Modifier le contrat' : 'Nouveau contrat'}</h2>
+              <button onClick={() => setShowModal(false)} className="text-slate-500 hover:text-white transition-colors p-1">
+                <X size={18} />
+              </button>
+            </div>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -300,51 +337,146 @@ export default function MaintenancesPage() {
                   </select>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-slate-400 text-xs mb-1.5">URL du site</label>
-                  <input value={form.url as string} onChange={e => setForm({ ...form, url: e.target.value })} placeholder="https://..."
-                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
-                </div>
-                <div>
-                  <label className="block text-slate-400 text-xs mb-1.5">URL de connexion</label>
-                  <input value={form.loginUrl as string} onChange={e => setForm({ ...form, loginUrl: e.target.value })} placeholder="https://.../wp-admin"
-                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-slate-400 text-xs mb-1.5">Email de connexion</label>
-                  <input value={form.loginEmail as string} onChange={e => setForm({ ...form, loginEmail: e.target.value })}
-                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
-                </div>
-                <div>
-                  <label className="block text-slate-400 text-xs mb-1.5">Mot de passe</label>
-                  <input value={form.loginPassword as string} onChange={e => setForm({ ...form, loginPassword: e.target.value })}
-                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-slate-400 text-xs mb-1.5">CMS</label>
-                  <input value={form.cms as string} onChange={e => setForm({ ...form, cms: e.target.value })} placeholder="WordPress, Framer..."
-                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
-                </div>
-                <div>
-                  <label className="block text-slate-400 text-xs mb-1.5">Facturation</label>
-                  <select value={form.billing as string} onChange={e => setForm({ ...form, billing: e.target.value })}
-                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors">
-                    <option value="MENSUEL">Mensuel</option>
-                    <option value="TRIMESTRIEL">Trimestriel</option>
-                    <option value="ANNUEL">Annuel</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-slate-400 text-xs mb-1.5">Prix HT (€)</label>
-                  <input type="number" step="0.01" value={form.priceHT as string} onChange={e => setForm({ ...form, priceHT: e.target.value })}
-                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
-                </div>
-              </div>
+
+              {/* Champs spécifiques WEB */}
+              {(form.type as string) === 'WEB' && (
+                <>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-slate-400 text-xs mb-1.5">URL du site</label>
+                      <input value={form.url as string} onChange={e => setForm({ ...form, url: e.target.value })} placeholder="https://..."
+                        className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+                    </div>
+                    <div>
+                      <label className="block text-slate-400 text-xs mb-1.5">URL de connexion</label>
+                      <input value={form.loginUrl as string} onChange={e => setForm({ ...form, loginUrl: e.target.value })} placeholder="https://.../wp-admin"
+                        className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-slate-400 text-xs mb-1.5">Email de connexion</label>
+                      <input value={form.loginEmail as string} onChange={e => setForm({ ...form, loginEmail: e.target.value })}
+                        className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+                    </div>
+                    <div>
+                      <label className="block text-slate-400 text-xs mb-1.5">Mot de passe</label>
+                      <input value={form.loginPassword as string} onChange={e => setForm({ ...form, loginPassword: e.target.value })}
+                        className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-slate-400 text-xs mb-1.5">CMS</label>
+                      <select value={form.cms as string} onChange={e => setForm({ ...form, cms: e.target.value })}
+                        className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors">
+                        <option value="">— Aucun —</option>
+                        <option value="WordPress">WordPress</option>
+                        <option value="Framer">Framer</option>
+                        <option value="Webflow">Webflow</option>
+                        <option value="Shopify">Shopify</option>
+                        <option value="WooCommerce">WooCommerce</option>
+                        <option value="Prestashop">Prestashop</option>
+                        <option value="Sur mesure">Sur mesure</option>
+                        <option value="Autre">Autre</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-slate-400 text-xs mb-1.5">Facturation</label>
+                      <select value={form.billing as string} onChange={e => setForm({ ...form, billing: e.target.value })}
+                        className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors">
+                        <option value="MENSUEL">Mensuel</option>
+                        <option value="TRIMESTRIEL">Trimestriel</option>
+                        <option value="ANNUEL">Annuel</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-slate-400 text-xs mb-1.5">Prix HT (€)</label>
+                      <input type="number" step="0.01" value={form.priceHT as string} onChange={e => setForm({ ...form, priceHT: e.target.value })}
+                        className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* Champs spécifiques GOOGLE / RESEAUX */}
+              {((form.type as string) === 'GOOGLE' || (form.type as string) === 'RESEAUX') && (
+                <>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-slate-400 text-xs mb-1.5">URL du site</label>
+                      <input value={form.url as string} onChange={e => setForm({ ...form, url: e.target.value })} placeholder="https://..."
+                        className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+                    </div>
+                    <div>
+                      <label className="block text-slate-400 text-xs mb-1.5">Facturation</label>
+                      <select value={form.billing as string} onChange={e => setForm({ ...form, billing: e.target.value })}
+                        className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors">
+                        <option value="MENSUEL">Mensuel</option>
+                        <option value="TRIMESTRIEL">Trimestriel</option>
+                        <option value="ANNUEL">Annuel</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-slate-400 text-xs mb-1.5">Prix HT (€)</label>
+                    <input type="number" step="0.01" value={form.priceHT as string} onChange={e => setForm({ ...form, priceHT: e.target.value })}
+                      className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+                  </div>
+                </>
+              )}
+
+              {/* Champs spécifiques BLOG */}
+              {(form.type as string) === 'BLOG' && (
+                <>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-slate-400 text-xs mb-1.5">URL du site</label>
+                      <input value={form.url as string} onChange={e => setForm({ ...form, url: e.target.value })} placeholder="https://..."
+                        className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+                    </div>
+                    <div>
+                      <label className="block text-slate-400 text-xs mb-1.5">Facturation</label>
+                      <select value={form.billing as string} onChange={e => setForm({ ...form, billing: e.target.value })}
+                        className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors">
+                        <option value="MENSUEL">Mensuel</option>
+                        <option value="TRIMESTRIEL">Trimestriel</option>
+                        <option value="ANNUEL">Annuel</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-slate-400 text-xs mb-1.5">Prix HT (€)</label>
+                    <input type="number" step="0.01" value={form.priceHT as string} onChange={e => setForm({ ...form, priceHT: e.target.value })}
+                      className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-slate-400 text-xs mb-1.5">Lien n8n (automatisation)</label>
+                      <input value={form.n8nUrl as string} onChange={e => setForm({ ...form, n8nUrl: e.target.value })} placeholder="https://n8n.io/..."
+                        className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+                    </div>
+                    <div>
+                      <label className="block text-slate-400 text-xs mb-1.5">Lien Google Sheet (titres articles)</label>
+                      <input value={form.sheetUrl as string} onChange={e => setForm({ ...form, sheetUrl: e.target.value })} placeholder="https://docs.google.com/..."
+                        className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-slate-400 text-xs mb-1.5">Email de connexion</label>
+                      <input value={form.loginEmail as string} onChange={e => setForm({ ...form, loginEmail: e.target.value })}
+                        className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+                    </div>
+                    <div>
+                      <label className="block text-slate-400 text-xs mb-1.5">Mot de passe</label>
+                      <input value={form.loginPassword as string} onChange={e => setForm({ ...form, loginPassword: e.target.value })}
+                        className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+                    </div>
+                  </div>
+                </>
+              )}
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-slate-400 text-xs mb-1.5">Date début</label>
@@ -354,18 +486,6 @@ export default function MaintenancesPage() {
                 <div>
                   <label className="block text-slate-400 text-xs mb-1.5">Date fin</label>
                   <input type="date" value={form.endDate as string} onChange={e => setForm({ ...form, endDate: e.target.value })}
-                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-slate-400 text-xs mb-1.5">Contact nom</label>
-                  <input value={form.contactName as string} onChange={e => setForm({ ...form, contactName: e.target.value })}
-                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
-                </div>
-                <div>
-                  <label className="block text-slate-400 text-xs mb-1.5">Contact téléphone</label>
-                  <input value={form.contactPhone as string} onChange={e => setForm({ ...form, contactPhone: e.target.value })}
                     className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
                 </div>
               </div>

@@ -1,8 +1,9 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Plus, Trash2, Pencil, Euro, Phone, Mail, User } from 'lucide-react'
-import { formatCurrency } from '@/lib/utils'
+import { useRouter } from 'next/navigation'
+import { Plus, Trash2, Pencil, Euro, Phone, Mail, User, FolderPlus, CheckCircle2, X, Globe, FileText, Send, Loader2 } from 'lucide-react'
+import { formatCurrency, formatPhone } from '@/lib/utils'
 
 interface Prospect {
   id: string
@@ -18,7 +19,24 @@ interface Prospect {
   assignee?: { id: string; name: string }
 }
 
-interface User { id: string; name: string }
+interface CdcData {
+  siteType: 'VITRINE' | 'ECOMMERCE'
+  isRefonte: boolean
+  arborescence?: string
+  espaceClient?: boolean
+  fonctionnalites?: string[]
+  catalogueInfo?: string
+  livraisonInfo?: string
+  paiementInfo?: string
+  autresInfos?: string
+}
+
+interface User { id: string; name: string; role: string }
+
+const FONCTIONNALITES_OPTIONS = [
+  'Blog', 'Traduction multilingue', 'Newsletter', 'RDV Calendly',
+  'Système de réservation', 'Simulateur', 'Livechat',
+]
 
 const COLUMNS = [
   { key: 'A_CONTACTER', label: 'À contacter', color: 'text-slate-400', bg: 'bg-slate-800/40' },
@@ -34,6 +52,7 @@ const emptyForm = {
 }
 
 export default function CommercialPage() {
+  const router = useRouter()
   const [prospects, setProspects] = useState<Prospect[]>([])
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
@@ -41,12 +60,20 @@ export default function CommercialPage() {
   const [editItem, setEditItem] = useState<Prospect | null>(null)
   const [form, setForm] = useState<Record<string, string>>(emptyForm)
   const [dragId, setDragId] = useState<string | null>(null)
+  const [signedProspect, setSignedProspect] = useState<Prospect | null>(null)
+  const [cdcProspect, setCdcProspect] = useState<Prospect | null>(null)
+  const [cdcForm, setCdcForm] = useState<CdcData>({ siteType: 'VITRINE', isRefonte: false, fonctionnalites: [] })
+  const [cdcSubmitting, setCdcSubmitting] = useState(false)
 
   useEffect(() => {
     Promise.all([
       fetch('/api/prospects').then(r => r.json()),
       fetch('/api/users').then(r => r.json()),
-    ]).then(([p, u]) => { setProspects(p); setUsers(u) }).finally(() => setLoading(false))
+    ]).then(([p, u]) => {
+      setUsers(u)
+      const commercialIds = new Set(u.filter((user: User) => user.role === 'COMMERCIAL').map((user: User) => user.id))
+      setProspects(p.filter((prospect: Prospect) => !prospect.assignedTo || !commercialIds.has(prospect.assignedTo)))
+    }).finally(() => setLoading(false))
   }, [])
 
   function openModal(item?: Prospect, defaultStatus?: string) {
@@ -75,17 +102,29 @@ export default function CommercialPage() {
       assignedTo: form.assignedTo || null,
     }
     if (editItem) {
+      const wasNotSigned = editItem.status !== 'SIGNE'
+      const wasNotDevis = editItem.status !== 'DEVIS_TRANSMETTRE'
       const res = await fetch(`/api/prospects/${editItem.id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
       })
       const updated = await res.json()
       setProspects(prev => prev.map(p => p.id === editItem.id ? updated : p))
+      if (wasNotDevis && form.status === 'DEVIS_TRANSMETTRE') {
+        setCdcProspect(updated)
+        setCdcForm({ siteType: 'VITRINE', isRefonte: false, fonctionnalites: [] })
+      }
+      if (wasNotSigned && form.status === 'SIGNE') setSignedProspect(updated)
     } else {
       const res = await fetch('/api/prospects', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
       })
       const created = await res.json()
       setProspects(prev => [created, ...prev])
+      if (form.status === 'DEVIS_TRANSMETTRE') {
+        setCdcProspect(created)
+        setCdcForm({ siteType: 'VITRINE', isRefonte: false, fonctionnalites: [] })
+      }
+      if (form.status === 'SIGNE') setSignedProspect(created)
     }
     setShowModal(false)
   }
@@ -107,6 +146,37 @@ export default function CommercialPage() {
     const updated = await res.json()
     setProspects(prev => prev.map(p => p.id === dragId ? updated : p))
     setDragId(null)
+    if (status === 'DEVIS_TRANSMETTRE' && prospect.status !== 'DEVIS_TRANSMETTRE') {
+      setCdcProspect(updated)
+      setCdcForm({ siteType: 'VITRINE', isRefonte: false, fonctionnalites: [] })
+    }
+    if (status === 'SIGNE' && prospect.status !== 'SIGNE') {
+      setSignedProspect(updated)
+    }
+  }
+
+  async function handleSubmitCdc(e: React.FormEvent) {
+    e.preventDefault()
+    if (!cdcProspect) return
+    setCdcSubmitting(true)
+    try {
+      await fetch(`/api/prospects/${cdcProspect.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cdcData: cdcForm }),
+      })
+      setCdcProspect(null)
+    } catch { /* ignore */ }
+    setCdcSubmitting(false)
+  }
+
+  function toggleFonctionnalite(f: string) {
+    setCdcForm(prev => ({
+      ...prev,
+      fonctionnalites: prev.fonctionnalites?.includes(f)
+        ? prev.fonctionnalites.filter(x => x !== f)
+        : [...(prev.fonctionnalites || []), f],
+    }))
   }
 
   return (
@@ -181,6 +251,22 @@ export default function CommercialPage() {
                           </div>
                         )}
                       </div>
+                      {col.key === 'SIGNE' && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            const params = new URLSearchParams({ newProject: 'true' })
+                            if (p.name) params.set('prospectName', p.name)
+                            if (p.company) params.set('prospectCompany', p.company)
+                            if (p.id) params.set('prospectId', p.id)
+                            router.push(`/projects?${params.toString()}`)
+                          }}
+                          className="w-full mt-2 flex items-center justify-center gap-1.5 py-1.5 text-[11px] font-medium text-green-400 hover:text-green-300 bg-green-500/10 hover:bg-green-500/15 rounded-lg transition-colors"
+                        >
+                          <FolderPlus size={12} />
+                          Créer un projet
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -191,6 +277,171 @@ export default function CommercialPage() {
               </div>
             )
           })}
+        </div>
+      )}
+
+      {/* Popup "Prospect signé → Créer un projet" */}
+      {signedProspect && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#111118] border border-slate-800 rounded-2xl p-6 w-full max-w-sm text-center relative">
+            <button onClick={() => setSignedProspect(null)} className="absolute top-4 right-4 text-slate-500 hover:text-white transition-colors">
+              <X size={16} />
+            </button>
+            <div className="w-14 h-14 rounded-full bg-green-500/15 flex items-center justify-center mx-auto mb-4">
+              <CheckCircle2 size={28} className="text-green-400" />
+            </div>
+            <h3 className="text-white font-semibold text-lg mb-1">Prospect signé !</h3>
+            <p className="text-slate-400 text-sm mb-6">
+              <span className="text-white font-medium">{signedProspect.name}</span>
+              {signedProspect.company && <> · {signedProspect.company}</>}
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setSignedProspect(null)}
+                className="flex-1 border border-slate-700 text-slate-400 hover:text-white py-2.5 rounded-xl text-sm transition-colors"
+              >
+                Plus tard
+              </button>
+              <button
+                onClick={() => {
+                  const params = new URLSearchParams({ newProject: 'true' })
+                  if (signedProspect.name) params.set('prospectName', signedProspect.name)
+                  if (signedProspect.company) params.set('prospectCompany', signedProspect.company)
+                  if (signedProspect.id) params.set('prospectId', signedProspect.id)
+                  router.push(`/projects?${params.toString()}`)
+                }}
+                className="flex-1 flex items-center justify-center gap-2 bg-[#E14B89] hover:opacity-90 text-white py-2.5 rounded-xl text-sm font-medium transition-colors"
+              >
+                <FolderPlus size={16} />
+                Créer un projet
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal CDC — Cahier des charges */}
+      {cdcProspect && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#111118] border border-slate-800 rounded-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto relative">
+            <button onClick={() => setCdcProspect(null)} className="absolute top-4 right-4 text-slate-500 hover:text-white transition-colors">
+              <X size={16} />
+            </button>
+            <h2 className="text-white font-semibold text-lg mb-1">Cahier des charges</h2>
+            <p className="text-slate-400 text-sm mb-5">
+              <span className="text-white font-medium">{cdcProspect.name}</span>
+              {cdcProspect.company && <> · {cdcProspect.company}</>}
+            </p>
+            <form onSubmit={handleSubmitCdc} className="space-y-5">
+              {/* Type de projet */}
+              <div>
+                <label className="block text-slate-400 text-xs mb-2">Type de projet</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button type="button" onClick={() => setCdcForm(p => ({ ...p, siteType: 'VITRINE' }))}
+                    className={`p-3 rounded-xl border-2 text-left transition-all ${cdcForm.siteType === 'VITRINE' ? 'border-[#E14B89] bg-[#E14B89]/5' : 'border-slate-800 hover:border-slate-700'}`}>
+                    <Globe size={18} className={cdcForm.siteType === 'VITRINE' ? 'text-[#E14B89]' : 'text-slate-500'} />
+                    <p className={`font-medium mt-1.5 text-sm ${cdcForm.siteType === 'VITRINE' ? 'text-white' : 'text-slate-400'}`}>Site vitrine</p>
+                  </button>
+                  <button type="button" onClick={() => setCdcForm(p => ({ ...p, siteType: 'ECOMMERCE' }))}
+                    className={`p-3 rounded-xl border-2 text-left transition-all ${cdcForm.siteType === 'ECOMMERCE' ? 'border-[#E14B89] bg-[#E14B89]/5' : 'border-slate-800 hover:border-slate-700'}`}>
+                    <FileText size={18} className={cdcForm.siteType === 'ECOMMERCE' ? 'text-[#E14B89]' : 'text-slate-500'} />
+                    <p className={`font-medium mt-1.5 text-sm ${cdcForm.siteType === 'ECOMMERCE' ? 'text-white' : 'text-slate-400'}`}>E-commerce</p>
+                  </button>
+                </div>
+              </div>
+
+              {/* Refonte */}
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={cdcForm.isRefonte}
+                  onChange={e => setCdcForm(p => ({ ...p, isRefonte: e.target.checked }))}
+                  className="w-4 h-4 rounded border-slate-700 bg-[#1a1a24] text-[#E14B89] focus:ring-[#E14B89] focus:ring-offset-0" />
+                <span className="text-slate-300 text-sm">Refonte (site existant)</span>
+              </label>
+
+              {/* Arborescence */}
+              <div>
+                <label className="block text-slate-400 text-xs mb-1.5">Arborescence du site</label>
+                <textarea value={cdcForm.arborescence || ''} onChange={e => setCdcForm(p => ({ ...p, arborescence: e.target.value }))}
+                  rows={3} placeholder="Accueil, À propos, Services, Contact..."
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors resize-none" />
+              </div>
+
+              {/* Espace client */}
+              <div className="flex items-center justify-between">
+                <span className="text-slate-300 text-sm">Espace client / connexion</span>
+                <button type="button" onClick={() => setCdcForm(p => ({ ...p, espaceClient: !p.espaceClient }))}
+                  className={`relative w-11 h-6 rounded-full transition-colors ${cdcForm.espaceClient ? 'bg-[#E14B89]' : 'bg-slate-700'}`}>
+                  <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform ${cdcForm.espaceClient ? 'left-5' : 'left-0.5'}`} />
+                </button>
+              </div>
+
+              {/* E-commerce fields */}
+              {cdcForm.siteType === 'ECOMMERCE' && (
+                <div className="space-y-4 border-t border-slate-800 pt-4">
+                  <div>
+                    <label className="block text-slate-400 text-xs mb-1.5">Catalogue produits</label>
+                    <textarea value={cdcForm.catalogueInfo || ''} onChange={e => setCdcForm(p => ({ ...p, catalogueInfo: e.target.value }))}
+                      rows={2} placeholder="Nombre de produits, catégories, variables..."
+                      className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors resize-none" />
+                  </div>
+                  <div>
+                    <label className="block text-slate-400 text-xs mb-1.5">Moyens de livraison</label>
+                    <textarea value={cdcForm.livraisonInfo || ''} onChange={e => setCdcForm(p => ({ ...p, livraisonInfo: e.target.value }))}
+                      rows={2} placeholder="Colissimo, Mondial Relay, Click & Collect..."
+                      className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors resize-none" />
+                  </div>
+                  <div>
+                    <label className="block text-slate-400 text-xs mb-1.5">Moyens de paiement</label>
+                    <textarea value={cdcForm.paiementInfo || ''} onChange={e => setCdcForm(p => ({ ...p, paiementInfo: e.target.value }))}
+                      rows={2} placeholder="Carte bancaire, PayPal, Apple Pay..."
+                      className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors resize-none" />
+                  </div>
+                </div>
+              )}
+
+              {/* Fonctionnalités */}
+              <div>
+                <label className="block text-slate-400 text-xs mb-2">Fonctionnalités souhaitées</label>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {FONCTIONNALITES_OPTIONS.map(f => (
+                    <button key={f} type="button" onClick={() => toggleFonctionnalite(f)}
+                      className={`flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs text-left transition-all ${
+                        cdcForm.fonctionnalites?.includes(f)
+                          ? 'bg-[#E14B89]/10 border border-[#E14B89]/40 text-white'
+                          : 'bg-[#1a1a24] border border-slate-800 text-slate-400 hover:border-slate-700'
+                      }`}>
+                      <div className={`w-3.5 h-3.5 rounded border flex-shrink-0 flex items-center justify-center ${
+                        cdcForm.fonctionnalites?.includes(f) ? 'bg-[#E14B89] border-[#E14B89]' : 'border-slate-600'
+                      }`}>
+                        {cdcForm.fonctionnalites?.includes(f) && <CheckCircle2 size={8} className="text-white" />}
+                      </div>
+                      {f}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Autres infos */}
+              <div>
+                <label className="block text-slate-400 text-xs mb-1.5">Informations complémentaires</label>
+                <textarea value={cdcForm.autresInfos || ''} onChange={e => setCdcForm(p => ({ ...p, autresInfos: e.target.value }))}
+                  rows={3} placeholder="Contraintes, délais, fonctionnalités spécifiques..."
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors resize-none" />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setCdcProspect(null)}
+                  className="flex-1 border border-slate-700 text-slate-400 hover:text-white py-2.5 rounded-xl text-sm transition-colors">
+                  Passer
+                </button>
+                <button type="submit" disabled={cdcSubmitting}
+                  className="flex-1 flex items-center justify-center gap-2 bg-[#E14B89] hover:opacity-90 text-white py-2.5 rounded-xl text-sm font-medium transition-colors disabled:opacity-60">
+                  {cdcSubmitting ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                  {cdcSubmitting ? 'Envoi...' : 'Enregistrer le CDC'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 
@@ -217,7 +468,7 @@ export default function CommercialPage() {
                 </div>
                 <div>
                   <label className="block text-slate-400 text-xs mb-1.5">Téléphone</label>
-                  <input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })}
+                  <input value={form.phone} onChange={e => setForm({ ...form, phone: formatPhone(e.target.value) })}
                     className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
                 </div>
               </div>

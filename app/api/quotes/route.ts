@@ -4,10 +4,10 @@ import { NextRequest, NextResponse } from 'next/server'
 
 function getNextQuoteNumber(lastNumber: string | null): string {
   const year = new Date().getFullYear()
-  if (!lastNumber) return `DEV-${year}-001`
+  if (!lastNumber) return `DEVIS-${year}-001`
   const parts = lastNumber.split('-')
-  const num = parseInt(parts[2] || '0') + 1
-  return `DEV-${year}-${String(num).padStart(3, '0')}`
+  const num = parseInt(parts[parts.length - 1] || '0') + 1
+  return `DEVIS-${year}-${String(num).padStart(3, '0')}`
 }
 
 export async function GET() {

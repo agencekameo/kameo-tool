@@ -2,7 +2,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 
-const VALID_ROLES = ['ADMIN', 'DEVELOPER', 'DESIGNER', 'COMMERCIAL', 'MANAGER'] as const
+const VALID_ROLES = ['ADMIN', 'DEVELOPER', 'REDACTEUR', 'DESIGNER', 'COMMERCIAL', 'MEMBER'] as const
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth()
@@ -15,11 +15,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     select: {
       id: true, name: true, email: true, role: true, avatar: true,
       lastSeen: true, createdAt: true,
-      assignedProjects: {
+      projectAssignments: {
         include: {
-          client: { select: { name: true } },
-          invoices: { where: { uploadedBy: id } },
+          project: {
+            include: {
+              client: { select: { name: true } },
+              invoices: { where: { uploadedBy: id } },
+            },
+          },
         },
+        orderBy: { createdAt: 'desc' },
       },
       invoicesUploaded: {
         include: {

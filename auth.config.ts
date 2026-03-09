@@ -5,11 +5,18 @@ import type { NextAuthConfig } from 'next-auth'
  * Used by both middleware.ts (Edge runtime) and lib/auth.ts (Node.js runtime).
  */
 
-// Pages accessible only by ADMIN
-const ADMIN_ONLY_PATHS = ['/users', '/logs', '/backups', '/notes-de-frais', '/contrats']
+// ─── Whitelist approach: pages each restricted role can access ────────────────
+// ADMIN sees everything. Other roles only see the pages listed here.
+// /profile and /messagerie (popup) are always accessible to all logged-in users.
+const ROLE_ALLOWED_PATHS: Record<string, string[]> = {
+  DEVELOPER:  ['/projects', '/wiki', '/audit'],
+  REDACTEUR:  ['/projects', '/wiki', '/audit'],
+  DESIGNER:   ['/projects', '/wiki', '/audit', '/aysha', '/gmb'],
+  COMMERCIAL: ['/commerciaux', '/devis', '/audit', '/partenaires'],
+}
 
-// Pages reserved for ADMIN (president-level)
-const PRESIDENT_PATHS = ['/finances', '/objectifs', '/aysha']
+// Pages always accessible to any logged-in user (regardless of role)
+const ALWAYS_ALLOWED = ['/profile', '/email']
 
 export const authConfig: NextAuthConfig = {
   session: { strategy: 'jwt' },
@@ -36,6 +43,12 @@ export const authConfig: NextAuthConfig = {
       if (pathname.startsWith('/api/auth')) return true
       // Always allow setup route (first-time DB initialization)
       if (pathname === '/setup' || pathname.startsWith('/api/setup')) return true
+      // Always allow public signature pages and API
+      if (pathname.startsWith('/signer/')) return true
+      if (pathname.startsWith('/api/signature/')) return true
+      // Always allow public client form pages and API
+      if (pathname.startsWith('/formulaire/')) return true
+      if (pathname.startsWith('/api/formulaire/')) return true
       // Always allow API routes for logged-in users
       if (pathname.startsWith('/api/')) return isLoggedIn
       // Always allow public assets
@@ -49,18 +62,21 @@ export const authConfig: NextAuthConfig = {
       // Redirect unauthenticated users to login
       if (!isLoggedIn && pathname !== '/login') return false
 
-      // RBAC: user is logged in — check role-based restrictions
-      if (isLoggedIn && role !== 'ADMIN') {
-        // Non-admin users cannot access admin-only paths
-        const isAdminOnly = ADMIN_ONLY_PATHS.some(p => pathname === p || pathname.startsWith(p + '/'))
-        if (isAdminOnly) {
-          return Response.redirect(new URL('/', nextUrl))
-        }
+      // RBAC: whitelist approach for restricted roles
+      if (isLoggedIn && role && role !== 'ADMIN') {
+        const allowedPaths = ROLE_ALLOWED_PATHS[role]
 
-        // Non-admin users cannot access president-level paths
-        const isPresidentOnly = PRESIDENT_PATHS.some(p => pathname === p || pathname.startsWith(p + '/'))
-        if (isPresidentOnly) {
-          return Response.redirect(new URL('/', nextUrl))
+        if (allowedPaths) {
+          // Always allow common pages
+          const isAlwaysAllowed = ALWAYS_ALLOWED.some(p => pathname === p || pathname.startsWith(p + '/'))
+          if (isAlwaysAllowed) return true
+
+          // Check if current path is in the role's whitelist
+          const isAllowed = allowedPaths.some(p => pathname === p || pathname.startsWith(p + '/'))
+          if (!isAllowed) {
+            // Redirect to /projects (their default landing page)
+            return Response.redirect(new URL('/projects', nextUrl))
+          }
         }
       }
 

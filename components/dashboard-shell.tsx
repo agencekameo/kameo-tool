@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { Sidebar } from './sidebar'
 import { MessageriePopup } from './messagerie-popup'
+import { ImpersonationBanner } from './impersonation-banner'
 import { Menu } from 'lucide-react'
 import Image from 'next/image'
 
@@ -24,6 +25,9 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
 
       {/* Main content */}
       <main className="min-h-screen md:ml-60">
+        {/* Impersonation banner — shown when admin views as another user */}
+        <ImpersonationBanner />
+
         {/* Mobile top bar — only visible on small screens */}
         <div className="md:hidden sticky top-0 z-20 flex items-center h-14 px-4 bg-[#0d0d14] border-b border-slate-800/60">
           <button

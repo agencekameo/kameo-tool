@@ -6,13 +6,12 @@ import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import {
   ArrowLeft, Mail, Phone, Globe, Building2, FileText, Plus, Trash2,
-  Wrench, X, AlertTriangle, FolderKanban,
+  X, AlertTriangle, FolderKanban, Pencil, Save, MapPin, Loader2,
 } from 'lucide-react'
 import {
-  formatCurrency, formatDate,
+  formatCurrency, formatDate, formatPhone,
   PROJECT_STATUS_LABELS, PROJECT_STATUS_COLORS,
   PROJECT_TYPE_LABELS, PROJECT_TYPE_COLORS,
-  MAINTENANCE_LABELS,
 } from '@/lib/utils'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -38,9 +37,16 @@ interface Client {
   email?: string
   phone?: string
   company?: string
+  siret?: string
   website?: string
   address?: string
+  postalCode?: string
+  city?: string
+  country?: string
   notes?: string
+  contact2Name?: string
+  contact2Email?: string
+  contact2Phone?: string
   maintenancePlan: string
   maintenancePrice?: number
   projects: Project[]
@@ -55,14 +61,6 @@ interface QuoteItem {
 }
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
-
-const MAINTENANCE_COLORS: Record<string, string> = {
-  NONE: 'bg-slate-800 text-slate-400',
-  HEBERGEMENT: 'bg-slate-500/15 text-slate-300',
-  CLASSIQUE: 'bg-teal-500/15 text-teal-400',
-  CONTENU: 'bg-blue-500/15 text-blue-400',
-  SEO: 'bg-[#E14B89]/10 text-[#E14B89]',
-}
 
 const STATUS_LABELS: Record<string, string> = {
   BROUILLON: 'Brouillon',
@@ -648,6 +646,38 @@ export default function ClientDetailPage() {
   const [showProjectModal, setShowProjectModal] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [editForm, setEditForm] = useState<Record<string, string>>({})
+
+  const COUNTRIES = ['France', 'Luxembourg', 'Belgique', 'Suisse', 'Allemagne', 'Espagne', 'Italie', 'Royaume-Uni', 'Pays-Bas', 'Portugal', 'Canada', 'États-Unis', 'Autre']
+
+  function startEditing() {
+    if (!client) return
+    setEditForm({
+      name: client.name || '', company: client.company || '', siret: client.siret || '',
+      email: client.email || '', phone: client.phone || '', website: client.website || '',
+      address: client.address || '', postalCode: client.postalCode || '', city: client.city || '',
+      country: client.country || 'France', notes: client.notes || '',
+      contact2Name: client.contact2Name || '', contact2Email: client.contact2Email || '', contact2Phone: client.contact2Phone || '',
+    })
+    setEditing(true)
+  }
+
+  async function handleSave() {
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/clients/${id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editForm),
+      })
+      if (res.ok) {
+        const updated = await res.json()
+        setClient(updated)
+        setEditing(false)
+      }
+    } finally { setSaving(false) }
+  }
 
   useEffect(() => {
     if (!id) return
@@ -748,71 +778,179 @@ export default function ClientDetailPage() {
 
       {/* Client header card */}
       <div className="bg-[#111118] border border-slate-800 rounded-2xl p-6 mb-6">
-        <div className="flex items-start gap-5">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-500/20 to-violet-700/20 border border-[#E14B89]/20 flex items-center justify-center flex-shrink-0">
-            <span className="text-[#E14B89] font-bold text-xl">{client.name[0].toUpperCase()}</span>
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-start justify-between gap-4 flex-wrap">
+        {editing ? (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-white font-semibold text-lg">Modifier le client</h2>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setEditing(false)} className="text-slate-400 hover:text-white text-sm transition-colors">Annuler</button>
+                <button onClick={handleSave} disabled={saving}
+                  className="flex items-center gap-1.5 bg-[#E14B89] hover:opacity-90 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors disabled:opacity-60">
+                  {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Enregistrer
+                </button>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <h1 className="text-2xl font-semibold text-white">{client.name}</h1>
-                {client.company && (
-                  <p className="text-slate-400 text-sm mt-1 flex items-center gap-1.5">
-                    <Building2 size={13} />
-                    {client.company}
-                  </p>
+                <label className="block text-slate-400 text-xs mb-1">Nom du contact *</label>
+                <input value={editForm.name} onChange={e => setEditForm({ ...editForm, name: e.target.value })}
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+              </div>
+              <div>
+                <label className="block text-slate-400 text-xs mb-1">Entreprise</label>
+                <input value={editForm.company} onChange={e => setEditForm({ ...editForm, company: e.target.value })}
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-slate-400 text-xs mb-1">Email</label>
+                <input type="email" value={editForm.email} onChange={e => setEditForm({ ...editForm, email: e.target.value })}
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+              </div>
+              <div>
+                <label className="block text-slate-400 text-xs mb-1">Téléphone</label>
+                <input value={editForm.phone} onChange={e => setEditForm({ ...editForm, phone: formatPhone(e.target.value) })}
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+              </div>
+            </div>
+            <div>
+              <label className="block text-slate-400 text-xs mb-1">Adresse</label>
+              <input value={editForm.address} onChange={e => setEditForm({ ...editForm, address: e.target.value })}
+                className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="block text-slate-400 text-xs mb-1">Code postal</label>
+                <input value={editForm.postalCode} onChange={e => setEditForm({ ...editForm, postalCode: e.target.value })}
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+              </div>
+              <div>
+                <label className="block text-slate-400 text-xs mb-1">Ville</label>
+                <input value={editForm.city} onChange={e => setEditForm({ ...editForm, city: e.target.value })}
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+              </div>
+              <div>
+                <label className="block text-slate-400 text-xs mb-1">Pays</label>
+                <select value={editForm.country} onChange={e => setEditForm({ ...editForm, country: e.target.value })}
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors">
+                  {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-slate-400 text-xs mb-1">Site web</label>
+                <input value={editForm.website} onChange={e => setEditForm({ ...editForm, website: e.target.value })} placeholder="https://"
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+              </div>
+              <div>
+                <label className="block text-slate-400 text-xs mb-1">SIRET</label>
+                <input value={editForm.siret} onChange={e => setEditForm({ ...editForm, siret: e.target.value })}
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+              </div>
+            </div>
+            <p className="text-slate-500 text-xs font-medium mt-2">Contact secondaire</p>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="block text-slate-400 text-xs mb-1">Nom</label>
+                <input value={editForm.contact2Name} onChange={e => setEditForm({ ...editForm, contact2Name: e.target.value })}
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+              </div>
+              <div>
+                <label className="block text-slate-400 text-xs mb-1">Email</label>
+                <input type="email" value={editForm.contact2Email} onChange={e => setEditForm({ ...editForm, contact2Email: e.target.value })}
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+              </div>
+              <div>
+                <label className="block text-slate-400 text-xs mb-1">Téléphone</label>
+                <input value={editForm.contact2Phone} onChange={e => setEditForm({ ...editForm, contact2Phone: formatPhone(e.target.value) })}
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+              </div>
+            </div>
+            <div>
+              <label className="block text-slate-400 text-xs mb-1">Notes</label>
+              <textarea value={editForm.notes} onChange={e => setEditForm({ ...editForm, notes: e.target.value })} rows={3}
+                className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors resize-none" />
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="flex items-start gap-5">
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-500/20 to-violet-700/20 border border-[#E14B89]/20 flex items-center justify-center flex-shrink-0">
+                <span className="text-[#E14B89] font-bold text-xl">{(client.company || client.name)[0].toUpperCase()}</span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-start justify-between gap-4 flex-wrap">
+                  <div>
+                    <h1 className="text-2xl font-semibold text-white">{client.company || client.name}</h1>
+                    {client.company && (
+                      <p className="text-slate-400 text-sm mt-1 flex items-center gap-1.5">
+                        <Building2 size={13} />
+                        {client.name}
+                      </p>
+                    )}
+                  </div>
+                  <button onClick={startEditing}
+                    className="text-slate-500 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition-all">
+                    <Pencil size={15} />
+                  </button>
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2">
+                  {client.email && (
+                    <a href={`mailto:${client.email}`} className="flex items-center gap-2 text-slate-400 hover:text-white text-sm transition-colors">
+                      <Mail size={14} />{client.email}
+                    </a>
+                  )}
+                  {client.phone && (
+                    <a href={`tel:${client.phone}`} className="flex items-center gap-2 text-slate-400 hover:text-white text-sm transition-colors">
+                      <Phone size={14} />{client.phone}
+                    </a>
+                  )}
+                  {client.website && (
+                    <a href={client.website.startsWith('http') ? client.website : `https://${client.website}`} target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-2 text-slate-400 hover:text-white text-sm transition-colors">
+                      <Globe size={14} />{client.website}
+                    </a>
+                  )}
+                  {(client.address || client.city) && (
+                    <span className="flex items-center gap-2 text-slate-400 text-sm">
+                      <MapPin size={14} />{[client.address, client.postalCode, client.city].filter(Boolean).join(', ')}
+                    </span>
+                  )}
+                  {client.country && client.country !== 'France' && (
+                    <span className="text-slate-500 text-xs flex items-center gap-1"><MapPin size={10} />{client.country}</span>
+                  )}
+                </div>
+
+                {/* Contact secondaire */}
+                {client.contact2Name && (
+                  <div className="mt-3 pt-3 border-t border-slate-800/50 flex flex-wrap gap-x-6 gap-y-1">
+                    <span className="text-slate-500 text-xs">Contact 2 :</span>
+                    <span className="text-slate-300 text-sm">{client.contact2Name}</span>
+                    {client.contact2Email && (
+                      <a href={`mailto:${client.contact2Email}`} className="flex items-center gap-1.5 text-slate-400 hover:text-white text-sm transition-colors">
+                        <Mail size={12} />{client.contact2Email}
+                      </a>
+                    )}
+                    {client.contact2Phone && (
+                      <a href={`tel:${client.contact2Phone}`} className="flex items-center gap-1.5 text-slate-400 hover:text-white text-sm transition-colors">
+                        <Phone size={12} />{client.contact2Phone}
+                      </a>
+                    )}
+                  </div>
                 )}
               </div>
-              <span className={`text-xs px-3 py-1.5 rounded-full font-medium flex items-center gap-1.5 flex-shrink-0 ${MAINTENANCE_COLORS[client.maintenancePlan]}`}>
-                {client.maintenancePlan !== 'NONE' && <Wrench size={11} />}
-                {MAINTENANCE_LABELS[client.maintenancePlan]}
-                {client.maintenancePrice != null && client.maintenancePlan !== 'NONE' && (
-                  <span className="ml-1 opacity-70">— {formatCurrency(client.maintenancePrice)}/mois</span>
-                )}
-              </span>
             </div>
 
-            {/* Contact info */}
-            <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2">
-              {client.email && (
-                <a
-                  href={`mailto:${client.email}`}
-                  className="flex items-center gap-2 text-slate-400 hover:text-white text-sm transition-colors"
-                >
-                  <Mail size={14} />
-                  {client.email}
-                </a>
-              )}
-              {client.phone && (
-                <a
-                  href={`tel:${client.phone}`}
-                  className="flex items-center gap-2 text-slate-400 hover:text-white text-sm transition-colors"
-                >
-                  <Phone size={14} />
-                  {client.phone}
-                </a>
-              )}
-              {client.website && (
-                <a
-                  href={client.website.startsWith('http') ? client.website : `https://${client.website}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-2 text-slate-400 hover:text-white text-sm transition-colors"
-                >
-                  <Globe size={14} />
-                  {client.website}
-                </a>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Notes */}
-        {client.notes && (
-          <div className="mt-5 pt-5 border-t border-slate-800">
-            <p className="text-slate-500 text-xs uppercase tracking-wider mb-2">Notes</p>
-            <p className="text-slate-300 text-sm whitespace-pre-line leading-relaxed">{client.notes}</p>
-          </div>
+            {client.notes && (
+              <div className="mt-5 pt-5 border-t border-slate-800">
+                <p className="text-slate-500 text-xs uppercase tracking-wider mb-2">Notes</p>
+                <p className="text-slate-300 text-sm whitespace-pre-line leading-relaxed">{client.notes}</p>
+              </div>
+            )}
+          </>
         )}
       </div>
 

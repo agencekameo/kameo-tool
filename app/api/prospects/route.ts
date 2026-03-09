@@ -2,10 +2,15 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { searchParams } = new URL(req.url)
+  const userId = searchParams.get('userId')
+
   const prospects = await prisma.prospect.findMany({
+    where: userId ? { assignedTo: userId } : undefined,
     include: { assignee: { select: { id: true, name: true } } },
     orderBy: { createdAt: 'desc' },
   })

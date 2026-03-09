@@ -13,6 +13,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Google OAuth non configuré (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET manquants)' }, { status: 503 })
   }
 
-  const url = getAuthUrl(email)
+  const url = getAuthUrl(email, session.user?.id ?? '')
   return NextResponse.redirect(url)
 }

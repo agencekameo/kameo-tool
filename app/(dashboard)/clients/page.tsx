@@ -1,9 +1,10 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
-import { Plus, Search, Globe, Mail, Phone, ChevronRight, Upload, CheckCircle2, XCircle, Loader2, Trash2, Pencil } from 'lucide-react'
+import { Plus, Search, Globe, Mail, Phone, ChevronRight, Upload, CheckCircle2, XCircle, Loader2, Trash2, Pencil, Building2, MapPin, X } from 'lucide-react'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
+import { formatPhone } from '@/lib/utils'
 
 interface Client {
   id: string
@@ -12,6 +13,7 @@ interface Client {
   phone?: string
   company?: string
   website?: string
+  country?: string
   maintenancePlan: string
   maintenancePrice?: number
   projects: { id: string }[]
@@ -22,6 +24,8 @@ interface ImportResult {
   success: boolean
   error?: string
 }
+
+const COUNTRIES = ['France', 'Luxembourg', 'Belgique', 'Suisse', 'Allemagne', 'Espagne', 'Italie', 'Royaume-Uni', 'Pays-Bas', 'Portugal', 'Canada', 'États-Unis', 'Autre']
 
 export default function ClientsPage() {
   const { data: session } = useSession()
@@ -37,9 +41,14 @@ export default function ClientsPage() {
   const [submitting, setSubmitting] = useState(false)
   const [createError, setCreateError] = useState('')
   const [form, setForm] = useState({
-    name: '', email: '', phone: '', company: '', website: '', address: '', postalCode: '', city: '', notes: '',
+    company: '', siret: '', address: '', postalCode: '', city: '', country: 'France',
+    firstName: '', lastName: '', email: '', phone: '',
+    contact2Name: '', contact2Email: '', contact2Phone: '',
+    website: '', notes: '',
     maintenancePlan: 'NONE', maintenancePrice: '',
   })
+  const [showContact2, setShowContact2] = useState(false)
+  const [siretLoading, setSiretLoading] = useState(false)
   const importFileRef = useRef<HTMLInputElement>(null)
 
   const [deleteModal, setDeleteModal] = useState<{ client: Client; step: 1 | 2 } | null>(null)
@@ -48,7 +57,7 @@ export default function ClientsPage() {
 
   const [editModal, setEditModal] = useState<Client | null>(null)
   const [editForm, setEditForm] = useState({
-    name: '', email: '', phone: '', company: '', website: '',
+    name: '', email: '', phone: '', company: '', website: '', country: 'France',
     maintenancePlan: 'NONE', maintenancePrice: '',
   })
   const [updating, setUpdating] = useState(false)
@@ -63,6 +72,35 @@ export default function ClientsPage() {
     c.email?.toLowerCase().includes(search.toLowerCase())
   )
 
+  async function handleSiretSearch() {
+    const siret = (form.siret || '').replace(/\s/g, '')
+    if (siret.length < 9) return
+    setSiretLoading(true)
+    try {
+      const res = await fetch(`/api/siret?siret=${siret}`)
+      if (res.ok) {
+        const data = await res.json()
+        setForm(prev => ({
+          ...prev,
+          company: data.company || prev.company,
+          address: data.address || prev.address,
+          postalCode: data.postalCode || prev.postalCode,
+          city: data.city || prev.city,
+          siret: data.siret || prev.siret,
+        }))
+      } else {
+        const err = await res.json()
+        setCreateError(err.error || 'SIRET non trouvé')
+        setTimeout(() => setCreateError(''), 3000)
+      }
+    } catch {
+      setCreateError('Erreur de recherche SIRET')
+      setTimeout(() => setCreateError(''), 3000)
+    } finally {
+      setSiretLoading(false)
+    }
+  }
+
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
     if (submitting) return
@@ -73,7 +111,20 @@ export default function ClientsPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ...form,
+          name: `${form.firstName.trim()} ${form.lastName.trim()}`.trim() || form.company.trim(),
+          company: form.company || null,
+          siret: form.siret || null,
+          email: form.email || null,
+          phone: form.phone || null,
+          address: form.address || null,
+          postalCode: form.postalCode || null,
+          city: form.city || null,
+          country: form.country || 'France',
+          website: form.website || null,
+          notes: form.notes || null,
+          contact2Name: form.contact2Name || null,
+          contact2Email: form.contact2Email || null,
+          contact2Phone: form.contact2Phone || null,
           maintenancePrice: form.maintenancePrice ? parseFloat(form.maintenancePrice) : null,
         }),
       })
@@ -85,7 +136,14 @@ export default function ClientsPage() {
       const client = await res.json()
       setClients(prev => [client, ...prev])
       setShowModal(false)
-      setForm({ name: '', email: '', phone: '', company: '', website: '', address: '', postalCode: '', city: '', notes: '', maintenancePlan: 'NONE', maintenancePrice: '' })
+      setForm({
+        company: '', siret: '', address: '', postalCode: '', city: '', country: 'France',
+        firstName: '', lastName: '', email: '', phone: '',
+        contact2Name: '', contact2Email: '', contact2Phone: '',
+        website: '', notes: '',
+        maintenancePlan: 'NONE', maintenancePrice: '',
+      })
+      setShowContact2(false)
     } finally {
       setSubmitting(false)
     }
@@ -103,7 +161,6 @@ export default function ClientsPage() {
     setShowImportModal(true)
     setImportResults([])
 
-    // Dynamically import xlsx
     const XLSX = await import('xlsx')
     const data = await file.arrayBuffer()
     const workbook = XLSX.read(data, { type: 'array' })
@@ -112,7 +169,6 @@ export default function ClientsPage() {
 
     const results: ImportResult[] = []
     for (const row of rows) {
-      // Accept various column name formats
       const name = row['Nom'] || row['Name'] || row['nom'] || row['CLIENT'] || row['client'] || Object.values(row)[0]
       if (!name || typeof name !== 'string' || !name.trim()) continue
 
@@ -145,7 +201,6 @@ export default function ClientsPage() {
     }
 
     setImporting(false)
-    // Reset file input
     if (importFileRef.current) importFileRef.current.value = ''
   }
 
@@ -185,6 +240,7 @@ export default function ClientsPage() {
       phone: client.phone ?? '',
       company: client.company ?? '',
       website: client.website ?? '',
+      country: client.country ?? 'France',
       maintenancePlan: client.maintenancePlan,
       maintenancePrice: client.maintenancePrice?.toString() ?? '',
     })
@@ -211,6 +267,8 @@ export default function ClientsPage() {
     }
   }
 
+  const inputClass = "w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
+
   return (
     <div className="p-8">
       <div className="flex items-center justify-between mb-8">
@@ -236,7 +294,6 @@ export default function ClientsPage() {
         </div>
       </div>
 
-      {/* Hidden file input for import */}
       <input
         ref={importFileRef}
         type="file"
@@ -283,14 +340,14 @@ export default function ClientsPage() {
               >
                 <div className="flex items-start justify-between mb-4">
                   <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500/20 to-violet-700/20 border border-[#E14B89]/20 flex items-center justify-center">
-                    <span className="text-[#E14B89] font-semibold text-sm">{client.name[0].toUpperCase()}</span>
+                    <span className="text-[#E14B89] font-semibold text-sm">{(client.company || client.name)[0].toUpperCase()}</span>
                   </div>
                   {!isAdmin && (
                     <ChevronRight size={16} className="text-slate-600 group-hover:text-slate-400 transition-colors" />
                   )}
                 </div>
-                <h3 className="text-white font-medium">{client.name}</h3>
-                {client.company && <p className="text-slate-400 text-sm mt-0.5">{client.company}</p>}
+                <h3 className="text-white font-medium">{client.company || client.name}</h3>
+                {client.company && <p className="text-slate-400 text-sm mt-0.5">{client.name}</p>}
                 <div className="mt-3 space-y-1.5">
                   {client.email && (
                     <div className="flex items-center gap-2 text-slate-500 text-xs">
@@ -308,28 +365,23 @@ export default function ClientsPage() {
                     </div>
                   )}
                 </div>
-                <div className="mt-4 pt-4 border-t border-slate-800 flex items-center justify-start">
+                <div className="mt-4 pt-4 border-t border-slate-800 flex items-center justify-between">
                   <span className="text-slate-500 text-xs">{client.projects.length} projet{client.projects.length > 1 ? 's' : ''}</span>
+                  {client.country && client.country !== 'France' && (
+                    <span className="text-slate-600 text-[10px] flex items-center gap-1"><MapPin size={10} />{client.country}</span>
+                  )}
                 </div>
               </Link>
               {isAdmin && (
                 <div className="absolute top-4 right-4 flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
                   <button
-                    onClick={(e) => {
-                      e.preventDefault()
-                      e.stopPropagation()
-                      openEditModal(client)
-                    }}
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); openEditModal(client) }}
                     className="text-slate-600 hover:text-[#E14B89] p-1 rounded-lg hover:bg-[#E14B89]/10 transition-all"
                   >
                     <Pencil size={14} />
                   </button>
                   <button
-                    onClick={(e) => {
-                      e.preventDefault()
-                      e.stopPropagation()
-                      openDeleteModal(client)
-                    }}
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); openDeleteModal(client) }}
                     className="text-slate-600 hover:text-red-400 p-1 rounded-lg hover:bg-red-400/10 transition-all"
                   >
                     <Trash2 size={14} />
@@ -355,50 +407,24 @@ export default function ClientsPage() {
                   Êtes-vous sûr de vouloir supprimer &ldquo;{deleteModal.client.name}&rdquo; ? Cette action est irréversible. Tous les projets associés à ce client seront également supprimés.
                 </p>
                 <div className="flex gap-3">
-                  <button
-                    type="button"
-                    onClick={closeDeleteModal}
-                    className="border border-slate-700 text-slate-400 hover:text-white py-2.5 rounded-xl text-sm flex-1 transition-colors"
-                  >
-                    Annuler
-                  </button>
-                  <button
-                    type="button"
-                    onClick={advanceDeleteStep}
-                    className="bg-red-500 hover:bg-red-600 text-white px-4 py-2.5 rounded-xl text-sm font-medium flex-1 transition-colors"
-                  >
-                    Oui, continuer
-                  </button>
+                  <button type="button" onClick={closeDeleteModal}
+                    className="border border-slate-700 text-slate-400 hover:text-white py-2.5 rounded-xl text-sm flex-1 transition-colors">Annuler</button>
+                  <button type="button" onClick={advanceDeleteStep}
+                    className="bg-red-500 hover:bg-red-600 text-white px-4 py-2.5 rounded-xl text-sm font-medium flex-1 transition-colors">Oui, continuer</button>
                 </div>
               </>
             ) : (
               <>
                 <h2 className="text-white font-semibold text-lg mb-3">Confirmation finale</h2>
-                <p className="text-slate-400 text-sm mb-4">
-                  Pour confirmer, tapez le nom du client ci-dessous :
-                </p>
-                <input
-                  type="text"
-                  value={deleteConfirmText}
-                  onChange={e => setDeleteConfirmText(e.target.value)}
-                  placeholder={deleteModal.client.name}
-                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-red-500 transition-colors mb-6"
-                  autoFocus
-                />
+                <p className="text-slate-400 text-sm mb-4">Pour confirmer, tapez le nom du client ci-dessous :</p>
+                <input type="text" value={deleteConfirmText} onChange={e => setDeleteConfirmText(e.target.value)}
+                  placeholder={deleteModal.client.name} autoFocus
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-red-500 transition-colors mb-6" />
                 <div className="flex gap-3">
-                  <button
-                    type="button"
-                    onClick={closeDeleteModal}
-                    className="border border-slate-700 text-slate-400 hover:text-white py-2.5 rounded-xl text-sm flex-1 transition-colors"
-                  >
-                    Annuler
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleDelete}
-                    disabled={deleteConfirmText !== deleteModal.client.name || deleting}
-                    className="bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white px-4 py-2.5 rounded-xl text-sm font-medium flex-1 transition-colors"
-                  >
+                  <button type="button" onClick={closeDeleteModal}
+                    className="border border-slate-700 text-slate-400 hover:text-white py-2.5 rounded-xl text-sm flex-1 transition-colors">Annuler</button>
+                  <button type="button" onClick={handleDelete} disabled={deleteConfirmText !== deleteModal.client.name || deleting}
+                    className="bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white px-4 py-2.5 rounded-xl text-sm font-medium flex-1 transition-colors">
                     {deleting ? 'Suppression...' : 'Supprimer définitivement'}
                   </button>
                 </div>
@@ -413,38 +439,26 @@ export default function ClientsPage() {
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-[#111118] border border-slate-800 rounded-2xl p-6 w-full max-w-md max-h-[80vh] flex flex-col">
             <div className="flex items-center gap-3 mb-5">
-              {importing ? (
-                <Loader2 size={20} className="text-[#E14B89] animate-spin" />
-              ) : (
-                <CheckCircle2 size={20} className="text-green-400" />
-              )}
+              {importing ? <Loader2 size={20} className="text-[#E14B89] animate-spin" /> : <CheckCircle2 size={20} className="text-green-400" />}
               <h2 className="text-white font-semibold text-lg">
                 {importing ? 'Import en cours...' : `Import terminé — ${importResults.filter(r => r.success).length}/${importResults.length} clients`}
               </h2>
             </div>
-
             {importResults.length > 0 && (
               <div className="overflow-y-auto flex-1 space-y-1.5 mb-5">
                 {importResults.map((r, i) => (
                   <div key={i} className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-[#0d0d14]">
-                    {r.success
-                      ? <CheckCircle2 size={14} className="text-green-400 flex-shrink-0" />
-                      : <XCircle size={14} className="text-red-400 flex-shrink-0" />
-                    }
+                    {r.success ? <CheckCircle2 size={14} className="text-green-400 flex-shrink-0" /> : <XCircle size={14} className="text-red-400 flex-shrink-0" />}
                     <span className="text-white text-sm flex-1 truncate">{r.name}</span>
                     {r.error && <span className="text-red-400 text-xs">{r.error}</span>}
                   </div>
                 ))}
               </div>
             )}
-
             {!importing && (
               <button onClick={() => setShowImportModal(false)}
-                className="w-full bg-[#E14B89] hover:opacity-90 text-white py-2.5 rounded-xl text-sm font-medium transition-colors">
-                Fermer
-              </button>
+                className="w-full bg-[#E14B89] hover:opacity-90 text-white py-2.5 rounded-xl text-sm font-medium transition-colors">Fermer</button>
             )}
-
             {importing && importResults.length === 0 && (
               <div className="text-slate-500 text-sm text-center py-4">Lecture du fichier...</div>
             )}
@@ -452,11 +466,7 @@ export default function ClientsPage() {
         </div>
       )}
 
-      {/* Format hint */}
-      {showImportModal && importing && (
-        <div />
-      )}
-
+      {/* Edit modal */}
       {editModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-[#111118] border border-slate-800 rounded-2xl p-6 w-full max-w-lg">
@@ -465,35 +475,37 @@ export default function ClientsPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-slate-400 text-xs mb-1.5">Nom *</label>
-                  <input required value={editForm.name} onChange={e => setEditForm({ ...editForm, name: e.target.value })}
-                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+                  <input required value={editForm.name} onChange={e => setEditForm({ ...editForm, name: e.target.value })} className={inputClass} />
                 </div>
                 <div>
                   <label className="block text-slate-400 text-xs mb-1.5">Entreprise</label>
-                  <input value={editForm.company} onChange={e => setEditForm({ ...editForm, company: e.target.value })}
-                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+                  <input value={editForm.company} onChange={e => setEditForm({ ...editForm, company: e.target.value })} className={inputClass} />
                 </div>
                 <div>
                   <label className="block text-slate-400 text-xs mb-1.5">Email</label>
-                  <input type="email" value={editForm.email} onChange={e => setEditForm({ ...editForm, email: e.target.value })}
-                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+                  <input type="email" value={editForm.email} onChange={e => setEditForm({ ...editForm, email: e.target.value })} className={inputClass} />
                 </div>
                 <div>
                   <label className="block text-slate-400 text-xs mb-1.5">Téléphone</label>
-                  <input value={editForm.phone} onChange={e => setEditForm({ ...editForm, phone: e.target.value })}
-                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+                  <input value={editForm.phone} onChange={e => setEditForm({ ...editForm, phone: formatPhone(e.target.value) })} className={inputClass} />
                 </div>
               </div>
-              <div>
-                <label className="block text-slate-400 text-xs mb-1.5">Site web</label>
-                <input value={editForm.website} onChange={e => setEditForm({ ...editForm, website: e.target.value })} placeholder="https://"
-                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-slate-400 text-xs mb-1.5">Site web</label>
+                  <input value={editForm.website} onChange={e => setEditForm({ ...editForm, website: e.target.value })} placeholder="https://" className={inputClass} />
+                </div>
+                <div>
+                  <label className="block text-slate-400 text-xs mb-1.5">Pays</label>
+                  <select value={editForm.country} onChange={e => setEditForm({ ...editForm, country: e.target.value })} className={inputClass}>
+                    {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-slate-400 text-xs mb-1.5">Maintenance</label>
-                  <select value={editForm.maintenancePlan} onChange={e => setEditForm({ ...editForm, maintenancePlan: e.target.value })}
-                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors">
+                  <select value={editForm.maintenancePlan} onChange={e => setEditForm({ ...editForm, maintenancePlan: e.target.value })} className={inputClass}>
                     <option value="NONE">Aucune</option>
                     <option value="HEBERGEMENT">Hébergement web</option>
                     <option value="CLASSIQUE">Classique (hébergement + mises à jour)</option>
@@ -503,15 +515,12 @@ export default function ClientsPage() {
                 </div>
                 <div>
                   <label className="block text-slate-400 text-xs mb-1.5">Prix mensuel (€)</label>
-                  <input type="number" value={editForm.maintenancePrice} onChange={e => setEditForm({ ...editForm, maintenancePrice: e.target.value })}
-                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+                  <input type="number" value={editForm.maintenancePrice} onChange={e => setEditForm({ ...editForm, maintenancePrice: e.target.value })} className={inputClass} />
                 </div>
               </div>
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setEditModal(null)}
-                  className="flex-1 border border-slate-700 text-slate-400 hover:text-white py-2.5 rounded-xl text-sm transition-colors">
-                  Annuler
-                </button>
+                  className="flex-1 border border-slate-700 text-slate-400 hover:text-white py-2.5 rounded-xl text-sm transition-colors">Annuler</button>
                 <button type="submit" disabled={updating}
                   className="flex-1 bg-[#E14B89] hover:opacity-90 text-white py-2.5 rounded-xl text-sm font-medium transition-colors disabled:opacity-60">
                   {updating ? 'Sauvegarde...' : 'Sauvegarder'}
@@ -522,81 +531,145 @@ export default function ClientsPage() {
         </div>
       )}
 
+      {/* Create modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#111118] border border-slate-800 rounded-2xl p-6 w-full max-w-lg">
-            <h2 className="text-white font-semibold text-lg mb-5">Nouveau client</h2>
-            <form onSubmit={handleCreate} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-slate-400 text-xs mb-1.5">Nom *</label>
-                  <input required value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
-                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
-                </div>
-                <div>
-                  <label className="block text-slate-400 text-xs mb-1.5">Entreprise</label>
-                  <input value={form.company} onChange={e => setForm({ ...form, company: e.target.value })}
-                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
-                </div>
-                <div>
-                  <label className="block text-slate-400 text-xs mb-1.5">Email</label>
-                  <input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })}
-                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
-                </div>
-                <div>
-                  <label className="block text-slate-400 text-xs mb-1.5">Téléphone</label>
-                  <input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })}
-                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
-                </div>
-              </div>
+          <div className="bg-[#111118] border border-slate-800 rounded-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-white font-semibold text-lg">Nouveau client</h2>
+              <button type="button" onClick={() => setShowModal(false)} className="text-slate-500 hover:text-white transition-colors p-1 rounded-lg hover:bg-slate-800">
+                <X size={18} />
+              </button>
+            </div>
+            <form onSubmit={handleCreate} className="space-y-5">
+
+              {/* ── Entreprise ── */}
               <div>
-                <label className="block text-slate-400 text-xs mb-1.5">Site web</label>
-                <input value={form.website} onChange={e => setForm({ ...form, website: e.target.value })} placeholder="https://"
-                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
-              </div>
-              <div>
-                <label className="block text-slate-400 text-xs mb-1.5">Adresse</label>
-                <input value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} placeholder="Rue, numéro..."
-                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-slate-400 text-xs mb-1.5">Code postal</label>
-                  <input value={form.postalCode} onChange={e => setForm({ ...form, postalCode: e.target.value })} placeholder="75002"
-                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+                <p className="text-slate-300 text-xs font-semibold uppercase tracking-wider mb-3 flex items-center gap-2">
+                  <Building2 size={12} className="text-[#E14B89]" /> Entreprise
+                </p>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-slate-400 text-xs mb-1.5">Recherche par SIRET</label>
+                    <div className="flex gap-2">
+                      <input value={form.siret} onChange={e => setForm({ ...form, siret: e.target.value })}
+                        placeholder="Ex : 123 456 789 00012" className={`flex-1 ${inputClass}`} />
+                      <button type="button" onClick={handleSiretSearch} disabled={siretLoading || (form.siret || '').replace(/\s/g, '').length < 9}
+                        className="bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-white px-4 py-2.5 rounded-xl text-sm transition-colors flex items-center gap-1.5">
+                        {siretLoading ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+                        Chercher
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-slate-400 text-xs mb-1.5">Nom de l&apos;entreprise *</label>
+                    <input required value={form.company} onChange={e => setForm({ ...form, company: e.target.value })}
+                      placeholder="Ex : Kameo Agency" className={inputClass} />
+                  </div>
+                  <div>
+                    <label className="block text-slate-400 text-xs mb-1.5">Adresse</label>
+                    <input value={form.address} onChange={e => setForm({ ...form, address: e.target.value })}
+                      placeholder="Rue, numéro..." className={inputClass} />
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-slate-400 text-xs mb-1.5">Code postal</label>
+                      <input value={form.postalCode} onChange={e => setForm({ ...form, postalCode: e.target.value })}
+                        placeholder="75002" className={inputClass} />
+                    </div>
+                    <div>
+                      <label className="block text-slate-400 text-xs mb-1.5">Ville</label>
+                      <input value={form.city} onChange={e => setForm({ ...form, city: e.target.value })}
+                        placeholder="Paris" className={inputClass} />
+                    </div>
+                    <div>
+                      <label className="block text-slate-400 text-xs mb-1.5">Pays</label>
+                      <select value={form.country} onChange={e => setForm({ ...form, country: e.target.value })} className={inputClass}>
+                        {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-slate-400 text-xs mb-1.5">Ville</label>
-                  <input value={form.city} onChange={e => setForm({ ...form, city: e.target.value })} placeholder="Paris"
-                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
-                </div>
-              </div>
-              <div>
-                <label className="block text-slate-400 text-xs mb-1.5">Notes</label>
-                <textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={3}
-                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors resize-none" />
               </div>
 
-              {/* Import hint */}
-              <div className="bg-slate-800/40 border border-slate-800 rounded-xl px-4 py-3 text-xs text-slate-500">
-                Pour importer plusieurs clients, utilisez le bouton <strong className="text-slate-400">Importer</strong> avec un fichier Excel/CSV.<br />
-                Colonnes attendues : <code className="text-slate-400">Nom, Entreprise, Email, Téléphone, Site</code>
+              {/* ── Contact ── */}
+              <div>
+                <p className="text-slate-300 text-xs font-semibold uppercase tracking-wider mb-3 flex items-center gap-2">
+                  <Phone size={12} className="text-[#E14B89]" /> Contact
+                </p>
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-slate-400 text-xs mb-1.5">Prénom</label>
+                      <input value={form.firstName} onChange={e => setForm({ ...form, firstName: e.target.value })} className={inputClass} />
+                    </div>
+                    <div>
+                      <label className="block text-slate-400 text-xs mb-1.5">Nom</label>
+                      <input value={form.lastName} onChange={e => setForm({ ...form, lastName: e.target.value })} className={inputClass} />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-slate-400 text-xs mb-1.5">Email</label>
+                      <input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} className={inputClass} />
+                    </div>
+                    <div>
+                      <label className="block text-slate-400 text-xs mb-1.5">Téléphone</label>
+                      <input value={form.phone} onChange={e => setForm({ ...form, phone: formatPhone(e.target.value) })} className={inputClass} />
+                    </div>
+                  </div>
+
+                  {!showContact2 ? (
+                    <button type="button" onClick={() => setShowContact2(true)}
+                      className="text-[#E14B89] hover:text-[#F8903C] text-xs flex items-center gap-1 transition-colors">
+                      <Plus size={12} /> Ajouter un second contact
+                    </button>
+                  ) : (
+                    <div className="border border-slate-800 rounded-xl p-3 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-400 text-xs font-medium">Contact secondaire</span>
+                        <button type="button" onClick={() => { setShowContact2(false); setForm({ ...form, contact2Name: '', contact2Email: '', contact2Phone: '' }) }}
+                          className="text-slate-600 hover:text-red-400 transition-colors"><XCircle size={14} /></button>
+                      </div>
+                      <div>
+                        <label className="block text-slate-400 text-xs mb-1.5">Nom complet</label>
+                        <input value={form.contact2Name} onChange={e => setForm({ ...form, contact2Name: e.target.value })} className={inputClass} />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-slate-400 text-xs mb-1.5">Email</label>
+                          <input type="email" value={form.contact2Email} onChange={e => setForm({ ...form, contact2Email: e.target.value })} className={inputClass} />
+                        </div>
+                        <div>
+                          <label className="block text-slate-400 text-xs mb-1.5">Téléphone</label>
+                          <input value={form.contact2Phone} onChange={e => setForm({ ...form, contact2Phone: formatPhone(e.target.value) })} className={inputClass} />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
 
-              {/* Error message */}
+              {/* ── Autres ── */}
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-slate-400 text-xs mb-1.5">Site web</label>
+                  <input value={form.website} onChange={e => setForm({ ...form, website: e.target.value })} placeholder="https://" className={inputClass} />
+                </div>
+                <div>
+                  <label className="block text-slate-400 text-xs mb-1.5">Notes</label>
+                  <textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2}
+                    className={`${inputClass} resize-none`} />
+                </div>
+              </div>
+
               {createError && (
-                <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 text-sm text-red-400">
-                  {createError}
-                </div>
+                <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 text-sm text-red-400">{createError}</div>
               )}
 
-              <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setShowModal(false)}
-                  className="flex-1 border border-slate-700 text-slate-400 hover:text-white py-2.5 rounded-xl text-sm transition-colors">
-                  Annuler
-                </button>
+              <div className="pt-2">
                 <button type="submit" disabled={submitting}
-                  className="flex-1 bg-[#E14B89] hover:opacity-90 text-white py-2.5 rounded-xl text-sm font-medium transition-colors disabled:opacity-60">
+                  className="w-full bg-[#E14B89] hover:opacity-90 text-white py-2.5 rounded-xl text-sm font-medium transition-colors disabled:opacity-60">
                   {submitting ? 'Création...' : 'Créer le client'}
                 </button>
               </div>

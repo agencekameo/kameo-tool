@@ -13,16 +13,9 @@ export async function GET() {
 }
 
 // POST — create the first ADMIN user (only works when DB has no users)
+// Uses a transaction to prevent race conditions
 export async function POST(req: NextRequest) {
   try {
-    const count = await prisma.user.count()
-    if (count > 0) {
-      return NextResponse.json(
-        { error: 'Setup already completed — users already exist.' },
-        { status: 403 }
-      )
-    }
-
     const { name, email, password } = await req.json()
 
     if (!name || typeof name !== 'string' || name.trim().length === 0) {
@@ -36,14 +29,27 @@ export async function POST(req: NextRequest) {
     }
 
     const hashed = await bcrypt.hash(password, 12)
-    await prisma.user.create({
-      data: {
-        name: name.trim(),
-        email: email.trim().toLowerCase(),
-        password: hashed,
-        role: 'ADMIN',
-      },
+
+    // Atomic check-and-create inside a transaction
+    const result = await prisma.$transaction(async (tx) => {
+      const count = await tx.user.count()
+      if (count > 0) return null
+      return tx.user.create({
+        data: {
+          name: name.trim(),
+          email: email.trim().toLowerCase(),
+          password: hashed,
+          role: 'ADMIN',
+        },
+      })
     })
+
+    if (!result) {
+      return NextResponse.json(
+        { error: 'Setup already completed — users already exist.' },
+        { status: 403 }
+      )
+    }
 
     return NextResponse.json({ success: true })
   } catch (err) {

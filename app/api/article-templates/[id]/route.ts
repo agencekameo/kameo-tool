@@ -7,7 +7,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { id } = await params
   const body = await req.json()
-  const template = await prisma.articleTemplate.update({ where: { id }, data: body })
+  const data: Record<string, unknown> = {}
+  if (body.name !== undefined) data.name = body.name
+  if (body.description !== undefined) data.description = body.description
+  if (body.unitPrice !== undefined) data.unitPrice = parseFloat(body.unitPrice) || 0
+  if (body.unit !== undefined) data.unit = body.unit || 'forfait'
+  if (body.category !== undefined) data.category = body.category || null
+  const template = await prisma.articleTemplate.update({ where: { id }, data })
   return NextResponse.json(template)
 }
 

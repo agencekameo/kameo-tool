@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
+import { useSession } from 'next-auth/react'
 import {
-  Plus, Trash2, Pencil, Eye, Printer, X, ChevronDown, FileText, Check, Send, Loader2,
+  Plus, Trash2, Pencil, Eye, Download, X, ChevronDown, FileText, Check, Send, Loader2, Package, Sparkles,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 
@@ -95,16 +96,41 @@ function PrintView({ quote, onClose }: { quote: Quote; onClose: () => void }) {
   const { totalHT, remise, sousTotal, tva, totalTTC } = calcTotals(quote.items, quote.discount)
   const today = new Date().toLocaleDateString('fr-FR')
 
+  const [downloading, setDownloading] = useState(false)
+
+  async function handleDownload() {
+    if (!quote.id || downloading) return
+    setDownloading(true)
+    try {
+      const res = await fetch(`/api/quotes/${quote.id}/pdf`)
+      if (!res.ok) throw new Error('Erreur')
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `Devis ${quote.subject} - ${quote.clientName}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch {
+      alert('Erreur lors du téléchargement.')
+    } finally {
+      setDownloading(false)
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-[100] bg-white overflow-y-auto">
       {/* Screen-only controls */}
       <div className="print:hidden fixed top-4 right-4 flex gap-2 z-10">
         <button
-          onClick={() => window.print()}
-          className="flex items-center gap-2 bg-[#E14B89] text-white px-4 py-2 rounded-lg text-sm font-medium shadow-lg"
+          onClick={handleDownload}
+          disabled={downloading}
+          className="flex items-center gap-2 bg-[#E14B89] text-white px-4 py-2 rounded-lg text-sm font-medium shadow-lg disabled:opacity-50"
         >
-          <Printer size={16} />
-          Imprimer / Enregistrer PDF
+          {downloading ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+          {downloading ? 'Téléchargement...' : 'Télécharger'}
         </button>
         <button
           onClick={onClose}
@@ -118,28 +144,29 @@ function PrintView({ quote, onClose }: { quote: Quote; onClose: () => void }) {
       {/* Print content */}
       <div className="max-w-[800px] mx-auto px-12 py-10 print:p-0 print:max-w-none text-gray-900">
 
-        {/* Header: Agency left, Devis title center, info right */}
+        {/* Header: Logo centered, Devis title, then agency left / info right */}
         <div className="mb-10 pb-8 border-b-[3px]" style={{ borderColor: '#F8903C' }}>
-          {/* Devis title centered */}
+          {/* Logo centered at top */}
           <div className="text-center mb-6">
-            <div className="text-4xl font-black tracking-tight text-gray-800 uppercase">Devis</div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/kameo-logo-light.svg" alt="Kameo" className="h-9 mx-auto" />
+          </div>
+          {/* Devis title centered */}
+          <div className="text-center mb-8">
+            <div className="text-3xl font-semibold tracking-tight text-gray-800">Devis</div>
           </div>
 
           <div className="flex items-start justify-between">
             <div>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/kameo-logo-light.svg" alt="Kameo" className="h-9 mb-4" />
-              <div className="text-sm font-semibold text-gray-500">
+              <div className="text-sm font-semibold text-gray-700 mb-2">
                 Agence Kameo
               </div>
-              <div className="text-xs text-gray-500 mt-2 leading-relaxed">
-                <div>9 rue des colonnes, Paris 75002</div>
-                <div>Tél : 06 76 23 00 37 — contact@agencekameo.fr</div>
-                <div className="mt-1.5 text-gray-400 text-[10px]">
-                  SIRET : 980 573 984 00013 &nbsp;|&nbsp; APE : 62.01Z<br />
-                  TVA Intracommunautaire : FR54980573984<br />
-                  RCS Paris 980 573 984
-                </div>
+              <div className="text-xs text-gray-500 leading-relaxed space-y-0.5">
+                <div>9 rue des colonnes, 75002</div>
+                <div>Paris</div>
+                <div>06 76 23 00 37</div>
+                <div>contact@agencekameo.fr</div>
+                <div className="pt-1.5">SIRET : 980 573 984 00013</div>
               </div>
             </div>
             <div className="text-right">
@@ -150,24 +177,20 @@ function PrintView({ quote, onClose }: { quote: Quote; onClose: () => void }) {
                   <div>Valide jusqu&apos;au : {new Date(quote.validUntil).toLocaleDateString('fr-FR')}</div>
                 )}
               </div>
-              <div className="mt-3">
-                <span className="text-xs px-3 py-1 rounded font-semibold border"
-                  style={{ borderColor: '#F8903C', color: '#E14B89', background: 'rgba(248,144,60,0.06)' }}>
-                  {STATUS_LABELS[quote.status]}
-                </span>
-              </div>
             </div>
           </div>
         </div>
 
-        {/* Client block */}
+        {/* Client block — same style as Kameo block */}
         <div className="mb-8">
-          <div className="text-[10px] uppercase tracking-widest text-gray-400 mb-2 font-bold">À l&apos;attention de</div>
-          <div className="border border-gray-200 rounded-lg px-5 py-4 inline-block min-w-[220px]">
-            <div className="font-bold text-gray-900 text-base whitespace-pre-line">{quote.clientName}</div>
-            {quote.clientEmail && <div className="text-sm text-gray-600 mt-1">{quote.clientEmail}</div>}
+          <div className="text-sm font-semibold text-gray-700 mb-2">
+            À l&apos;attention de
+          </div>
+          <div className="text-xs text-gray-500 leading-relaxed space-y-0.5">
+            <div className="font-medium text-gray-900">{quote.clientName}</div>
+            {quote.clientEmail && <div>{quote.clientEmail}</div>}
             {quote.clientAddress && (
-              <div className="text-sm text-gray-600 mt-1 whitespace-pre-line">{quote.clientAddress}</div>
+              <div className="whitespace-pre-line">{quote.clientAddress}</div>
             )}
           </div>
         </div>
@@ -354,6 +377,7 @@ function emptyForm() {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function DevisPage() {
+  const { data: session } = useSession()
   const [quotes, setQuotes] = useState<Quote[]>([])
   const [clients, setClients] = useState<Client[]>([])
   const [templates, setTemplates] = useState<ArticleTemplate[]>([])
@@ -371,21 +395,53 @@ export default function DevisPage() {
   // Form
   const [form, setForm] = useState(emptyForm())
   const [useOtherClient, setUseOtherClient] = useState(false)
+  const [clientSearch, setClientSearch] = useState('')
+  const [clientDropdownOpen, setClientDropdownOpen] = useState(false)
+  const clientDropdownRef = useRef<HTMLDivElement>(null)
+
+  // Close client dropdown on outside click
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (clientDropdownRef.current && !clientDropdownRef.current.contains(e.target as Node)) {
+        setClientDropdownOpen(false)
+      }
+    }
+    if (clientDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [clientDropdownOpen])
 
   // New template form
   const [newTemplate, setNewTemplate] = useState({ name: '', description: '', unitPrice: '', unit: '' })
   const [savingTemplate, setSavingTemplate] = useState(false)
 
-  // Yousign signature
-  const [yousignModal, setYousignModal] = useState<Quote | null>(null)
-  const [yousignForm, setYousignForm] = useState({ firstName: '', lastName: '', email: '', phone: '' })
-  const [yousignSending, setYousignSending] = useState(false)
-  const [yousignResult, setYousignResult] = useState<{ success?: boolean; message?: string; error?: string } | null>(null)
+  // Signature
+  const SENDER_EMAILS = [
+    { label: 'Benjamin Dayan', email: 'benjamin.dayan@agence-kameo.fr' },
+    { label: 'Louison Boutet', email: 'louison.boutet@agence-kameo.fr' },
+  ]
+  const [signatureModal, setSignatureModal] = useState<Quote | null>(null)
+  const [signatureForm, setSignatureForm] = useState({ firstName: '', lastName: '', email: '', phone: '', senderEmail: '' })
+  const [signatureSending, setSignatureSending] = useState(false)
+  const [signatureResult, setSignatureResult] = useState<{ success?: boolean; message?: string; error?: string } | null>(null)
+
+  // Edit template
+  const [editingTemplate, setEditingTemplate] = useState<ArticleTemplate | null>(null)
+  const [editTemplateForm, setEditTemplateForm] = useState({ name: '', description: '', unitPrice: '', unit: '' })
+  const [savingEditTemplate, setSavingEditTemplate] = useState(false)
 
   // Delete template double-confirmation
   const [deleteTemplateModal, setDeleteTemplateModal] = useState<{ id: string; name: string } | null>(null)
   const [deleteTemplateStep, setDeleteTemplateStep] = useState<1 | 2>(1)
   const [deletingTemplate, setDeletingTemplate] = useState(false)
+
+  // Standalone templates modal (from header)
+  const [showTemplatesModal, setShowTemplatesModal] = useState(false)
+
+  // AI prompt for quick template creation
+  const [templatePrompt, setTemplatePrompt] = useState('')
+  const [promptLoading, setPromptLoading] = useState(false)
 
   // ── Load data ──────────────────────────────────────────────────────────────
 
@@ -423,6 +479,12 @@ export default function DevisPage() {
     setEditingQuote(q)
     const hasKnownClient = !!q.clientId && clients.some(c => c.id === q.clientId)
     setUseOtherClient(!hasKnownClient)
+    if (hasKnownClient) {
+      const cl = clients.find(c => c.id === q.clientId)
+      setClientSearch(cl ? (cl.company ? `${cl.company} — ${cl.name}` : cl.name) : q.clientName)
+    } else {
+      setClientSearch(q.clientName || '')
+    }
     setForm({
       clientId: q.clientId || '',
       clientName: q.clientName || '',
@@ -445,27 +507,39 @@ export default function DevisPage() {
     setEditingQuote(null)
     setForm(emptyForm())
     setShowTemplatesPanel(false)
+    setClientSearch('')
+    setClientDropdownOpen(false)
+    setUseOtherClient(false)
   }
 
-  // ── Client dropdown change ─────────────────────────────────────────────────
+  // ── Client search + selection ─────────────────────────────────────────────
 
-  function handleClientChange(val: string) {
-    if (val === '__other__') {
-      setUseOtherClient(true)
-      setForm(f => ({ ...f, clientId: '', clientName: '', clientEmail: '', clientAddress: '' }))
-    } else {
-      setUseOtherClient(false)
-      const found = clients.find(c => c.id === val)
-      const addrParts = [found?.address, found?.postalCode && found?.city ? `${found.postalCode} ${found.city}` : (found?.postalCode || found?.city)].filter(Boolean).join('\n')
-      setForm(f => ({
-        ...f,
-        clientId: val,
-        clientName: found?.company || found?.name || '',
-        clientEmail: found?.email || '',
-        clientAddress: addrParts || '',
-      }))
-    }
+  function selectClient(client: Client) {
+    setUseOtherClient(false)
+    const addrParts = [client.address, client.postalCode && client.city ? `${client.postalCode} ${client.city}` : (client.postalCode || client.city)].filter(Boolean).join('\n')
+    setForm(f => ({
+      ...f,
+      clientId: client.id,
+      clientName: client.company || client.name || '',
+      clientEmail: client.email || '',
+      clientAddress: addrParts || '',
+    }))
+    setClientSearch(client.company ? `${client.company} — ${client.name}` : client.name)
+    setClientDropdownOpen(false)
   }
+
+  function handleClientSearchManual() {
+    setUseOtherClient(true)
+    setForm(f => ({ ...f, clientId: '', clientName: '', clientEmail: '', clientAddress: '' }))
+    setClientDropdownOpen(false)
+  }
+
+  const filteredClients = clientSearch.trim()
+    ? clients.filter(c => {
+        const q = clientSearch.toLowerCase()
+        return c.name.toLowerCase().includes(q) || (c.company?.toLowerCase().includes(q) ?? false) || (c.email?.toLowerCase().includes(q) ?? false)
+      })
+    : clients
 
   // ── Items CRUD ─────────────────────────────────────────────────────────────
 
@@ -568,55 +642,81 @@ export default function DevisPage() {
     if (editingQuote?.id === id) closeModal()
   }
 
-  // ── Yousign signature ──────────────────────────────────────────────────────
+  // ── Signature ──────────────────────────────────────────────────────────────
 
-  function openYousign(q: Quote) {
-    setYousignModal(q)
-    // Pre-fill from client name if possible
+  function getSignerInfo(q: Quote) {
     const nameParts = q.clientName.split('\n')
     const mainName = nameParts[nameParts.length - 1] || nameParts[0] || ''
     const parts = mainName.trim().split(' ')
-    setYousignForm({
+    return {
       firstName: parts[0] || '',
       lastName: parts.slice(1).join(' ') || '',
       email: q.clientEmail || '',
       phone: '',
-    })
-    setYousignResult(null)
+    }
   }
 
-  async function handleYousignSend() {
-    if (!yousignModal) return
-    if (!yousignForm.firstName.trim() || !yousignForm.lastName.trim() || !yousignForm.email.trim()) {
-      alert('Veuillez renseigner le prénom, nom et email du signataire.')
-      return
+  function getDefaultSender() {
+    const userName = session?.user?.name?.toLowerCase() || ''
+    if (userName.includes('benjamin')) return 'benjamin.dayan@agence-kameo.fr'
+    if (userName.includes('louison')) return 'louison.boutet@agence-kameo.fr'
+    return SENDER_EMAILS[0]?.email || ''
+  }
+
+  function openSignature(q: Quote) {
+    const info = getSignerInfo(q)
+    const defaultSender = getDefaultSender()
+    const fullInfo = { ...info, senderEmail: defaultSender }
+    // If we have all required info, send directly without modal
+    if (info.firstName.trim() && info.lastName.trim() && info.email.trim()) {
+      setSignatureModal(q)
+      setSignatureForm(fullInfo)
+      setSignatureResult(null)
+      sendSignature(q, fullInfo)
+    } else {
+      // Missing info — open modal to fill in
+      setSignatureModal(q)
+      setSignatureForm(fullInfo)
+      setSignatureResult(null)
     }
-    setYousignSending(true)
-    setYousignResult(null)
+  }
+
+  async function sendSignature(q: Quote, info: { firstName: string; lastName: string; email: string; phone: string; senderEmail: string }) {
+    setSignatureSending(true)
+    setSignatureResult(null)
     try {
-      const res = await fetch(`/api/quotes/${yousignModal.id}/yousign`, {
+      const res = await fetch(`/api/quotes/${q.id}/send-signature`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          signerFirstName: yousignForm.firstName,
-          signerLastName: yousignForm.lastName,
-          signerEmail: yousignForm.email,
-          signerPhone: yousignForm.phone || undefined,
+          signerFirstName: info.firstName,
+          signerLastName: info.lastName,
+          signerEmail: info.email,
+          signerPhone: info.phone || undefined,
+          senderEmail: info.senderEmail || undefined,
         }),
       })
       const data = await res.json()
       if (res.ok) {
-        setYousignResult({ success: true, message: data.message || 'Envoyé pour signature !' })
-        // Update the quote status locally
-        setQuotes(prev => prev.map(q => q.id === yousignModal.id ? { ...q, status: 'ENVOYE' as Quote['status'] } : q))
+        setSignatureResult({ success: true, message: data.message || 'Envoyé pour signature !' })
+        setQuotes(prev => prev.map(existing => existing.id === q.id ? { ...existing, status: 'ENVOYE' as Quote['status'] } : existing))
       } else {
-        setYousignResult({ error: data.error || 'Erreur lors de l\'envoi' })
+        setSignatureResult({ error: data.error || 'Erreur lors de l\'envoi' })
       }
     } catch {
-      setYousignResult({ error: 'Erreur réseau' })
+      setSignatureResult({ error: 'Erreur réseau' })
     } finally {
-      setYousignSending(false)
+      setSignatureSending(false)
     }
+  }
+
+  async function handleSignatureSend() {
+    if (!signatureModal) return
+    if (!signatureForm.firstName.trim() || !signatureForm.lastName.trim() || !signatureForm.email.trim()) {
+      alert('Veuillez renseigner le prénom, nom et email du signataire.')
+      return
+    }
+    sendSignature(signatureModal, signatureForm)
   }
 
   // ── Templates ──────────────────────────────────────────────────────────────
@@ -644,6 +744,39 @@ export default function DevisPage() {
     }
   }
 
+  function openEditTemplate(t: ArticleTemplate) {
+    setEditingTemplate(t)
+    setEditTemplateForm({
+      name: t.name,
+      description: t.description,
+      unitPrice: t.unitPrice.toString(),
+      unit: t.unit || '',
+    })
+  }
+
+  async function handleUpdateTemplate(e: React.FormEvent) {
+    e.preventDefault()
+    if (!editingTemplate || !editTemplateForm.name.trim() || !editTemplateForm.description.trim() || !editTemplateForm.unitPrice) return
+    setSavingEditTemplate(true)
+    try {
+      const res = await fetch(`/api/article-templates/${editingTemplate.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: editTemplateForm.name,
+          description: editTemplateForm.description,
+          unitPrice: parseFloat(editTemplateForm.unitPrice) || 0,
+          unit: editTemplateForm.unit || undefined,
+        }),
+      })
+      const updated = await res.json()
+      setTemplates(prev => prev.map(t => t.id === editingTemplate.id ? updated : t))
+      setEditingTemplate(null)
+    } finally {
+      setSavingEditTemplate(false)
+    }
+  }
+
   function openDeleteTemplateModal(t: ArticleTemplate) {
     setDeleteTemplateModal({ id: t.id, name: t.name })
     setDeleteTemplateStep(1)
@@ -662,6 +795,29 @@ export default function DevisPage() {
       setDeleteTemplateModal(null)
     } finally {
       setDeletingTemplate(false)
+    }
+  }
+
+  // ── AI prompt to create template ──────────────────────────────────────────
+
+  async function handlePromptCreate(e: React.FormEvent) {
+    e.preventDefault()
+    const prompt = templatePrompt.trim()
+    if (!prompt) return
+    setPromptLoading(true)
+    try {
+      const res = await fetch('/api/article-templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt }),
+      })
+      const created = await res.json()
+      if (created.id) {
+        setTemplates(prev => [...prev, created])
+        setTemplatePrompt('')
+      }
+    } finally {
+      setPromptLoading(false)
     }
   }
 
@@ -717,13 +873,22 @@ export default function DevisPage() {
             {quotes.length} devis{quotes.length > 1 ? '' : ''}
           </p>
         </div>
-        <button
-          onClick={openCreate}
-          className="flex items-center gap-2 bg-[#E14B89] hover:opacity-90 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-opacity"
-        >
-          <Plus size={16} />
-          Nouveau devis
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowTemplatesModal(true)}
+            className="flex items-center gap-2 bg-[#111118] border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-colors"
+          >
+            <Package size={16} />
+            Modèles d&apos;articles
+          </button>
+          <button
+            onClick={openCreate}
+            className="flex items-center gap-2 bg-[#E14B89] hover:opacity-90 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-opacity"
+          >
+            <Plus size={16} />
+            Nouveau devis
+          </button>
+        </div>
       </div>
 
       {/* Quotes table */}
@@ -776,7 +941,7 @@ export default function DevisPage() {
                     <td className="pr-3">
                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button
-                          onClick={e => { e.stopPropagation(); openYousign(q) }}
+                          onClick={e => { e.stopPropagation(); openSignature(q) }}
                           className="p-1.5 text-slate-500 hover:text-[#E14B89] transition-colors rounded-lg hover:bg-[#E14B89]/5"
                           title="Envoyer pour signature"
                         >
@@ -829,22 +994,51 @@ export default function DevisPage() {
               {/* ── Left: Main form ────────────────────────────────────────── */}
               <div className="flex-1 overflow-y-auto p-6 space-y-5">
 
-                {/* Client selection */}
+                {/* Client selection — search bar */}
                 <div>
                   <label className="block text-slate-400 text-xs mb-1.5 font-medium">Client</label>
-                  <div className="relative">
-                    <select
-                      value={useOtherClient ? '__other__' : (form.clientId || '')}
-                      onChange={e => handleClientChange(e.target.value)}
-                      className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors appearance-none pr-9"
-                    >
-                      <option value="">— Sélectionner un client —</option>
-                      {clients.map(c => (
-                        <option key={c.id} value={c.id}>{c.company ? `${c.company} — ${c.name}` : c.name}</option>
-                      ))}
-                      <option value="__other__">Autre (saisie manuelle)</option>
-                    </select>
+                  <div className="relative" ref={clientDropdownRef}>
+                    <input
+                      type="text"
+                      value={clientSearch}
+                      onChange={e => {
+                        setClientSearch(e.target.value)
+                        setClientDropdownOpen(true)
+                        if (form.clientId) {
+                          setForm(f => ({ ...f, clientId: '' }))
+                          setUseOtherClient(false)
+                        }
+                      }}
+                      onFocus={() => setClientDropdownOpen(true)}
+                      placeholder="Rechercher un client..."
+                      className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors pr-9"
+                    />
                     <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+                    {clientDropdownOpen && (
+                      <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#1a1a24] border border-slate-700 rounded-xl max-h-52 overflow-y-auto shadow-xl">
+                        {filteredClients.map(c => (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={() => selectClient(c)}
+                            className="w-full text-left px-3 py-2 text-sm text-white hover:bg-[#E14B89]/10 transition-colors first:rounded-t-xl last:rounded-b-xl"
+                          >
+                            {c.company ? `${c.company} — ${c.name}` : c.name}
+                            {c.email && <span className="text-slate-500 ml-2 text-xs">{c.email}</span>}
+                          </button>
+                        ))}
+                        {filteredClients.length === 0 && clientSearch.trim() && (
+                          <div className="px-3 py-2 text-sm text-slate-500">Aucun résultat</div>
+                        )}
+                        <button
+                          type="button"
+                          onClick={handleClientSearchManual}
+                          className="w-full text-left px-3 py-2 text-sm text-[#E14B89] hover:bg-[#E14B89]/10 transition-colors border-t border-slate-700/50 rounded-b-xl"
+                        >
+                          + Saisie manuelle
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -1122,6 +1316,68 @@ export default function DevisPage() {
                       <p className="text-slate-600 text-xs text-center py-6">Aucun modèle</p>
                     ) : (
                       templates.map(t => (
+                        editingTemplate?.id === t.id ? (
+                          <form
+                            key={t.id}
+                            onSubmit={handleUpdateTemplate}
+                            className="p-3 rounded-xl bg-[#0d0d14] border border-[#E14B89]/30 space-y-2"
+                          >
+                            <input
+                              value={editTemplateForm.name}
+                              onChange={e => setEditTemplateForm(f => ({ ...f, name: e.target.value }))}
+                              placeholder="Titre *"
+                              required
+                              className="w-full bg-[#1a1a24] border border-slate-700 rounded-lg px-2.5 py-2 text-white text-xs focus:outline-none focus:border-[#E14B89] transition-colors"
+                            />
+                            <textarea
+                              value={editTemplateForm.description}
+                              onChange={e => setEditTemplateForm(f => ({ ...f, description: e.target.value }))}
+                              placeholder="Description *"
+                              required
+                              rows={3}
+                              className="w-full bg-[#1a1a24] border border-slate-700 rounded-lg px-2.5 py-2 text-white text-xs focus:outline-none focus:border-[#E14B89] transition-colors resize-none"
+                            />
+                            <div className="grid grid-cols-2 gap-2">
+                              <input
+                                type="number"
+                                min={0}
+                                step="0.01"
+                                value={editTemplateForm.unitPrice}
+                                onChange={e => setEditTemplateForm(f => ({ ...f, unitPrice: e.target.value }))}
+                                placeholder="Prix HT *"
+                                required
+                                className="w-full bg-[#1a1a24] border border-slate-700 rounded-lg px-2.5 py-2 text-white text-xs focus:outline-none focus:border-[#E14B89] transition-colors"
+                              />
+                              <div className="relative">
+                                <select
+                                  value={editTemplateForm.unit}
+                                  onChange={e => setEditTemplateForm(f => ({ ...f, unit: e.target.value }))}
+                                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-lg px-2.5 py-2 text-white text-xs focus:outline-none focus:border-[#E14B89] transition-colors appearance-none pr-6"
+                                >
+                                  <option value="">Unité</option>
+                                  {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                                </select>
+                                <ChevronDown size={10} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+                              </div>
+                            </div>
+                            <div className="flex gap-2">
+                              <button
+                                type="submit"
+                                disabled={savingEditTemplate}
+                                className="flex-1 bg-[#E14B89] hover:opacity-90 disabled:opacity-40 text-white py-1.5 rounded-lg text-xs font-medium transition-opacity"
+                              >
+                                {savingEditTemplate ? 'Enregistrement...' : 'Enregistrer'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setEditingTemplate(null)}
+                                className="px-3 py-1.5 text-slate-400 hover:text-white text-xs rounded-lg border border-slate-700 hover:border-slate-600 transition-colors"
+                              >
+                                Annuler
+                              </button>
+                            </div>
+                          </form>
+                        ) : (
                         <div
                           key={t.id}
                           className="group flex items-start gap-2 p-3 rounded-xl bg-[#0d0d14] border border-slate-800 hover:border-slate-700 transition-colors"
@@ -1133,7 +1389,12 @@ export default function DevisPage() {
                           >
                             <div className="text-white text-xs font-medium leading-snug">{t.name}</div>
                             {t.description && t.description !== t.name && (
-                              <div className="text-slate-500 text-xs mt-0.5 line-clamp-2">{t.description}</div>
+                              <div className="text-slate-500 text-xs mt-0.5 line-clamp-3 whitespace-pre-wrap" dangerouslySetInnerHTML={{
+                                __html: t.description
+                                  .replace(/\*\*(.+?)\*\*/g, '<strong class="text-slate-300">$1</strong>')
+                                  .replace(/^- /gm, '• ')
+                                  .replace(/\n- /g, '\n• ')
+                              }} />
                             )}
                             <div className="flex items-center gap-2 mt-1.5">
                               <span className="text-[#E14B89] text-xs font-medium">{formatCurrency(t.unitPrice)}</span>
@@ -1151,6 +1412,14 @@ export default function DevisPage() {
                             </button>
                             <button
                               type="button"
+                              onClick={() => openEditTemplate(t)}
+                              className="p-1 text-slate-500 hover:text-amber-400 transition-colors"
+                              title="Modifier le modèle"
+                            >
+                              <Pencil size={12} />
+                            </button>
+                            <button
+                              type="button"
                               onClick={() => openDeleteTemplateModal(t)}
                               className="p-1 text-slate-600 hover:text-red-400 transition-colors"
                               title="Supprimer le modèle"
@@ -1159,6 +1428,7 @@ export default function DevisPage() {
                             </button>
                           </div>
                         </div>
+                        )
                       ))
                     )}
                   </div>
@@ -1174,12 +1444,13 @@ export default function DevisPage() {
                         required
                         className="w-full bg-[#1a1a24] border border-slate-700 rounded-lg px-2.5 py-2 text-white text-xs focus:outline-none focus:border-[#E14B89] transition-colors"
                       />
-                      <input
+                      <textarea
                         value={newTemplate.description}
                         onChange={e => setNewTemplate(t => ({ ...t, description: e.target.value }))}
-                        placeholder="Description *"
+                        placeholder="Description * (- pour liste, **gras**)"
                         required
-                        className="w-full bg-[#1a1a24] border border-slate-700 rounded-lg px-2.5 py-2 text-white text-xs focus:outline-none focus:border-[#E14B89] transition-colors"
+                        rows={3}
+                        className="w-full bg-[#1a1a24] border border-slate-700 rounded-lg px-2.5 py-2 text-white text-xs focus:outline-none focus:border-[#E14B89] transition-colors resize-none"
                       />
                       <div className="grid grid-cols-2 gap-2">
                         <input
@@ -1242,7 +1513,7 @@ export default function DevisPage() {
                 {editingQuote && (
                   <button
                     type="button"
-                    onClick={() => { closeModal(); openYousign(editingQuote) }}
+                    onClick={() => { closeModal(); openSignature(editingQuote) }}
                     className="flex items-center gap-1.5 border border-[#E14B89]/40 text-[#E14B89] hover:bg-[#E14B89]/10 px-4 py-2.5 rounded-xl text-sm font-medium transition-colors"
                   >
                     <Send size={14} />
@@ -1254,8 +1525,8 @@ export default function DevisPage() {
                   onClick={() => setPrintQuote(buildPreviewQuote())}
                   className="flex items-center gap-1.5 border border-slate-700 text-slate-400 hover:text-white hover:border-slate-600 px-4 py-2.5 rounded-xl text-sm transition-colors"
                 >
-                  <Printer size={14} />
-                  Aperçu / Imprimer
+                  <Eye size={14} />
+                  Aperçu
                 </button>
                 <button
                   type="button"
@@ -1360,8 +1631,181 @@ export default function DevisPage() {
         </div>
       )}
 
-      {/* ─── Yousign Signature Modal ─────────────────────────────────────── */}
-      {yousignModal && (
+      {/* ─── Standalone Templates Modal ──────────────────────────────────── */}
+      {showTemplatesModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowTemplatesModal(false)}>
+          <div className="bg-[#111118] border border-slate-800 rounded-2xl w-full max-w-lg max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 flex-shrink-0">
+              <div className="flex items-center gap-2">
+                <Package size={18} className="text-[#E14B89]" />
+                <h2 className="text-white font-semibold">Modèles d&apos;articles</h2>
+                <span className="text-slate-500 text-xs">({templates.length})</span>
+              </div>
+              <button onClick={() => setShowTemplatesModal(false)} className="text-slate-500 hover:text-white transition-colors">
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* AI Prompt */}
+            <div className="px-6 py-3 border-b border-slate-800">
+              <form onSubmit={handlePromptCreate} className="flex gap-2 items-end">
+                <div className="relative flex-1">
+                  <Sparkles size={14} className="absolute left-3 top-3 text-[#E14B89]/60" />
+                  <textarea
+                    value={templatePrompt}
+                    onChange={e => setTemplatePrompt(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handlePromptCreate(e) } }}
+                    placeholder={"Ex : Création site vitrine 5 pages\n- Design responsive\n- SEO de base\n2500€ forfait"}
+                    rows={2}
+                    className="w-full bg-[#0d0d14] border border-slate-800 rounded-xl pl-9 pr-3 py-2.5 text-white text-xs placeholder:text-slate-600 focus:outline-none focus:border-[#E14B89]/50 transition-colors resize-none"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={promptLoading || !templatePrompt.trim()}
+                  className="bg-[#E14B89] hover:opacity-90 disabled:opacity-40 text-white px-3 py-2.5 rounded-xl text-xs font-medium transition-opacity flex items-center gap-1.5 whitespace-nowrap"
+                >
+                  {promptLoading ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
+                  Créer
+                </button>
+              </form>
+              <p className="text-slate-600 text-[10px] mt-1.5">Décrivez l&apos;article (Shift+Entrée pour retour à la ligne) : nom, description, prix, unité</p>
+            </div>
+
+            {/* Template list */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+              {templates.length === 0 ? (
+                <div className="text-center py-12">
+                  <Package size={28} className="text-slate-700 mx-auto mb-2" />
+                  <p className="text-slate-500 text-sm">Aucun modèle</p>
+                  <p className="text-slate-600 text-xs mt-1">Créez votre premier modèle avec le champ ci-dessus</p>
+                </div>
+              ) : (
+                templates.map(t => (
+                  editingTemplate?.id === t.id ? (
+                    <form key={t.id} onSubmit={handleUpdateTemplate}
+                      className="p-4 rounded-xl bg-[#0d0d14] border border-[#E14B89]/30 space-y-2">
+                      <input value={editTemplateForm.name} onChange={e => setEditTemplateForm(f => ({ ...f, name: e.target.value }))}
+                        placeholder="Titre *" required className="w-full bg-[#1a1a24] border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+                      <textarea value={editTemplateForm.description} onChange={e => setEditTemplateForm(f => ({ ...f, description: e.target.value }))}
+                        placeholder="Description *" required rows={3}
+                        className="w-full bg-[#1a1a24] border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors resize-none" />
+                      <div className="grid grid-cols-2 gap-2">
+                        <input type="number" min={0} step="0.01" value={editTemplateForm.unitPrice}
+                          onChange={e => setEditTemplateForm(f => ({ ...f, unitPrice: e.target.value }))}
+                          placeholder="Prix HT *" required className="w-full bg-[#1a1a24] border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+                        <div className="relative">
+                          <select value={editTemplateForm.unit} onChange={e => setEditTemplateForm(f => ({ ...f, unit: e.target.value }))}
+                            className="w-full bg-[#1a1a24] border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors appearance-none pr-6">
+                            <option value="">Unité</option>
+                            {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                          </select>
+                          <ChevronDown size={10} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button type="submit" disabled={savingEditTemplate}
+                          className="flex-1 bg-[#E14B89] hover:opacity-90 disabled:opacity-40 text-white py-2 rounded-lg text-xs font-medium transition-opacity">
+                          {savingEditTemplate ? 'Enregistrement...' : 'Enregistrer'}
+                        </button>
+                        <button type="button" onClick={() => setEditingTemplate(null)}
+                          className="px-3 py-2 text-slate-400 hover:text-white text-xs rounded-lg border border-slate-700 hover:border-slate-600 transition-colors">
+                          Annuler
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <div key={t.id} className="group flex items-start gap-3 p-4 rounded-xl bg-[#0d0d14] border border-slate-800 hover:border-slate-700 transition-colors">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-white text-sm font-medium">{t.name}</div>
+                        {t.description && t.description !== t.name && (
+                          <div className="text-slate-500 text-xs mt-1 whitespace-pre-wrap" dangerouslySetInnerHTML={{
+                            __html: t.description
+                              .replace(/\*\*(.+?)\*\*/g, '<strong class="text-slate-300">$1</strong>')
+                              .replace(/^- /gm, '• ')
+                              .replace(/\n- /g, '\n• ')
+                          }} />
+                        )}
+                        <div className="flex items-center gap-2 mt-1.5">
+                          <span className="text-[#E14B89] text-sm font-medium">{formatCurrency(t.unitPrice)}</span>
+                          {t.unit && <span className="text-slate-600 text-xs">/ {t.unit}</span>}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                        <button type="button" onClick={() => openEditTemplate(t)}
+                          className="p-1.5 text-slate-500 hover:text-amber-400 transition-colors rounded-lg hover:bg-slate-800" title="Modifier">
+                          <Pencil size={14} />
+                        </button>
+                        <button type="button" onClick={() => openDeleteTemplateModal(t)}
+                          className="p-1.5 text-slate-600 hover:text-red-400 transition-colors rounded-lg hover:bg-slate-800" title="Supprimer">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  )
+                ))
+              )}
+            </div>
+
+            {/* New template form at bottom */}
+            <div className="border-t border-slate-800 p-4">
+              <p className="text-slate-500 text-xs mb-2 font-medium">Ajout manuel</p>
+              <form onSubmit={handleSaveTemplate} className="space-y-2">
+                <input value={newTemplate.name} onChange={e => setNewTemplate(t => ({ ...t, name: e.target.value }))}
+                  placeholder="Titre *" required className="w-full bg-[#1a1a24] border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-[#E14B89] transition-colors" />
+                <textarea value={newTemplate.description} onChange={e => setNewTemplate(t => ({ ...t, description: e.target.value }))}
+                  placeholder="Description * (- pour liste, **gras**)" required rows={2}
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-[#E14B89] transition-colors resize-none" />
+                <div className="flex gap-2">
+                  <input type="number" min={0} step="0.01" value={newTemplate.unitPrice}
+                    onChange={e => setNewTemplate(t => ({ ...t, unitPrice: e.target.value }))} placeholder="Prix HT *" required
+                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-[#E14B89] transition-colors" />
+                  <div className="relative">
+                    <select value={newTemplate.unit} onChange={e => setNewTemplate(t => ({ ...t, unit: e.target.value }))}
+                      className="w-full bg-[#1a1a24] border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-[#E14B89] transition-colors appearance-none pr-6">
+                      <option value="">Unité</option>
+                      {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                    </select>
+                    <ChevronDown size={10} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+                  </div>
+                  <button type="submit"
+                    disabled={savingTemplate || !newTemplate.name.trim() || !newTemplate.description.trim() || !newTemplate.unitPrice}
+                    className="bg-[#E14B89] hover:opacity-90 disabled:opacity-40 text-white px-4 py-2 rounded-lg text-xs font-medium transition-opacity whitespace-nowrap">
+                    {savingTemplate ? '...' : 'Ajouter'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Delete Template Confirmation ──────────────────────────────────── */}
+      {deleteTemplateModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[100] flex items-center justify-center p-4" onClick={e => e.stopPropagation()}>
+          <div className="bg-[#111118] border border-slate-800 rounded-2xl p-6 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+            <h3 className="text-white font-semibold mb-2">Supprimer le modèle</h3>
+            <p className="text-slate-400 text-sm mb-4">
+              {deleteTemplateStep === 1
+                ? `Voulez-vous supprimer "${deleteTemplateModal.name}" ?`
+                : `Confirmez la suppression de "${deleteTemplateModal.name}" ?`}
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteTemplateModal(null)}
+                className="flex-1 border border-slate-700 text-slate-400 hover:text-white py-2.5 rounded-xl text-sm transition-colors">
+                Annuler
+              </button>
+              <button onClick={confirmDeleteTemplate} disabled={deletingTemplate}
+                className="flex-1 bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white py-2.5 rounded-xl text-sm font-medium transition-colors">
+                {deletingTemplate ? 'Suppression...' : deleteTemplateStep === 1 ? 'Supprimer' : 'Confirmer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Signature Modal ─────────────────────────────────────────────── */}
+      {signatureModal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
           <div className="bg-[#111118] border border-slate-800 rounded-2xl p-6 w-full max-w-md">
             <div className="flex items-center gap-3 mb-5">
@@ -1370,33 +1814,40 @@ export default function DevisPage() {
               </div>
               <div>
                 <h3 className="text-white font-semibold">Envoyer pour signature</h3>
-                <p className="text-slate-500 text-xs mt-0.5">Devis {yousignModal.number} — via Yousign</p>
+                <p className="text-slate-500 text-xs mt-0.5">Devis {signatureModal.number}</p>
               </div>
             </div>
 
-            {yousignResult?.success ? (
+            {signatureResult?.success ? (
               <div className="text-center py-6">
                 <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center mx-auto mb-3">
                   <Check size={24} className="text-green-400" />
                 </div>
-                <p className="text-green-400 font-medium">{yousignResult.message}</p>
-                <p className="text-slate-500 text-xs mt-2">Le client recevra un email pour signer le devis.</p>
+                <p className="text-green-400 font-medium">{signatureResult.message}</p>
+                <p className="text-slate-500 text-xs mt-2">Le client recevra un email avec un lien pour signer.</p>
                 <button
-                  onClick={() => setYousignModal(null)}
+                  onClick={() => setSignatureModal(null)}
                   className="mt-4 border border-slate-700 text-slate-400 hover:text-white px-4 py-2.5 rounded-xl text-sm transition-colors"
                 >
                   Fermer
                 </button>
               </div>
+            ) : signatureSending && !signatureResult?.error ? (
+              <div className="text-center py-8">
+                <Loader2 size={28} className="animate-spin text-[#E14B89] mx-auto mb-3" />
+                <p className="text-white font-medium">Envoi en cours...</p>
+                <p className="text-slate-500 text-xs mt-2">Envoi du devis à {signatureForm.email}<br/>depuis {signatureForm.senderEmail}</p>
+              </div>
             ) : (
               <>
+                <p className="text-slate-400 text-sm mb-4">Complétez les informations du signataire :</p>
                 <div className="space-y-3 mb-5">
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="block text-slate-400 text-xs mb-1.5">Prénom *</label>
                       <input
-                        value={yousignForm.firstName}
-                        onChange={e => setYousignForm(f => ({ ...f, firstName: e.target.value }))}
+                        value={signatureForm.firstName}
+                        onChange={e => setSignatureForm(f => ({ ...f, firstName: e.target.value }))}
                         placeholder="Jean"
                         className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
                       />
@@ -1404,64 +1855,57 @@ export default function DevisPage() {
                     <div>
                       <label className="block text-slate-400 text-xs mb-1.5">Nom *</label>
                       <input
-                        value={yousignForm.lastName}
-                        onChange={e => setYousignForm(f => ({ ...f, lastName: e.target.value }))}
+                        value={signatureForm.lastName}
+                        onChange={e => setSignatureForm(f => ({ ...f, lastName: e.target.value }))}
                         placeholder="Dupont"
                         className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
                       />
                     </div>
                   </div>
                   <div>
-                    <label className="block text-slate-400 text-xs mb-1.5">Email *</label>
+                    <label className="block text-slate-400 text-xs mb-1.5">Email du client *</label>
                     <input
                       type="email"
-                      value={yousignForm.email}
-                      onChange={e => setYousignForm(f => ({ ...f, email: e.target.value }))}
+                      value={signatureForm.email}
+                      onChange={e => setSignatureForm(f => ({ ...f, email: e.target.value }))}
                       placeholder="client@exemple.fr"
                       className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
                     />
                   </div>
                   <div>
-                    <label className="block text-slate-400 text-xs mb-1.5">Téléphone (optionnel)</label>
-                    <input
-                      type="tel"
-                      value={yousignForm.phone}
-                      onChange={e => setYousignForm(f => ({ ...f, phone: e.target.value }))}
-                      placeholder="+33 6 ..."
+                    <label className="block text-slate-400 text-xs mb-1.5">Expéditeur</label>
+                    <select
+                      value={signatureForm.senderEmail}
+                      onChange={e => setSignatureForm(f => ({ ...f, senderEmail: e.target.value }))}
                       className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
-                    />
+                    >
+                      {SENDER_EMAILS.map(s => (
+                        <option key={s.email} value={s.email}>{s.label} ({s.email})</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
 
-                {yousignResult?.error && (
+                {signatureResult?.error && (
                   <div className="mb-4 px-3 py-2.5 bg-red-500/10 border border-red-500/20 rounded-xl">
-                    <p className="text-red-400 text-xs">{yousignResult.error}</p>
+                    <p className="text-red-400 text-xs">{signatureResult.error}</p>
                   </div>
                 )}
 
                 <div className="flex gap-3">
                   <button
-                    onClick={() => setYousignModal(null)}
+                    onClick={() => setSignatureModal(null)}
                     className="flex-1 border border-slate-700 text-slate-400 hover:text-white py-2.5 rounded-xl text-sm transition-colors"
                   >
                     Annuler
                   </button>
                   <button
-                    onClick={handleYousignSend}
-                    disabled={yousignSending}
+                    onClick={handleSignatureSend}
+                    disabled={signatureSending}
                     className="flex-1 bg-[#E14B89] hover:opacity-90 disabled:opacity-50 text-white py-2.5 rounded-xl text-sm font-medium transition-opacity flex items-center justify-center gap-2"
                   >
-                    {yousignSending ? (
-                      <>
-                        <Loader2 size={14} className="animate-spin" />
-                        Envoi en cours...
-                      </>
-                    ) : (
-                      <>
-                        <Send size={14} />
-                        Envoyer
-                      </>
-                    )}
+                    <Send size={14} />
+                    Envoyer
                   </button>
                 </div>
               </>
