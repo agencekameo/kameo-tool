@@ -1387,19 +1387,20 @@ export default function DevisPage() {
                             onClick={() => addTemplateAsItem(t)}
                             className="flex-1 text-left"
                           >
-                            <div className="text-white text-xs font-medium leading-snug">{t.name}</div>
+                            <div className="text-white text-xs font-semibold leading-snug">{t.name}</div>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <span className="text-[#E14B89] text-xs font-medium">{formatCurrency(t.unitPrice)}</span>
+                              {t.unit && <span className="text-slate-600 text-xs">/ {t.unit}</span>}
+                            </div>
                             {t.description && t.description !== t.name && (
-                              <div className="text-slate-500 text-xs mt-0.5 line-clamp-3 whitespace-pre-wrap" dangerouslySetInnerHTML={{
+                              <div className="text-slate-500 text-xs mt-1 line-clamp-1" dangerouslySetInnerHTML={{
                                 __html: t.description
                                   .replace(/\*\*(.+?)\*\*/g, '<strong class="text-slate-300">$1</strong>')
                                   .replace(/^- /gm, '• ')
                                   .replace(/\n- /g, '\n• ')
+                                  .replace(/\n/g, ' — ')
                               }} />
                             )}
-                            <div className="flex items-center gap-2 mt-1.5">
-                              <span className="text-[#E14B89] text-xs font-medium">{formatCurrency(t.unitPrice)}</span>
-                              {t.unit && <span className="text-slate-600 text-xs">/ {t.unit}</span>}
-                            </div>
                           </button>
                           <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
                             <button
