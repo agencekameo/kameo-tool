@@ -183,7 +183,7 @@ export default function CommercialPage() {
     <div className="p-4 sm:p-8 h-screen flex flex-col">
       <div className="flex items-center justify-between mb-8 flex-shrink-0">
         <div>
-          <h1 className="text-2xl font-semibold text-white">Commercial</h1>
+          <h1 className="text-2xl font-semibold text-white">Prospects</h1>
           <p className="text-slate-400 text-sm mt-1">{prospects.filter(p => p.status === 'SIGNE').length} deals signés · {formatCurrency(prospects.filter(p => p.status === 'SIGNE').reduce((s, p) => s + (p.budget ?? 0), 0))} CA potentiel</p>
         </div>
         <button onClick={() => openModal()}
