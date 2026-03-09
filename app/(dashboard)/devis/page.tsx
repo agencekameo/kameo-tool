@@ -1634,7 +1634,8 @@ export default function DevisPage() {
       {/* ─── Standalone Templates Modal ──────────────────────────────────── */}
       {showTemplatesModal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowTemplatesModal(false)}>
-          <div className="bg-[#111118] border border-slate-800 rounded-2xl w-full max-w-lg max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+          <div className="bg-[#111118] border border-slate-800 rounded-2xl w-full max-w-4xl max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 flex-shrink-0">
               <div className="flex items-center gap-2">
                 <Package size={18} className="text-[#E14B89]" />
@@ -1646,135 +1647,158 @@ export default function DevisPage() {
               </button>
             </div>
 
-            {/* AI Prompt */}
-            <div className="px-6 py-3 border-b border-slate-800">
-              <form onSubmit={handlePromptCreate} className="flex gap-2 items-end">
-                <div className="relative flex-1">
-                  <Sparkles size={14} className="absolute left-3 top-3 text-[#E14B89]/60" />
-                  <textarea
-                    value={templatePrompt}
-                    onChange={e => setTemplatePrompt(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handlePromptCreate(e) } }}
-                    placeholder={"Ex : Création site vitrine 5 pages\n- Design responsive\n- SEO de base\n2500€ forfait"}
-                    rows={2}
-                    className="w-full bg-[#0d0d14] border border-slate-800 rounded-xl pl-9 pr-3 py-2.5 text-white text-xs placeholder:text-slate-600 focus:outline-none focus:border-[#E14B89]/50 transition-colors resize-none"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  disabled={promptLoading || !templatePrompt.trim()}
-                  className="bg-[#E14B89] hover:opacity-90 disabled:opacity-40 text-white px-3 py-2.5 rounded-xl text-xs font-medium transition-opacity flex items-center gap-1.5 whitespace-nowrap"
-                >
-                  {promptLoading ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
-                  Créer
-                </button>
-              </form>
-              <p className="text-slate-600 text-[10px] mt-1.5">Décrivez l&apos;article (Shift+Entrée pour retour à la ligne) : nom, description, prix, unité</p>
-            </div>
-
-            {/* Template list */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-2">
-              {templates.length === 0 ? (
-                <div className="text-center py-12">
-                  <Package size={28} className="text-slate-700 mx-auto mb-2" />
-                  <p className="text-slate-500 text-sm">Aucun modèle</p>
-                  <p className="text-slate-600 text-xs mt-1">Créez votre premier modèle avec le champ ci-dessus</p>
-                </div>
-              ) : (
-                templates.map(t => (
-                  editingTemplate?.id === t.id ? (
-                    <form key={t.id} onSubmit={handleUpdateTemplate}
-                      className="p-4 rounded-xl bg-[#0d0d14] border border-[#E14B89]/30 space-y-2">
-                      <input value={editTemplateForm.name} onChange={e => setEditTemplateForm(f => ({ ...f, name: e.target.value }))}
-                        placeholder="Titre *" required className="w-full bg-[#1a1a24] border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
-                      <textarea value={editTemplateForm.description} onChange={e => setEditTemplateForm(f => ({ ...f, description: e.target.value }))}
-                        placeholder="Description *" required rows={3}
-                        className="w-full bg-[#1a1a24] border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors resize-none" />
-                      <div className="grid grid-cols-2 gap-2">
-                        <input type="number" min={0} step="0.01" value={editTemplateForm.unitPrice}
-                          onChange={e => setEditTemplateForm(f => ({ ...f, unitPrice: e.target.value }))}
-                          placeholder="Prix HT *" required className="w-full bg-[#1a1a24] border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+            {/* 2-column layout */}
+            <div className="flex flex-1 overflow-hidden">
+              {/* Left: Manual add form + AI */}
+              <div className="w-1/2 border-r border-slate-800 flex flex-col overflow-y-auto">
+                {/* Manual form (main) */}
+                <div className="p-5 flex-1">
+                  <p className="text-white text-sm font-medium mb-3">Ajout manuel</p>
+                  <form onSubmit={handleSaveTemplate} className="space-y-3">
+                    <div>
+                      <label className="block text-slate-400 text-xs mb-1.5">Titre *</label>
+                      <input value={newTemplate.name} onChange={e => setNewTemplate(t => ({ ...t, name: e.target.value }))}
+                        placeholder="Ex : Création site vitrine" required
+                        className="w-full bg-[#1a1a24] border border-slate-700 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+                    </div>
+                    <div>
+                      <label className="block text-slate-400 text-xs mb-1.5">Description * <span className="text-slate-600">(- pour liste, **gras**)</span></label>
+                      <textarea value={newTemplate.description} onChange={e => setNewTemplate(t => ({ ...t, description: e.target.value }))}
+                        placeholder={"- Design sur mesure responsive\n- Intégration WordPress\n- **5 pages** incluses\n- SEO de base"}
+                        required rows={6}
+                        className="w-full bg-[#1a1a24] border border-slate-700 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors resize-none leading-relaxed" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-slate-400 text-xs mb-1.5">Prix HT *</label>
+                        <input type="number" min={0} step="0.01" value={newTemplate.unitPrice}
+                          onChange={e => setNewTemplate(t => ({ ...t, unitPrice: e.target.value }))} placeholder="0.00" required
+                          className="w-full bg-[#1a1a24] border border-slate-700 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+                      </div>
+                      <div>
+                        <label className="block text-slate-400 text-xs mb-1.5">Unité</label>
                         <div className="relative">
-                          <select value={editTemplateForm.unit} onChange={e => setEditTemplateForm(f => ({ ...f, unit: e.target.value }))}
-                            className="w-full bg-[#1a1a24] border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors appearance-none pr-6">
-                            <option value="">Unité</option>
+                          <select value={newTemplate.unit} onChange={e => setNewTemplate(t => ({ ...t, unit: e.target.value }))}
+                            className="w-full bg-[#1a1a24] border border-slate-700 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors appearance-none pr-8">
+                            <option value="">Sélectionner</option>
                             {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
                           </select>
-                          <ChevronDown size={10} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+                          <ChevronDown size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
                         </div>
-                      </div>
-                      <div className="flex gap-2">
-                        <button type="submit" disabled={savingEditTemplate}
-                          className="flex-1 bg-[#E14B89] hover:opacity-90 disabled:opacity-40 text-white py-2 rounded-lg text-xs font-medium transition-opacity">
-                          {savingEditTemplate ? 'Enregistrement...' : 'Enregistrer'}
-                        </button>
-                        <button type="button" onClick={() => setEditingTemplate(null)}
-                          className="px-3 py-2 text-slate-400 hover:text-white text-xs rounded-lg border border-slate-700 hover:border-slate-600 transition-colors">
-                          Annuler
-                        </button>
-                      </div>
-                    </form>
-                  ) : (
-                    <div key={t.id} className="group flex items-start gap-3 p-4 rounded-xl bg-[#0d0d14] border border-slate-800 hover:border-slate-700 transition-colors">
-                      <div className="flex-1 min-w-0">
-                        <div className="text-white text-sm font-medium">{t.name}</div>
-                        {t.description && t.description !== t.name && (
-                          <div className="text-slate-500 text-xs mt-1 whitespace-pre-wrap" dangerouslySetInnerHTML={{
-                            __html: t.description
-                              .replace(/\*\*(.+?)\*\*/g, '<strong class="text-slate-300">$1</strong>')
-                              .replace(/^- /gm, '• ')
-                              .replace(/\n- /g, '\n• ')
-                          }} />
-                        )}
-                        <div className="flex items-center gap-2 mt-1.5">
-                          <span className="text-[#E14B89] text-sm font-medium">{formatCurrency(t.unitPrice)}</span>
-                          {t.unit && <span className="text-slate-600 text-xs">/ {t.unit}</span>}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                        <button type="button" onClick={() => openEditTemplate(t)}
-                          className="p-1.5 text-slate-500 hover:text-amber-400 transition-colors rounded-lg hover:bg-slate-800" title="Modifier">
-                          <Pencil size={14} />
-                        </button>
-                        <button type="button" onClick={() => openDeleteTemplateModal(t)}
-                          className="p-1.5 text-slate-600 hover:text-red-400 transition-colors rounded-lg hover:bg-slate-800" title="Supprimer">
-                          <Trash2 size={14} />
-                        </button>
                       </div>
                     </div>
-                  )
-                ))
-              )}
-            </div>
-
-            {/* New template form at bottom */}
-            <div className="border-t border-slate-800 p-4">
-              <p className="text-slate-500 text-xs mb-2 font-medium">Ajout manuel</p>
-              <form onSubmit={handleSaveTemplate} className="space-y-2">
-                <input value={newTemplate.name} onChange={e => setNewTemplate(t => ({ ...t, name: e.target.value }))}
-                  placeholder="Titre *" required className="w-full bg-[#1a1a24] border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-[#E14B89] transition-colors" />
-                <textarea value={newTemplate.description} onChange={e => setNewTemplate(t => ({ ...t, description: e.target.value }))}
-                  placeholder="Description * (- pour liste, **gras**)" required rows={2}
-                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-[#E14B89] transition-colors resize-none" />
-                <div className="flex gap-2">
-                  <input type="number" min={0} step="0.01" value={newTemplate.unitPrice}
-                    onChange={e => setNewTemplate(t => ({ ...t, unitPrice: e.target.value }))} placeholder="Prix HT *" required
-                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-[#E14B89] transition-colors" />
-                  <div className="relative">
-                    <select value={newTemplate.unit} onChange={e => setNewTemplate(t => ({ ...t, unit: e.target.value }))}
-                      className="w-full bg-[#1a1a24] border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-[#E14B89] transition-colors appearance-none pr-6">
-                      <option value="">Unité</option>
-                      {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
-                    </select>
-                    <ChevronDown size={10} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
-                  </div>
-                  <button type="submit"
-                    disabled={savingTemplate || !newTemplate.name.trim() || !newTemplate.description.trim() || !newTemplate.unitPrice}
-                    className="bg-[#E14B89] hover:opacity-90 disabled:opacity-40 text-white px-4 py-2 rounded-lg text-xs font-medium transition-opacity whitespace-nowrap">
-                    {savingTemplate ? '...' : 'Ajouter'}
-                  </button>
+                    <button type="submit"
+                      disabled={savingTemplate || !newTemplate.name.trim() || !newTemplate.description.trim() || !newTemplate.unitPrice}
+                      className="w-full bg-[#E14B89] hover:opacity-90 disabled:opacity-40 text-white py-2.5 rounded-lg text-sm font-medium transition-opacity flex items-center justify-center gap-2">
+                      {savingTemplate ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                      {savingTemplate ? 'Enregistrement...' : 'Enregistrer le modèle'}
+                    </button>
+                  </form>
                 </div>
-              </form>
+
+                {/* AI generation (small, bottom) */}
+                <div className="border-t border-slate-800 p-4 bg-[#0d0d14]/50">
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <Sparkles size={12} className="text-[#E14B89]/70" />
+                    <p className="text-slate-500 text-xs font-medium">Génération IA</p>
+                  </div>
+                  <form onSubmit={handlePromptCreate} className="flex gap-2 items-end">
+                    <textarea
+                      value={templatePrompt}
+                      onChange={e => setTemplatePrompt(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handlePromptCreate(e) } }}
+                      placeholder="Décrivez l'article : nom, description, prix..."
+                      rows={2}
+                      className="flex-1 bg-[#1a1a24] border border-slate-800 rounded-lg px-3 py-2 text-white text-xs placeholder:text-slate-600 focus:outline-none focus:border-[#E14B89]/50 transition-colors resize-none"
+                    />
+                    <button type="submit" disabled={promptLoading || !templatePrompt.trim()}
+                      className="bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-white px-3 py-2 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 whitespace-nowrap">
+                      {promptLoading ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                      Créer
+                    </button>
+                  </form>
+                </div>
+              </div>
+
+              {/* Right: Template list */}
+              <div className="w-1/2 flex flex-col overflow-hidden">
+                <div className="px-5 py-3 border-b border-slate-800">
+                  <p className="text-slate-400 text-xs font-medium">Articles existants</p>
+                </div>
+                <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                  {templates.length === 0 ? (
+                    <div className="text-center py-12">
+                      <Package size={28} className="text-slate-700 mx-auto mb-2" />
+                      <p className="text-slate-500 text-sm">Aucun modèle</p>
+                      <p className="text-slate-600 text-xs mt-1">Créez votre premier modèle</p>
+                    </div>
+                  ) : (
+                    templates.map(t => (
+                      editingTemplate?.id === t.id ? (
+                        <form key={t.id} onSubmit={handleUpdateTemplate}
+                          className="p-3 rounded-xl bg-[#0d0d14] border border-[#E14B89]/30 space-y-2">
+                          <input value={editTemplateForm.name} onChange={e => setEditTemplateForm(f => ({ ...f, name: e.target.value }))}
+                            placeholder="Titre *" required className="w-full bg-[#1a1a24] border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+                          <textarea value={editTemplateForm.description} onChange={e => setEditTemplateForm(f => ({ ...f, description: e.target.value }))}
+                            placeholder="Description *" required rows={3}
+                            className="w-full bg-[#1a1a24] border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors resize-none" />
+                          <div className="grid grid-cols-2 gap-2">
+                            <input type="number" min={0} step="0.01" value={editTemplateForm.unitPrice}
+                              onChange={e => setEditTemplateForm(f => ({ ...f, unitPrice: e.target.value }))}
+                              placeholder="Prix HT *" required className="w-full bg-[#1a1a24] border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+                            <div className="relative">
+                              <select value={editTemplateForm.unit} onChange={e => setEditTemplateForm(f => ({ ...f, unit: e.target.value }))}
+                                className="w-full bg-[#1a1a24] border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors appearance-none pr-6">
+                                <option value="">Unité</option>
+                                {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                              </select>
+                              <ChevronDown size={10} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <button type="submit" disabled={savingEditTemplate}
+                              className="flex-1 bg-[#E14B89] hover:opacity-90 disabled:opacity-40 text-white py-2 rounded-lg text-xs font-medium transition-opacity">
+                              {savingEditTemplate ? 'Enregistrement...' : 'Enregistrer'}
+                            </button>
+                            <button type="button" onClick={() => setEditingTemplate(null)}
+                              className="px-3 py-2 text-slate-400 hover:text-white text-xs rounded-lg border border-slate-700 hover:border-slate-600 transition-colors">
+                              Annuler
+                            </button>
+                          </div>
+                        </form>
+                      ) : (
+                        <div key={t.id} className="group flex items-start gap-3 p-3 rounded-xl bg-[#0d0d14] border border-slate-800 hover:border-slate-700 transition-colors">
+                          <div className="flex-1 min-w-0">
+                            <div className="text-white text-sm font-medium">{t.name}</div>
+                            {t.description && t.description !== t.name && (
+                              <div className="text-slate-500 text-xs mt-1 whitespace-pre-wrap line-clamp-3" dangerouslySetInnerHTML={{
+                                __html: t.description
+                                  .replace(/\*\*(.+?)\*\*/g, '<strong class="text-slate-300">$1</strong>')
+                                  .replace(/^- /gm, '• ')
+                                  .replace(/\n- /g, '\n• ')
+                              }} />
+                            )}
+                            <div className="flex items-center gap-2 mt-1.5">
+                              <span className="text-[#E14B89] text-sm font-medium">{formatCurrency(t.unitPrice)}</span>
+                              {t.unit && <span className="text-slate-600 text-xs">/ {t.unit}</span>}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                            <button type="button" onClick={() => openEditTemplate(t)}
+                              className="p-1.5 text-slate-500 hover:text-amber-400 transition-colors rounded-lg hover:bg-slate-800" title="Modifier">
+                              <Pencil size={14} />
+                            </button>
+                            <button type="button" onClick={() => openDeleteTemplateModal(t)}
+                              className="p-1.5 text-slate-600 hover:text-red-400 transition-colors rounded-lg hover:bg-slate-800" title="Supprimer">
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    ))
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         </div>
