@@ -1771,7 +1771,7 @@ export default function DevisPage() {
                           <div className="flex-1 min-w-0">
                             <div className="text-white text-sm font-medium">{t.name}</div>
                             {t.description && t.description !== t.name && (
-                              <div className="text-slate-500 text-xs mt-1 whitespace-pre-wrap line-clamp-3" dangerouslySetInnerHTML={{
+                              <div className="text-slate-500 text-xs mt-1 whitespace-pre-wrap line-clamp-2" dangerouslySetInnerHTML={{
                                 __html: t.description
                                   .replace(/\*\*(.+?)\*\*/g, '<strong class="text-slate-300">$1</strong>')
                                   .replace(/^- /gm, '• ')
