@@ -1393,13 +1393,9 @@ export default function DevisPage() {
                               {t.unit && <span className="text-slate-600 text-xs">/ {t.unit}</span>}
                             </div>
                             {t.description && t.description !== t.name && (
-                              <div className="text-slate-500 text-xs mt-1 line-clamp-1" dangerouslySetInnerHTML={{
-                                __html: t.description
-                                  .replace(/\*\*(.+?)\*\*/g, '<strong class="text-slate-300">$1</strong>')
-                                  .replace(/^- /gm, '• ')
-                                  .replace(/\n- /g, '\n• ')
-                                  .replace(/\n/g, ' — ')
-                              }} />
+                              <div className="text-slate-500 text-xs mt-1 truncate">
+                                {t.description.replace(/\*\*(.+?)\*\*/g, '$1').replace(/\n/g, ' — ').slice(0, 80)}{t.description.length > 80 ? '…' : ''}
+                              </div>
                             )}
                           </button>
                           <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
@@ -1776,13 +1772,9 @@ export default function DevisPage() {
                               {t.unit && <span className="text-slate-600 text-xs">/ {t.unit}</span>}
                             </div>
                             {t.description && t.description !== t.name && (
-                              <div className="text-slate-500 text-xs mt-1 line-clamp-1" dangerouslySetInnerHTML={{
-                                __html: t.description
-                                  .replace(/\*\*(.+?)\*\*/g, '<strong class="text-slate-300">$1</strong>')
-                                  .replace(/^- /gm, '• ')
-                                  .replace(/\n- /g, '\n• ')
-                                  .replace(/\n/g, ' — ')
-                              }} />
+                              <div className="text-slate-500 text-xs mt-1 truncate">
+                                {t.description.replace(/\*\*(.+?)\*\*/g, '$1').replace(/\n/g, ' — ').slice(0, 80)}{t.description.length > 80 ? '…' : ''}
+                              </div>
                             )}
                           </div>
                           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
