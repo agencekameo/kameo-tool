@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react'
 import { useSession } from 'next-auth/react'
-import { Save, Camera, Lock, User, Upload } from 'lucide-react'
+import { Save, Camera, Lock, User, Upload, Eye, EyeOff } from 'lucide-react'
 import { ROLE_LABELS, ROLE_AVATAR_COLORS } from '@/lib/utils'
 
 /**
@@ -45,6 +45,7 @@ export default function ProfilePage() {
   const [pwForm, setPwForm] = useState({ currentPassword: '', newPassword: '', confirm: '' })
   const [saving, setSaving] = useState(false)
   const [savingPw, setSavingPw] = useState(false)
+  const [showPw, setShowPw] = useState({ current: false, new: false, confirm: false })
   const [msg, setMsg] = useState('')
   const [msgPw, setMsgPw] = useState('')
   const [uploading, setUploading] = useState(false)
@@ -299,35 +300,53 @@ export default function ProfilePage() {
         <form onSubmit={handlePassword} className="space-y-4">
           <div>
             <label className="block text-slate-400 text-xs mb-1.5">Mot de passe actuel</label>
-            <input
-              type="password"
-              value={pwForm.currentPassword}
-              onChange={e => setPwForm({ ...pwForm, currentPassword: e.target.value })}
-              required
-              className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
-            />
+            <div className="relative">
+              <input
+                type={showPw.current ? 'text' : 'password'}
+                value={pwForm.currentPassword}
+                onChange={e => setPwForm({ ...pwForm, currentPassword: e.target.value })}
+                required
+                className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-4 py-3 pr-10 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
+              />
+              <button type="button" onClick={() => setShowPw(s => ({ ...s, current: !s.current }))}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors">
+                {showPw.current ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
           </div>
           <div>
             <label className="block text-slate-400 text-xs mb-1.5">Nouveau mot de passe</label>
-            <input
-              type="password"
-              value={pwForm.newPassword}
-              onChange={e => setPwForm({ ...pwForm, newPassword: e.target.value })}
-              required
-              minLength={8}
-              className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
-            />
+            <div className="relative">
+              <input
+                type={showPw.new ? 'text' : 'password'}
+                value={pwForm.newPassword}
+                onChange={e => setPwForm({ ...pwForm, newPassword: e.target.value })}
+                required
+                minLength={8}
+                className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-4 py-3 pr-10 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
+              />
+              <button type="button" onClick={() => setShowPw(s => ({ ...s, new: !s.new }))}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors">
+                {showPw.new ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
           </div>
           <div>
             <label className="block text-slate-400 text-xs mb-1.5">Confirmer le mot de passe</label>
-            <input
-              type="password"
-              value={pwForm.confirm}
-              onChange={e => setPwForm({ ...pwForm, confirm: e.target.value })}
-              required
-              minLength={8}
-              className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
-            />
+            <div className="relative">
+              <input
+                type={showPw.confirm ? 'text' : 'password'}
+                value={pwForm.confirm}
+                onChange={e => setPwForm({ ...pwForm, confirm: e.target.value })}
+                required
+                minLength={8}
+                className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-4 py-3 pr-10 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
+              />
+              <button type="button" onClick={() => setShowPw(s => ({ ...s, confirm: !s.confirm }))}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors">
+                {showPw.confirm ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
           </div>
           {msgPw && (
             <p
