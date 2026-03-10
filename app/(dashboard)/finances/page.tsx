@@ -5,7 +5,7 @@ import { TrendingUp, TrendingDown, DollarSign, Percent, Plus, Trash2, Pencil } f
 import { formatCurrency } from '@/lib/utils'
 
 interface Maintenance {
-  id: string; clientName: string; type: string; priceHT?: number; active: boolean
+  id: string; clientName: string; type: string; priceHT?: number; billing?: string; active: boolean
 }
 interface Expense {
   id: string; name: string; amount: number; category: string; recurring: boolean; notes?: string
@@ -65,9 +65,15 @@ export default function FinancesPage() {
   }, [])
 
   // Compute income
+  function toMonthly(m: Maintenance): number {
+    const price = m.priceHT ?? 0
+    if (m.billing === 'ANNUEL') return price / 12
+    if (m.billing === 'TRIMESTRIEL') return price / 3
+    return price
+  }
   const maintenanceIncome = ['WEB', 'GOOGLE', 'RESEAUX', 'BLOG'].map(type => ({
     type, label: MAINTENANCE_TYPE_LABELS[type],
-    total: maintenances.filter(m => m.type === type && m.active).reduce((s, m) => s + (m.priceHT ?? 0), 0)
+    total: maintenances.filter(m => m.type === type && m.active).reduce((s, m) => s + toMonthly(m), 0)
   }))
   const signedProjects = projects.filter(p => p.status === 'LIVRAISON' || p.status === 'MAINTENANCE')
   const totalMaintenanceIncome = maintenanceIncome.reduce((s, m) => s + m.total, 0)
