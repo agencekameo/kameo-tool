@@ -65,7 +65,13 @@ export default function MaintenancesPage() {
   }, [])
 
   const filtered = maintenances.filter(m => m.type === activeTab)
-  const totalByTab = maintenances.filter(m => m.type === activeTab && m.active).reduce((s, m) => s + (m.priceHT ?? 0), 0)
+  function toMonthly(m: Maintenance): number {
+    const price = m.priceHT ?? 0
+    if (m.billing === 'ANNUEL') return price / 12
+    if (m.billing === 'TRIMESTRIEL') return price / 3
+    return price
+  }
+  const totalByTab = maintenances.filter(m => m.type === activeTab && m.active).reduce((s, m) => s + toMonthly(m), 0)
 
   function openModal(item?: Maintenance) {
     if (item) {
@@ -225,7 +231,8 @@ export default function MaintenancesPage() {
                     <span className="text-xs text-slate-400">{BILLING_LABELS[m.billing]}</span>
                   </td>
                   <td className="px-5 py-3.5">
-                    <span className="text-white text-sm font-medium">{m.priceHT ? formatCurrency(m.priceHT) : '—'}</span>
+                    <span className="text-white text-sm font-medium">{m.priceHT ? formatCurrency(toMonthly(m)) : '—'}</span>
+                    {m.priceHT && m.billing !== 'MENSUEL' ? <span className="text-slate-500 text-xs block">{formatCurrency(m.priceHT)}/{m.billing === 'ANNUEL' ? 'an' : 'trim.'}</span> : null}
                   </td>
                   <td className="px-5 py-3.5 text-slate-400 text-xs">{m.endDate ? formatDate(m.endDate) : '—'}</td>
                   <td className="px-5 py-3.5">
