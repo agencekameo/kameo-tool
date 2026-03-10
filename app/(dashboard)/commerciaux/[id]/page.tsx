@@ -7,7 +7,7 @@ import Link from 'next/link'
 import {
   ArrowLeft, Plus, Trash2, Pencil, Phone, Mail, Users2, Play, FileText,
   Euro, Upload, Check, X, ChevronDown, Loader2, Briefcase, Calendar,
-  DollarSign, CheckCircle2,
+  DollarSign, CheckCircle2, AlertTriangle,
 } from 'lucide-react'
 import { formatCurrency, formatDate, formatPhone, ROLE_AVATAR_COLORS } from '@/lib/utils'
 
@@ -141,6 +141,9 @@ export default function CommercialDetailPage() {
   const [leadForm, setLeadForm] = useState({ firstName: '', lastName: '', company: '', email: '', phone: '', budget: '', source: '', notes: '' })
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [importing, setImporting] = useState(false)
+  const [showDeleteAllModal, setShowDeleteAllModal] = useState(false)
+  const [deleteConfirmText, setDeleteConfirmText] = useState('')
+  const [deletingAll, setDeletingAll] = useState(false)
   const [statusDropdownId, setStatusDropdownId] = useState<string | null>(null)
   const statusDropdownRef = useRef<HTMLDivElement>(null)
 
@@ -281,6 +284,19 @@ export default function CommercialDetailPage() {
     if (!confirm('Supprimer ce lead ?')) return
     await fetch(`/api/prospects/${leadId}`, { method: 'DELETE' })
     setProspects(prev => prev.filter(p => p.id !== leadId))
+  }
+
+  async function deleteAllLeads() {
+    setDeletingAll(true)
+    try {
+      await fetch(`/api/prospects?userId=${id}`, { method: 'DELETE' })
+      setProspects([])
+      setRelances([])
+      setShowDeleteAllModal(false)
+      setDeleteConfirmText('')
+    } finally {
+      setDeletingAll(false)
+    }
   }
 
   async function handleImportExcel(e: React.ChangeEvent<HTMLInputElement>) {
@@ -552,6 +568,11 @@ export default function CommercialDetailPage() {
         <div>
           {/* Actions bar */}
           <div className="flex flex-wrap items-center gap-3 mb-5 justify-end">
+            {isAdmin && prospects.length > 0 && (
+              <button onClick={() => setShowDeleteAllModal(true)} className="flex items-center gap-2 border border-red-500/30 hover:border-red-500/60 text-red-400 hover:text-red-300 px-4 py-2 rounded-xl text-sm transition-colors">
+                <Trash2 size={16} /> Supprimer tous les leads
+              </button>
+            )}
             <button onClick={() => fileInputRef.current?.click()} disabled={importing} className="flex items-center gap-2 border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-white px-4 py-2 rounded-xl text-sm transition-colors">
               {importing ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
               Importer Excel
@@ -649,6 +670,50 @@ export default function CommercialDetailPage() {
                 </div>
               ))}
             </div>
+          )}
+
+          {/* Delete all leads modal */}
+          {showDeleteAllModal && (
+            <ModalOverlay onClose={() => { setShowDeleteAllModal(false); setDeleteConfirmText('') }}>
+              <div className="text-center">
+                <div className="mx-auto w-12 h-12 bg-red-500/15 rounded-full flex items-center justify-center mb-4">
+                  <AlertTriangle size={24} className="text-red-400" />
+                </div>
+                <h2 className="text-white font-semibold text-lg mb-2">Supprimer tous les leads</h2>
+                <p className="text-slate-400 text-sm mb-1">
+                  Cette action est <span className="text-red-400 font-semibold">irréversible</span>. Tous les leads ({prospects.length}) et leurs relances associées seront supprimés.
+                </p>
+                <p className="text-slate-400 text-sm mb-5">
+                  Tapez <span className="text-white font-mono font-semibold">SUPPRIMER</span> pour confirmer.
+                </p>
+                <input
+                  type="text"
+                  value={deleteConfirmText}
+                  onChange={e => setDeleteConfirmText(e.target.value)}
+                  placeholder="Tapez SUPPRIMER"
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-4 py-3 text-white text-sm text-center focus:outline-none focus:border-red-500 transition-colors mb-4"
+                  autoFocus
+                />
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => { setShowDeleteAllModal(false); setDeleteConfirmText('') }}
+                    className="flex-1 border border-slate-700 hover:border-slate-600 text-slate-400 px-4 py-2.5 rounded-xl text-sm transition-colors"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    type="button"
+                    onClick={deleteAllLeads}
+                    disabled={deleteConfirmText !== 'SUPPRIMER' || deletingAll}
+                    className="flex-1 flex items-center justify-center gap-2 bg-red-500 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-colors"
+                  >
+                    {deletingAll ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                    {deletingAll ? 'Suppression...' : 'Tout supprimer'}
+                  </button>
+                </div>
+              </div>
+            </ModalOverlay>
           )}
 
           {/* Lead modal */}
