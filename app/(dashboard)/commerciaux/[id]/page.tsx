@@ -222,7 +222,7 @@ export default function CommercialDetailPage() {
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;padding:32px 0;">
 <tr><td align="center">
 <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.08);">
-<tr><td style="background:#000000;padding:28px 32px;">
+<tr><td style="background:linear-gradient(180deg,#000000 0%,#0a0a0a 100%);padding:28px 32px;">
 <img src="https://kameo-tool.vercel.app/kameo-logo.png" alt="Kameo" height="32" style="height:32px;" />
 </td></tr>
 <tr><td style="padding:32px 32px 28px;">
@@ -302,7 +302,7 @@ ${buildSignatureBlock(senderId)}
 </table>
 
 <table cellpadding="0" cellspacing="0" style="margin:0 0 24px;width:100%;">
-<tr><td style="padding:16px 20px;background:linear-gradient(135deg,#fdf2f8,#fff7ed);border-radius:12px;border:1px solid #f3d5e4;">
+<tr><td style="padding:16px 20px;background:#f8f9fa;border-radius:12px;border:1px solid #e5e7eb;">
 <p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#1a1a2e;">Et aussi :</p>
 <p style="margin:0;font-size:13px;color:#555;line-height:1.8;">Suivi de projets & tâches · Agenda synchronisé · Messagerie interne · Gestion d'équipe · Accessible sur tous vos appareils · Données 100% sécurisées</p>
 </td></tr>
