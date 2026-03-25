@@ -1,5 +1,6 @@
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { demoGuard, demoProspectWhere } from '@/lib/demo'
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function GET(req: NextRequest) {
@@ -10,7 +11,7 @@ export async function GET(req: NextRequest) {
   const userId = searchParams.get('userId')
 
   const prospects = await prisma.prospect.findMany({
-    where: userId ? { assignedTo: userId } : undefined,
+    where: { ...(userId ? { assignedTo: userId } : {}), ...demoProspectWhere(session) },
     include: { assignee: { select: { id: true, name: true } } },
     orderBy: { createdAt: 'desc' },
   })
@@ -20,12 +21,21 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const data = await req.json()
-  const prospect = await prisma.prospect.create({
-    data: { ...data, assignedTo: data.assignedTo || null },
-    include: { assignee: { select: { id: true, name: true } } },
-  })
-  return NextResponse.json(prospect)
+  const guard = demoGuard(session); if (guard) return guard
+  try {
+    const data = await req.json()
+    const fn = data.firstName || ''
+    const ln = data.lastName || ''
+    if ((fn || ln) && !data.name) data.name = `${fn} ${ln}`.trim()
+    const prospect = await prisma.prospect.create({
+      data: { ...data, assignedTo: data.assignedTo || null },
+      include: { assignee: { select: { id: true, name: true } } },
+    })
+    return NextResponse.json(prospect)
+  } catch (error) {
+    console.error('[POST /api/prospects]', error)
+    return NextResponse.json({ error: 'Erreur lors de la création du prospect' }, { status: 500 })
+  }
 }
 
 export async function DELETE(req: NextRequest) {

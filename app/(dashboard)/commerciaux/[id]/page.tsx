@@ -3,11 +3,13 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import { useSession } from 'next-auth/react'
+import { usePolling } from '@/hooks/usePolling'
 import Link from 'next/link'
 import {
   ArrowLeft, Plus, Trash2, Pencil, Phone, Mail, Users2, Play, FileText,
   Euro, Upload, Check, X, ChevronDown, Loader2, Briefcase, Calendar,
-  DollarSign, CheckCircle2, AlertTriangle,
+  DollarSign, CheckCircle2, AlertTriangle, Globe, ExternalLink, Eye,
+  Send, Search, Clock,
 } from 'lucide-react'
 import { formatCurrency, formatDate, formatPhone, ROLE_AVATAR_COLORS } from '@/lib/utils'
 
@@ -17,7 +19,9 @@ import { formatCurrency, formatDate, formatPhone, ROLE_AVATAR_COLORS } from '@/l
 
 interface Prospect {
   id: string; name: string; company?: string; email?: string; phone?: string
+  website?: string; googleUrl?: string
   status: string; budget?: number; source?: string; notes?: string; assignedTo?: string
+  leadSearchId?: string | null
 }
 
 interface Relance {
@@ -46,15 +50,18 @@ interface UserInfo {
 // Constants
 // ---------------------------------------------------------------------------
 
-type Tab = 'leads' | 'relances' | 'videos' | 'speech' | 'commissions'
+type Tab = 'leads' | 'relances' | 'videos' | 'speech' | 'commissions' | 'plaquette'
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'leads', label: 'Leads' },
   { key: 'relances', label: 'Relances' },
   { key: 'videos', label: 'Videos' },
   { key: 'speech', label: 'Speech' },
+  { key: 'plaquette', label: 'Plaquette' },
   { key: 'commissions', label: 'Commissions' },
 ]
+
+const LEAD_LOCATIONS = ['Paris', 'Lyon', 'Marseille', 'Toulouse', 'Bordeaux', 'Lille', 'Nantes', 'Strasbourg', 'Nice', 'Rennes', 'Montpellier', 'France']
 
 const STATUS_LABELS: Record<string, string> = {
   A_CONTACTER: 'A contacter',
@@ -135,17 +142,218 @@ export default function CommercialDetailPage() {
 
   // Leads
   const [prospects, setProspects] = useState<Prospect[]>([])
-  const [leadFilter, setLeadFilter] = useState<string>('ALL')
+  const [leadFilter, setLeadFilter] = useState<string>('A_CONTACTER')
   const [showLeadModal, setShowLeadModal] = useState(false)
   const [editLead, setEditLead] = useState<Prospect | null>(null)
   const [leadForm, setLeadForm] = useState({ firstName: '', lastName: '', company: '', email: '', phone: '', budget: '', source: '', notes: '' })
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [importing, setImporting] = useState(false)
-  const [showDeleteAllModal, setShowDeleteAllModal] = useState(false)
-  const [deleteConfirmText, setDeleteConfirmText] = useState('')
-  const [deletingAll, setDeletingAll] = useState(false)
   const [statusDropdownId, setStatusDropdownId] = useState<string | null>(null)
   const statusDropdownRef = useRef<HTMLDivElement>(null)
+  const [leadSearchQuery, setLeadSearchQuery] = useState('')
+
+  // Email modal
+  const [showEmailModal, setShowEmailModal] = useState(false)
+  const [emailTarget, setEmailTarget] = useState<Prospect | null>(null)
+  const [emailForm, setEmailForm] = useState({ senderId: 'kameo', senderName: 'Jonathan Derai', subject: '', rawHtml: '', scheduled: false, scheduledDate: '', scheduledTime: '' })
+  const [emailCivilite, setEmailCivilite] = useState<'M.' | 'Mme'>('M.')
+  const [emailContactLastName, setEmailContactLastName] = useState('')
+  const [sendingEmail, setSendingEmail] = useState(false)
+  const [emailTemplateId, setEmailTemplateId] = useState<string | null>(null)
+
+  const SENDER_ACCOUNTS = [
+    { id: 'benjamin', label: 'Benjamin Dayan' },
+    { id: 'kameo', label: 'Jonathan Derai (contact@agence-kameo.fr)' },
+    { id: 'louison', label: 'Louison Boutet' },
+  ]
+
+  // Signatures loaded from API (synced with Paramètres > Signatures)
+  interface EmailSignature { id: string; name: string; fullName: string; role: string; company: string; phone: string; email: string; website: string; photoUrl: string; logoUrl: string }
+  const [emailSignatures, setEmailSignatures] = useState<EmailSignature[]>([])
+  useEffect(() => {
+    fetch('/api/settings?key=email_signatures').then(r => r.json()).then(data => {
+      if (data.value) try { setEmailSignatures(JSON.parse(data.value)) } catch { /* */ }
+    }).catch(() => { /* */ })
+  }, [])
+
+  function signatureToHtml(sig: EmailSignature) {
+    const baseUrl = 'https://kameo-tool.vercel.app'
+    return `<table cellpadding="0" cellspacing="0" style="margin-top:28px;border-top:1px solid #eee;padding-top:24px;">
+<tr>
+<td style="padding-right:40px;vertical-align:top;width:90px;">
+<img src="${baseUrl}${sig.photoUrl}" alt="${sig.fullName}" width="56" height="56" style="border-radius:50%;display:block;width:56px;height:56px;object-fit:cover;" />
+<div style="height:20px;"></div>
+<img src="${baseUrl}${sig.logoUrl}" alt="${sig.company}" width="80" style="border-radius:8px;display:block;width:80px;object-fit:contain;" />
+</td>
+<td style="vertical-align:top;padding-left:16px;">
+<p style="margin:0;font-size:14px;font-weight:600;color:#1a1a2e;">${sig.fullName}</p>
+<p style="margin:3px 0 0;font-size:12px;color:#888;">${sig.role}</p>
+<p style="margin:3px 0 0;font-size:12px;color:#888;">${sig.company}</p>
+<p style="margin:14px 0 0;font-size:12px;">
+<a href="tel:+33${sig.phone.replace(/\s/g, '').replace(/^0/, '')}" style="color:#666;text-decoration:none;">${sig.phone}</a>
+</p>
+<p style="margin:3px 0 0;font-size:12px;">
+<a href="mailto:${sig.email}" style="color:#666;text-decoration:none;">${sig.email}</a>
+</p>
+<p style="margin:3px 0 0;font-size:12px;">
+<a href="https://${sig.website}" target="_blank" style="color:#E14B89;text-decoration:none;font-weight:500;">${sig.website}</a>
+</p>
+</td>
+</tr>
+</table>`
+  }
+
+  const FALLBACK_SIGNATURES: EmailSignature[] = [
+    { id: 'benjamin', name: 'Benjamin', fullName: 'Benjamin Dayan', role: 'Directeur commercial', company: 'Agence Kameo', phone: '06 76 23 00 37', email: 'contact@agence-kameo.fr', website: 'www.agence-kameo.fr', photoUrl: '/benjamin-dayan.png', logoUrl: '/kameo-logo-light.png' },
+    { id: 'louison', name: 'Louison', fullName: 'Louison Boutet', role: 'Directeur Général', company: 'Agence Kameo', phone: '06 14 17 06 24', email: 'louison.boutet@agence-kameo.fr', website: 'www.agence-kameo.fr', photoUrl: '/louison-boutet.png', logoUrl: '/kameo-logo-light.png' },
+    { id: 'jonathan', name: 'Jonathan', fullName: 'Jonathan Derai', role: 'Commercial', company: 'Agence Kameo', phone: '07 66 63 66 96', email: 'derai.jonathan@agence-kameo.fr', website: 'www.agence-kameo.fr', photoUrl: '/jonathan-derai.png', logoUrl: '/kameo-logo-light.png' },
+  ]
+
+  function buildSignatureBlock(senderId: string) {
+    const sigName = senderId === 'kameo' ? 'jonathan' : senderId
+    const sigs = emailSignatures.length > 0 ? emailSignatures : FALLBACK_SIGNATURES
+    const sig = sigs.find(s => s.id === sigName || s.name.toLowerCase() === sigName)
+    if (!sig) return ''
+    return signatureToHtml(sig)
+  }
+
+  function buildEmailHtml(bodyContent: string, senderId: string) {
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;padding:32px 0;">
+<tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.08);">
+<tr><td style="background:#000000;padding:28px 32px;">
+<img src="https://kameo-tool.vercel.app/kameo-logo.png" alt="Kameo" height="32" style="height:32px;" />
+</td></tr>
+<tr><td style="padding:32px 32px 28px;">
+${bodyContent}
+${buildSignatureBlock(senderId)}
+</td></tr>
+</table>
+</td></tr>
+</table>
+</body></html>`
+  }
+
+  const EMAIL_TEMPLATES: { id: string; name: string; emoji: string; desc: string; subject: (greeting: string) => string; html: (greeting: string, senderId: string) => string }[] = [
+    {
+      id: 'blank',
+      name: 'Email vide',
+      emoji: '📝',
+      desc: 'Commencer de zéro',
+      subject: () => '',
+      html: (greeting, senderId) => buildEmailHtml(`<p style="margin:0 0 16px;font-size:15px;color:#1a1a2e;line-height:1.6;">Bonjour ${greeting},</p>
+<p style="margin:0 0 16px;font-size:15px;color:#444;line-height:1.6;"></p>
+<p style="margin:0;font-size:15px;color:#444;line-height:1.6;">Bien cordialement,</p>`, senderId),
+    },
+    {
+      id: 'webapp',
+      name: 'Web App / CRM',
+      emoji: '🚀',
+      desc: 'Suite à un appel — présentation CRM / ERP sur-mesure',
+      subject: () => 'Suite à notre échange — Votre outil de gestion sur-mesure | Kameo',
+      html: (greeting, senderId) => buildEmailHtml(`<p style="margin:0 0 16px;font-size:15px;color:#1a1a2e;line-height:1.6;">Bonjour ${greeting},</p>
+<p style="margin:0 0 20px;font-size:15px;color:#444;line-height:1.6;">Suite à notre échange, je me permets de vous envoyer comme convenu un aperçu de ce que nous pouvons mettre en place pour vous.</p>
+
+<p style="margin:0 0 8px;font-size:18px;font-weight:700;color:#1a1a2e;">Un outil conçu pour <span style="color:#E14B89;">votre</span> activité</p>
+<p style="margin:0 0 20px;font-size:15px;color:#444;line-height:1.6;">Chez <strong style="color:#1a1a2e;">Kameo</strong>, nous ne vendons pas de logiciel. Nous construisons <strong style="color:#1a1a2e;">votre propre application métier</strong> — CRM, ERP, outil de gestion — 100% taillée pour la façon dont vous travaillez.</p>
+
+<table cellpadding="0" cellspacing="0" style="margin:0 0 24px;width:100%;">
+<tr>
+<td style="width:50%;padding:0 8px 12px 0;vertical-align:top;">
+<table cellpadding="0" cellspacing="0" style="width:100%;background:#f8f9fa;border-radius:12px;overflow:hidden;">
+<tr><td style="padding:20px;">
+<p style="margin:0 0 6px;font-size:28px;">📊</p>
+<p style="margin:0 0 4px;font-size:13px;font-weight:700;color:#1a1a2e;">Tableau de bord</p>
+<p style="margin:0;font-size:12px;color:#888;line-height:1.4;">Vos KPIs clés en un coup d'œil, en temps réel</p>
+</td></tr>
+</table>
+</td>
+<td style="width:50%;padding:0 0 12px 8px;vertical-align:top;">
+<table cellpadding="0" cellspacing="0" style="width:100%;background:#f8f9fa;border-radius:12px;overflow:hidden;">
+<tr><td style="padding:20px;">
+<p style="margin:0 0 6px;font-size:28px;">🤝</p>
+<p style="margin:0 0 4px;font-size:13px;font-weight:700;color:#1a1a2e;">Gestion clients</p>
+<p style="margin:0;font-size:12px;color:#888;line-height:1.4;">Contacts, historique, relances — tout centralisé</p>
+</td></tr>
+</table>
+</td>
+</tr>
+<tr>
+<td style="width:50%;padding:0 8px 12px 0;vertical-align:top;">
+<table cellpadding="0" cellspacing="0" style="width:100%;background:#f8f9fa;border-radius:12px;overflow:hidden;">
+<tr><td style="padding:20px;">
+<p style="margin:0 0 6px;font-size:28px;">📄</p>
+<p style="margin:0 0 4px;font-size:13px;font-weight:700;color:#1a1a2e;">Devis & Factures</p>
+<p style="margin:0;font-size:12px;color:#888;line-height:1.4;">Génération PDF, signature électronique, envoi auto</p>
+</td></tr>
+</table>
+</td>
+<td style="width:50%;padding:0 0 12px 8px;vertical-align:top;">
+<table cellpadding="0" cellspacing="0" style="width:100%;background:#f8f9fa;border-radius:12px;overflow:hidden;">
+<tr><td style="padding:20px;">
+<p style="margin:0 0 6px;font-size:28px;">⚡</p>
+<p style="margin:0 0 4px;font-size:13px;font-weight:700;color:#1a1a2e;">Automatisations</p>
+<p style="margin:0;font-size:12px;color:#888;line-height:1.4;">Relances, notifications, emails — sans y penser</p>
+</td></tr>
+</table>
+</td>
+</tr>
+</table>
+
+<table cellpadding="0" cellspacing="0" style="margin:0 0 24px;width:100%;">
+<tr><td style="padding:16px 20px;background:linear-gradient(135deg,#fdf2f8,#fff7ed);border-radius:12px;border:1px solid #f3d5e4;">
+<p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#1a1a2e;">Et aussi :</p>
+<p style="margin:0;font-size:13px;color:#555;line-height:1.8;">Suivi de projets & tâches · Agenda synchronisé · Messagerie interne · Gestion d'équipe · Accessible sur tous vos appareils · Données 100% sécurisées</p>
+</td></tr>
+</table>
+
+<p style="margin:0 0 8px;font-size:18px;font-weight:700;color:#1a1a2e;">Envie d'en savoir plus ?</p>
+<p style="margin:0 0 24px;font-size:15px;color:#444;line-height:1.6;">Je vous propose un échange de <strong style="color:#1a1a2e;">15 minutes</strong> pour voir concrètement ce que ça donnerait pour vous — sans engagement.</p>
+<table cellpadding="0" cellspacing="0" style="margin:0 0 28px;"><tr><td style="background:linear-gradient(135deg,#E14B89,#F8903C);border-radius:10px;padding:14px 32px;">
+<a href="https://calendly.com/contact-agence-kameo/30min" target="_blank" style="color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;display:block;text-align:center;">Réserver un créneau →</a>
+</td></tr></table>
+<p style="margin:0;font-size:15px;color:#444;line-height:1.6;">Bien cordialement,</p>`, senderId),
+    },
+    {
+      id: 'signature',
+      name: 'Signature / Coordonnées',
+      emoji: '✉️',
+      desc: 'Suite à un appel — transmettre nos coordonnées',
+      subject: () => 'Nos coordonnées — Kameo',
+      html: (greeting, senderId) => buildEmailHtml(`<p style="margin:0 0 16px;font-size:15px;color:#1a1a2e;line-height:1.6;">Bonjour ${greeting},</p>
+<p style="margin:0 0 20px;font-size:15px;color:#444;line-height:1.6;">Suite à notre échange, voici nos coordonnées comme convenu :</p>
+<table cellpadding="0" cellspacing="0" style="margin:0 0 24px;width:100%;background:#f8f9fa;border-radius:12px;overflow:hidden;">
+<tr><td style="padding:24px;">
+<p style="margin:0 0 4px;font-size:16px;font-weight:700;color:#1a1a2e;">Agence Kameo</p>
+<p style="margin:0 0 16px;font-size:13px;color:#888;">Agence digitale sur-mesure</p>
+<table cellpadding="0" cellspacing="0" style="width:100%;">
+<tr><td style="padding:6px 0;font-size:14px;color:#444;">📞 <a href="tel:+33676230037" style="color:#444;text-decoration:none;">06 76 23 00 37</a></td></tr>
+<tr><td style="padding:6px 0;font-size:14px;color:#444;">📧 <a href="mailto:contact@agence-kameo.fr" style="color:#444;text-decoration:none;">contact@agence-kameo.fr</a></td></tr>
+<tr><td style="padding:6px 0;font-size:14px;">🌐 <a href="https://www.agence-kameo.fr" target="_blank" style="color:#E14B89;text-decoration:none;font-weight:500;">www.agence-kameo.fr</a></td></tr>
+<tr><td style="padding:6px 0;font-size:14px;color:#444;">📍 9 rue des colonnes, Paris 75002</td></tr>
+</table>
+</td></tr>
+</table>
+<p style="margin:0 0 4px;font-size:15px;color:#444;line-height:1.6;">N'hésitez pas à nous recontacter pour toute question.</p>
+<p style="margin:0;font-size:15px;color:#444;line-height:1.6;">À très bientôt,</p>`, senderId),
+    },
+  ]
+
+  // Lead search (scraping)
+  interface LeadSearchItem { id: string; keyword: string; location: string; resultCount: number; withEmail: number; createdAt: string }
+  const [leadSearches, setLeadSearches] = useState<LeadSearchItem[]>([])
+  const [activeLeadSearchId, setActiveLeadSearchId] = useState<string | null>(null)
+  const [showLeadScrapeModal, setShowLeadScrapeModal] = useState(false)
+  const [leadScrapeKeyword, setLeadScrapeKeyword] = useState('')
+  const [leadScrapeLocations, setLeadScrapeLocations] = useState<string[]>(['Paris'])
+  const [leadScraping, setLeadScraping] = useState(false)
+  const [leadScrapeProgress, setLeadScrapeProgress] = useState(0)
+  const [leadScrapeMessage, setLeadScrapeMessage] = useState('')
+  const [leadScrapeMode, setLeadScrapeMode] = useState<'scrape' | 'excel'>('scrape')
+
+  // Plaquette
+  const [plaqLang, setPlaqLang] = useState<'fr' | 'en' | 'es'>('fr')
 
   // Relances
   const [relances, setRelances] = useState<Relance[]>([])
@@ -163,6 +371,7 @@ export default function CommercialDetailPage() {
   const [editSpeech, setEditSpeech] = useState<Speech | null>(null)
   const [speechForm, setSpeechForm] = useState({ title: '', content: '' })
   const [expandedSpeech, setExpandedSpeech] = useState<string | null>(null)
+  const [viewSpeech, setViewSpeech] = useState<Speech | null>(null)
 
   // Commissions
   const [commissions, setCommissions] = useState<Commission[]>([])
@@ -189,9 +398,14 @@ export default function CommercialDetailPage() {
 
   // ---- Load tab data ----
   const loadLeads = useCallback(async () => {
-    const res = await fetch(`/api/prospects?userId=${id}`)
+    const [res, searchRes] = await Promise.all([
+      fetch(`/api/prospects?userId=${id}`),
+      fetch(`/api/leads/searches?userId=${id}`),
+    ])
     const data = await res.json()
     if (Array.isArray(data)) setProspects(data)
+    const searchData = await searchRes.json()
+    if (Array.isArray(searchData)) setLeadSearches(searchData)
   }, [id])
 
   const loadRelances = useCallback(async () => {
@@ -227,6 +441,23 @@ export default function CommercialDetailPage() {
     else if (activeTab === 'commissions') { loadCommissions(); loadLeads() }
   }, [activeTab, id, loadLeads, loadRelances, loadVideos, loadSpeeches, loadCommissions])
 
+  const refreshData = useCallback(() => {
+    if (!id) return
+    // Refresh user info
+    fetch('/api/users').then(r => r.json()).then((users: UserInfo[]) => {
+      const found = users.find(u => u.id === id)
+      setUser(found ?? null)
+    }).catch(() => {})
+    // Refresh active tab data
+    if (activeTab === 'leads') loadLeads()
+    else if (activeTab === 'relances') { loadRelances(); loadLeads() }
+    else if (activeTab === 'videos') loadVideos()
+    else if (activeTab === 'speech') loadSpeeches()
+    else if (activeTab === 'commissions') { loadCommissions(); loadLeads() }
+  }, [id, activeTab, loadLeads, loadRelances, loadVideos, loadSpeeches, loadCommissions])
+
+  usePolling(refreshData)
+
   // ---- Lead handlers ----
   function openLeadModal(item?: Prospect) {
     if (item) {
@@ -255,6 +486,8 @@ export default function CommercialDetailPage() {
     e.preventDefault()
     const payload = {
       name: `${leadForm.firstName.trim()} ${leadForm.lastName.trim()}`.trim(),
+      firstName: leadForm.firstName.trim() || null,
+      lastName: leadForm.lastName.trim() || null,
       company: leadForm.company || null,
       email: leadForm.email || null,
       phone: leadForm.phone || null,
@@ -264,39 +497,34 @@ export default function CommercialDetailPage() {
       assignedTo: id,
       status: editLead?.status ?? 'A_CONTACTER',
     }
-    if (editLead) {
-      const res = await fetch(`/api/prospects/${editLead.id}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
-      })
-      const updated = await res.json()
-      setProspects(prev => prev.map(p => p.id === editLead.id ? updated : p))
-    } else {
-      const res = await fetch('/api/prospects', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
-      })
-      const created = await res.json()
-      setProspects(prev => [created, ...prev])
+    try {
+      if (editLead) {
+        const res = await fetch(`/api/prospects/${editLead.id}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+        })
+        if (!res.ok) { const err = await res.json().catch(() => ({})); alert(err.error || 'Erreur lors de la modification'); return }
+        const updated = await res.json()
+        setProspects(prev => prev.map(p => p.id === editLead.id ? updated : p))
+      } else {
+        const res = await fetch('/api/prospects', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+        })
+        if (!res.ok) { const err = await res.json().catch(() => ({})); alert(err.error || 'Erreur lors de la création'); return }
+        const created = await res.json()
+        setProspects(prev => [created, ...prev])
+        // Switch to manual leads view so the new lead is visible
+        if (activeLeadSearchId !== 'manual') setActiveLeadSearchId('manual')
+      }
+      setShowLeadModal(false)
+    } catch {
+      alert('Erreur réseau')
     }
-    setShowLeadModal(false)
   }
 
   async function deleteLead(leadId: string) {
     if (!confirm('Supprimer ce lead ?')) return
     await fetch(`/api/prospects/${leadId}`, { method: 'DELETE' })
     setProspects(prev => prev.filter(p => p.id !== leadId))
-  }
-
-  async function deleteAllLeads() {
-    setDeletingAll(true)
-    try {
-      await fetch(`/api/prospects?userId=${id}`, { method: 'DELETE' })
-      setProspects([])
-      setRelances([])
-      setShowDeleteAllModal(false)
-      setDeleteConfirmText('')
-    } finally {
-      setDeletingAll(false)
-    }
   }
 
   async function handleImportExcel(e: React.ChangeEvent<HTMLInputElement>) {
@@ -333,6 +561,69 @@ export default function CommercialDetailPage() {
     if (res.ok) {
       const updated = await res.json()
       setProspects(prev => prev.map(p => p.id === leadId ? updated : p))
+    }
+  }
+
+  // ---- Email lead ----
+  function openEmailModal(lead: Prospect) {
+    setEmailTarget(lead)
+    setEmailTemplateId(null)
+    const parts = lead.name.split(' ')
+    setEmailCivilite('M.')
+    setEmailContactLastName(parts.slice(1).join(' ') || parts[0] || '')
+    setEmailForm({
+      senderId: 'kameo',
+      senderName: 'Jonathan Derai',
+      subject: '',
+      rawHtml: '',
+      scheduled: false,
+      scheduledDate: '',
+      scheduledTime: '',
+    })
+    setShowEmailModal(true)
+  }
+
+  function selectEmailTemplate(templateId: string) {
+    if (!emailTarget) return
+    const tpl = EMAIL_TEMPLATES.find(t => t.id === templateId)
+    if (!tpl) return
+    const greeting = `${emailCivilite === 'Mme' ? 'Madame' : 'Monsieur'} ${emailContactLastName.trim()}`
+    setEmailForm(prev => ({
+      ...prev,
+      subject: tpl.subject(greeting),
+      rawHtml: tpl.html(greeting, prev.senderId),
+    }))
+    setEmailTemplateId(templateId)
+  }
+
+  async function sendLeadEmail(e: React.FormEvent) {
+    e.preventDefault()
+    if (!emailTarget?.email) return
+    setSendingEmail(true)
+    try {
+      const res = await fetch('/api/email/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: emailTarget.email,
+          subject: emailForm.subject,
+          rawHtml: emailForm.rawHtml,
+          body: emailForm.rawHtml ? undefined : 'Voir la version HTML.',
+          senderId: emailForm.senderId,
+          senderName: emailForm.senderName,
+        }),
+      })
+      if (res.ok) {
+        setShowEmailModal(false)
+        alert('Email envoyé !')
+      } else {
+        const err = await res.json()
+        alert(err.error || 'Erreur lors de l\'envoi')
+      }
+    } catch {
+      alert('Erreur lors de l\'envoi')
+    } finally {
+      setSendingEmail(false)
     }
   }
 
@@ -489,10 +780,7 @@ export default function CommercialDetailPage() {
     setCommissions(prev => prev.filter(c => c.id !== commissionId))
   }
 
-  // ---- Filtered leads ----
-  const filteredLeads = leadFilter === 'ALL'
-    ? prospects
-    : prospects.filter(p => p.status === leadFilter)
+  // ---- Filtered leads (used inline in tab) ----
 
   // ---- Commission summary ----
   const totalCommissions = commissions.reduce((s, c) => s + c.amount, 0)
@@ -567,48 +855,130 @@ export default function CommercialDetailPage() {
       {activeTab === 'leads' && (
         <div>
           {/* Actions bar */}
-          <div className="flex flex-wrap items-center gap-3 mb-5 justify-end">
-            {isAdmin && prospects.length > 0 && (
-              <button onClick={() => setShowDeleteAllModal(true)} className="flex items-center gap-2 border border-red-500/30 hover:border-red-500/60 text-red-400 hover:text-red-300 px-4 py-2 rounded-xl text-sm transition-colors">
-                <Trash2 size={16} /> Supprimer tous les leads
-              </button>
-            )}
-            <button onClick={() => fileInputRef.current?.click()} disabled={importing} className="flex items-center gap-2 border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-white px-4 py-2 rounded-xl text-sm transition-colors">
-              {importing ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
-              Importer Excel
-            </button>
-            <button onClick={() => openLeadModal()} className="flex items-center gap-2 bg-gradient-to-r from-[#E14B89] to-[#F8903C] hover:opacity-90 text-white px-4 py-2 rounded-xl text-sm font-medium transition-opacity">
-              <Plus size={16} /> Ajouter un lead
-            </button>
-            <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleImportExcel} />
-          </div>
-
-          {/* Status filters */}
-          <div className="flex flex-wrap gap-2 mb-5">
-            {[{ key: 'ALL', label: 'Tous' }, ...Object.entries(STATUS_LABELS).map(([key, label]) => ({ key, label }))].map(f => (
-              <button
-                key={f.key}
-                onClick={() => setLeadFilter(f.key)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                  leadFilter === f.key
-                    ? 'bg-[#E14B89]/10 text-[#E14B89] border border-[#E14B89]/20'
-                    : 'bg-[#111118] border border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
-                }`}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Leads list */}
-          {filteredLeads.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-center">
-              <Briefcase size={24} className="text-slate-700 mb-3" />
-              <p className="text-slate-500 text-sm">Aucun lead</p>
+          <div className="flex flex-wrap items-center gap-3 mb-5 justify-between">
+            <div className="flex items-center gap-2">
+              {activeLeadSearchId && (
+                <button onClick={() => setActiveLeadSearchId(null)} className="flex items-center gap-1.5 text-slate-400 hover:text-white text-sm transition-colors">
+                  <ArrowLeft size={14} /> Toutes les listes
+                </button>
+              )}
             </div>
+            <div className="flex items-center gap-3">
+              <button onClick={() => openLeadModal()} className="flex items-center gap-2 border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-white px-4 py-2 rounded-xl text-sm transition-colors">
+                <Plus size={16} /> Ajouter manuellement
+              </button>
+              <button onClick={() => { setShowLeadScrapeModal(true); setLeadScrapeMode('scrape') }} className="flex items-center gap-2 bg-gradient-to-r from-[#E14B89] to-[#F8903C] hover:opacity-90 text-white px-4 py-2 rounded-xl text-sm font-medium transition-opacity">
+                <Plus size={16} /> Nouvelle liste
+              </button>
+              <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleImportExcel} />
+            </div>
+          </div>
+
+          {/* Search lists or lead detail */}
+          {!activeLeadSearchId ? (
+            <>
+              {/* Search lists overview */}
+              {leadSearches.length === 0 && prospects.filter(p => !p.leadSearchId).length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-20 text-center">
+                  <Briefcase size={24} className="text-slate-700 mb-3" />
+                  <p className="text-slate-500 text-sm mb-1">Aucun lead</p>
+                  <p className="text-slate-600 text-xs">Créez une nouvelle liste pour commencer la prospection</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {/* Manual leads (not in any search) */}
+                  {prospects.filter(p => !p.leadSearchId).length > 0 && (
+                    <div
+                      onClick={() => setActiveLeadSearchId('manual')}
+                      className="bg-[#111118] border border-slate-800 rounded-xl p-4 hover:border-slate-700 transition-colors cursor-pointer group"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-white text-sm font-medium group-hover:text-[#E14B89] transition-colors">Leads manuels</p>
+                          <p className="text-slate-500 text-xs mt-0.5">Ajoutés manuellement ou importés</p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-slate-400 text-sm font-medium">{prospects.filter(p => !p.leadSearchId).length}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {/* Search-based lists */}
+                  {leadSearches.map(search => (
+                    <div key={search.id} className="bg-[#111118] border border-slate-800 rounded-xl p-4 hover:border-slate-700 transition-colors cursor-pointer group">
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1 min-w-0" onClick={() => setActiveLeadSearchId(search.id)}>
+                          <p className="text-white text-sm font-medium group-hover:text-[#E14B89] transition-colors truncate">{search.keyword}</p>
+                          <p className="text-slate-500 text-xs mt-0.5">{search.location} · {search.resultCount} résultats · {search.withEmail} avec email · {new Date(search.createdAt).toLocaleDateString('fr-FR')}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation()
+                              if (!confirm(`Supprimer la liste "${search.keyword}" et tous ses leads ?`)) return
+                              await fetch('/api/leads/searches', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ searchId: search.id }) })
+                              setLeadSearches(prev => prev.filter(s => s.id !== search.id))
+                              setProspects(prev => prev.filter(p => p.leadSearchId !== search.id))
+                            }}
+                            className="p-1.5 text-slate-600 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
           ) : (
-            <div className="space-y-2">
-              {filteredLeads.map(lead => (
+            <>
+              {/* Status filters */}
+              <div className="flex flex-wrap gap-2 mb-5">
+                {Object.entries(STATUS_LABELS).filter(([key]) => !['DEVIS_TRANSMETTRE', 'DEVIS_ENVOYE', 'A_RELANCER'].includes(key)).map(([key, label]) => ({ key, label })).map(f => (
+                  <button
+                    key={f.key}
+                    onClick={() => setLeadFilter(f.key)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                      leadFilter === f.key
+                        ? 'bg-[#E14B89]/10 text-[#E14B89] border border-[#E14B89]/20'
+                        : 'bg-[#111118] border border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Search bar */}
+              <div className="relative mb-4">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                <input
+                  type="text"
+                  value={leadSearchQuery}
+                  onChange={e => setLeadSearchQuery(e.target.value)}
+                  placeholder="Rechercher un lead..."
+                  className="w-full bg-[#111118] border border-slate-800 rounded-xl pl-9 pr-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors placeholder:text-slate-600"
+                />
+              </div>
+
+              {/* Filtered leads for active search */}
+              {(() => {
+                const searchLeads = activeLeadSearchId === 'manual'
+                  ? prospects.filter(p => !p.leadSearchId)
+                  : prospects.filter(p => p.leadSearchId === activeLeadSearchId)
+                const q = leadSearchQuery.toLowerCase().trim()
+                const visibleLeads = searchLeads
+                  .filter(l => leadFilter === 'ALL' || l.status === leadFilter)
+                  .filter(l => !q || l.name.toLowerCase().includes(q) || l.company?.toLowerCase().includes(q) || l.email?.toLowerCase().includes(q) || l.phone?.includes(q))
+                return visibleLeads.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-20 text-center">
+                    <Briefcase size={24} className="text-slate-700 mb-3" />
+                    <p className="text-slate-500 text-sm">Aucun lead</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {visibleLeads.map(lead => (
                 <div
                   key={lead.id}
                   className="bg-[#111118] border border-slate-800 rounded-xl p-4 hover:border-slate-700 transition-colors group cursor-pointer"
@@ -629,7 +999,7 @@ export default function CommercialDetailPage() {
                       </button>
                       {statusDropdownId === lead.id && (
                         <div className="absolute top-full left-0 mt-1 bg-[#1a1a24] border border-slate-700 rounded-xl py-1 z-50 min-w-[180px] shadow-xl">
-                          {Object.entries(STATUS_LABELS).map(([key, label]) => (
+                          {Object.entries(STATUS_LABELS).filter(([key]) => !['DEVIS_TRANSMETTRE', 'DEVIS_ENVOYE', 'A_RELANCER'].includes(key)).map(([key, label]) => (
                             <button
                               key={key}
                               onClick={e => { e.stopPropagation(); changeLeadStatus(lead.id, key) }}
@@ -650,6 +1020,13 @@ export default function CommercialDetailPage() {
                         <Phone size={12} /> {lead.phone}
                       </span>
                     )}
+                    {lead.website && (
+                      <a href={lead.website.startsWith('http') ? lead.website : `https://${lead.website}`} target="_blank" rel="noopener noreferrer"
+                        onClick={e => e.stopPropagation()}
+                        className="hidden md:flex items-center gap-1.5 text-[#E14B89] hover:text-[#F8903C] text-xs flex-shrink-0 transition-colors">
+                        <Globe size={12} /> Site
+                      </a>
+                    )}
                     {lead.email && (
                       <span className="hidden lg:flex items-center gap-1.5 text-slate-500 text-xs truncate max-w-[180px] flex-shrink-0">
                         <Mail size={12} /> {lead.email}
@@ -660,6 +1037,15 @@ export default function CommercialDetailPage() {
                         {formatCurrency(lead.budget)}
                       </span>
                     )}
+                    {lead.email && (
+                      <button
+                        onClick={e => { e.stopPropagation(); openEmailModal(lead) }}
+                        className="p-1.5 text-slate-500 hover:text-[#E14B89] transition-colors flex-shrink-0"
+                        title="Envoyer un email"
+                      >
+                        <Send size={14} />
+                      </button>
+                    )}
                     <button
                       onClick={e => { e.stopPropagation(); deleteLead(lead.id) }}
                       className="p-1.5 text-slate-600 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 flex-shrink-0"
@@ -669,51 +1055,10 @@ export default function CommercialDetailPage() {
                   </div>
                 </div>
               ))}
-            </div>
-          )}
-
-          {/* Delete all leads modal */}
-          {showDeleteAllModal && (
-            <ModalOverlay onClose={() => { setShowDeleteAllModal(false); setDeleteConfirmText('') }}>
-              <div className="text-center">
-                <div className="mx-auto w-12 h-12 bg-red-500/15 rounded-full flex items-center justify-center mb-4">
-                  <AlertTriangle size={24} className="text-red-400" />
-                </div>
-                <h2 className="text-white font-semibold text-lg mb-2">Supprimer tous les leads</h2>
-                <p className="text-slate-400 text-sm mb-1">
-                  Cette action est <span className="text-red-400 font-semibold">irréversible</span>. Tous les leads ({prospects.length}) et leurs relances associées seront supprimés.
-                </p>
-                <p className="text-slate-400 text-sm mb-5">
-                  Tapez <span className="text-white font-mono font-semibold">SUPPRIMER</span> pour confirmer.
-                </p>
-                <input
-                  type="text"
-                  value={deleteConfirmText}
-                  onChange={e => setDeleteConfirmText(e.target.value)}
-                  placeholder="Tapez SUPPRIMER"
-                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-4 py-3 text-white text-sm text-center focus:outline-none focus:border-red-500 transition-colors mb-4"
-                  autoFocus
-                />
-                <div className="flex gap-3">
-                  <button
-                    type="button"
-                    onClick={() => { setShowDeleteAllModal(false); setDeleteConfirmText('') }}
-                    className="flex-1 border border-slate-700 hover:border-slate-600 text-slate-400 px-4 py-2.5 rounded-xl text-sm transition-colors"
-                  >
-                    Annuler
-                  </button>
-                  <button
-                    type="button"
-                    onClick={deleteAllLeads}
-                    disabled={deleteConfirmText !== 'SUPPRIMER' || deletingAll}
-                    className="flex-1 flex items-center justify-center gap-2 bg-red-500 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-colors"
-                  >
-                    {deletingAll ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
-                    {deletingAll ? 'Suppression...' : 'Tout supprimer'}
-                  </button>
-                </div>
-              </div>
-            </ModalOverlay>
+                  </div>
+                )
+              })()}
+            </>
           )}
 
           {/* Lead modal */}
@@ -762,6 +1107,288 @@ export default function CommercialDetailPage() {
                 <ModalActions onCancel={() => setShowLeadModal(false)} submitLabel={editLead ? 'Sauvegarder' : 'Creer'} />
               </form>
             </ModalOverlay>
+          )}
+
+          {/* Email modal */}
+          {showEmailModal && emailTarget && (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className={`bg-[#111118] border border-slate-800 rounded-2xl w-full relative max-h-[90vh] overflow-y-auto ${emailTemplateId ? 'max-w-2xl' : 'max-w-lg'}`}>
+                <button onClick={() => setShowEmailModal(false)} className="absolute top-4 right-4 text-slate-500 hover:text-white z-10"><X size={18} /></button>
+                <div className="p-6">
+                  <h2 className="text-white font-semibold text-lg mb-1">Envoyer un email</h2>
+                  <p className="text-slate-500 text-xs mb-5">
+                    À : <span className="text-slate-300">{emailTarget.name}</span> — <span className="text-slate-400">{emailTarget.email}</span>
+                  </p>
+                  {!emailTemplateId ? (
+                    /* Civilité + Nom + Template picker */
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-3 gap-3">
+                        <div>
+                          <label className={labelClass}>Civilité *</label>
+                          <select value={emailCivilite} onChange={e => setEmailCivilite(e.target.value as 'M.' | 'Mme')} className={selectClass}>
+                            <option value="M.">Monsieur</option>
+                            <option value="Mme">Madame</option>
+                          </select>
+                        </div>
+                        <div className="col-span-2">
+                          <label className={labelClass}>Nom *</label>
+                          <input value={emailContactLastName} onChange={e => setEmailContactLastName(e.target.value)} placeholder="Nom de famille" className={inputClass} />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <label className={labelClass}>Choisir un template</label>
+                        {EMAIL_TEMPLATES.map(tpl => (
+                          <button
+                            key={tpl.id}
+                            disabled={!emailContactLastName.trim()}
+                            onClick={() => selectEmailTemplate(tpl.id)}
+                            className="w-full text-left bg-[#1a1a24] border border-slate-700 hover:border-[#E14B89]/50 rounded-xl p-4 transition-colors group disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            <div className="flex items-center gap-3">
+                              <span className="text-xl">{tpl.emoji}</span>
+                              <div className="min-w-0">
+                                <p className="text-white text-sm font-medium group-hover:text-[#E14B89] transition-colors">{tpl.name}</p>
+                                <p className="text-slate-500 text-xs mt-0.5">{tpl.desc}</p>
+                              </div>
+                            </div>
+                          </button>
+                        ))}
+                        {!emailContactLastName.trim() && (
+                          <p className="text-slate-600 text-xs text-center mt-2">Renseignez le nom pour choisir un template</p>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    /* Email form */
+                    <form onSubmit={sendLeadEmail} className="space-y-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <button type="button" onClick={() => setEmailTemplateId(null)} className="text-slate-500 hover:text-white transition-colors">
+                          <ArrowLeft size={14} />
+                        </button>
+                        <span className="text-slate-500 text-xs">Template : <span className="text-slate-300">{EMAIL_TEMPLATES.find(t => t.id === emailTemplateId)?.name}</span></span>
+                      </div>
+                      <div>
+                        <label className={labelClass}>Expéditeur</label>
+                        <select
+                          value={emailForm.senderId}
+                          onChange={e => {
+                            const account = SENDER_ACCOUNTS.find(a => a.id === e.target.value)
+                            setEmailForm({ ...emailForm, senderId: e.target.value, senderName: account?.label || '' })
+                          }}
+                          className={selectClass}
+                        >
+                          {SENDER_ACCOUNTS.map(a => (
+                            <option key={a.id} value={a.id}>{a.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className={labelClass}>Objet</label>
+                        <input
+                          required
+                          value={emailForm.subject}
+                          onChange={e => setEmailForm({ ...emailForm, subject: e.target.value })}
+                          className={inputClass}
+                        />
+                      </div>
+                      <div>
+                        <label className="flex items-center justify-between mb-1.5">
+                          <span className={labelClass + ' mb-0'}>Aperçu email</span>
+                        </label>
+                        <div className="rounded-xl overflow-hidden border border-slate-700 max-h-[400px] overflow-y-auto bg-[#f5f5f5]">
+                          <div dangerouslySetInnerHTML={{ __html: emailForm.rawHtml }} />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={emailForm.scheduled}
+                            onChange={e => setEmailForm({ ...emailForm, scheduled: e.target.checked })}
+                            className="rounded border-slate-600 bg-[#1a1a24] text-[#E14B89] focus:ring-[#E14B89]"
+                          />
+                          <span className="text-slate-400 text-sm flex items-center gap-1.5"><Clock size={13} /> Planifier l&apos;envoi</span>
+                        </label>
+                        {emailForm.scheduled && (
+                          <div className="grid grid-cols-2 gap-3 mt-3">
+                            <div>
+                              <label className={labelClass}>Date</label>
+                              <input
+                                type="date"
+                                value={emailForm.scheduledDate}
+                                onChange={e => setEmailForm({ ...emailForm, scheduledDate: e.target.value })}
+                                min={new Date().toISOString().slice(0, 10)}
+                                className={inputClass}
+                              />
+                            </div>
+                            <div>
+                              <label className={labelClass}>Heure</label>
+                              <input
+                                type="time"
+                                value={emailForm.scheduledTime}
+                                onChange={e => setEmailForm({ ...emailForm, scheduledTime: e.target.value })}
+                                className={inputClass}
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex gap-3 pt-2">
+                        <button type="button" onClick={() => setShowEmailModal(false)}
+                          className="flex-1 border border-slate-700 text-slate-400 hover:text-white py-2.5 rounded-xl text-sm transition-colors">
+                          Annuler
+                        </button>
+                        <button type="submit" disabled={sendingEmail}
+                          className="flex-1 bg-gradient-to-r from-[#E14B89] to-[#F8903C] hover:opacity-90 disabled:opacity-40 text-white py-2.5 rounded-xl text-sm font-medium flex items-center justify-center gap-2">
+                          {sendingEmail ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                          {emailForm.scheduled ? 'Planifier' : 'Envoyer'}
+                        </button>
+                      </div>
+                    </form>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Scrape / Import modal */}
+          {showLeadScrapeModal && (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-[#111118] border border-slate-800 rounded-2xl p-6 w-full max-w-md relative">
+                <button onClick={() => setShowLeadScrapeModal(false)} className="absolute top-4 right-4 text-slate-500 hover:text-white"><X size={18} /></button>
+                <h2 className="text-white font-semibold text-lg mb-5">Nouvelle liste</h2>
+
+                {/* Mode toggle */}
+                <div className="flex bg-[#0d0d14] rounded-xl p-0.5 mb-5">
+                  <button onClick={() => setLeadScrapeMode('scrape')}
+                    className={`flex-1 py-2 rounded-lg text-xs font-medium transition-all ${leadScrapeMode === 'scrape' ? 'bg-[#E14B89]/10 text-[#E14B89]' : 'text-slate-400'}`}>
+                    Scraping Google Maps
+                  </button>
+                  <button onClick={() => setLeadScrapeMode('excel')}
+                    className={`flex-1 py-2 rounded-lg text-xs font-medium transition-all ${leadScrapeMode === 'excel' ? 'bg-[#E14B89]/10 text-[#E14B89]' : 'text-slate-400'}`}>
+                    Importer Excel
+                  </button>
+                </div>
+
+                {leadScrapeMode === 'scrape' ? (
+                  <form onSubmit={async (e) => {
+                    e.preventDefault()
+                    if (!leadScrapeKeyword.trim() || leadScrapeLocations.length === 0 || leadScraping) return
+                    setLeadScraping(true)
+                    setLeadScrapeProgress(0)
+                    setLeadScrapeMessage('Lancement...')
+                    let lastSearchId: string | null = null
+                    try {
+                      for (const loc of leadScrapeLocations) {
+                        setLeadScrapeMessage(`${loc} : Recherche...`)
+                        setLeadScrapeProgress(0)
+                        const res = await fetch('/api/leads/search', {
+                          method: 'POST', headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ keyword: leadScrapeKeyword, location: loc, userId: id }),
+                        })
+                        if (!res.ok) continue
+                        const reader = res.body?.getReader()
+                        const decoder = new TextDecoder()
+                        let needsScraping = false
+                        if (reader) {
+                          let buffer = ''
+                          while (true) {
+                            const { done, value } = await reader.read()
+                            if (done) break
+                            buffer += decoder.decode(value, { stream: true })
+                            const lines = buffer.split('\n\n')
+                            buffer = lines.pop() || ''
+                            for (const line of lines) {
+                              if (!line.startsWith('data: ')) continue
+                              try {
+                                const data = JSON.parse(line.slice(6))
+                                if (data.progress !== undefined) setLeadScrapeProgress(data.progress)
+                                if (data.message) setLeadScrapeMessage(data.message)
+                                if (data.searchId) lastSearchId = data.searchId
+                                if (data.needsScraping) needsScraping = true
+                              } catch { /* */ }
+                            }
+                          }
+                        }
+                        // Batch scrape emails (like partners)
+                        if (needsScraping && lastSearchId) {
+                          setLeadScrapeMessage('Scraping des emails...')
+                          let scraping = true
+                          while (scraping) {
+                            const batchRes = await fetch('/api/leads/scrape-batch', {
+                              method: 'POST', headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ searchId: lastSearchId }),
+                            })
+                            const batchData = await batchRes.json()
+                            if (batchData.status === 'done') {
+                              scraping = false
+                              setLeadScrapeMessage(`Terminé ! ${batchData.withEmail || 0} emails trouvés`)
+                              setLeadScrapeProgress(100)
+                            } else if (batchData.status === 'scraping') {
+                              const pct = batchData.total > 0 ? Math.round((batchData.scraped / batchData.total) * 100) : 50
+                              setLeadScrapeProgress(pct)
+                              setLeadScrapeMessage(`Emails : ${batchData.scraped}/${batchData.total} traités (${batchData.batchFound} trouvés)`)
+                            } else {
+                              scraping = false
+                            }
+                          }
+                        }
+                      }
+                      loadLeads()
+                      setShowLeadScrapeModal(false)
+                      setLeadScrapeKeyword('')
+                      if (lastSearchId) setActiveLeadSearchId(lastSearchId)
+                    } catch { alert('Erreur lors du scraping') } finally {
+                      setLeadScraping(false); setLeadScrapeProgress(0); setLeadScrapeMessage('')
+                    }
+                  }} className="space-y-4">
+                    <div>
+                      <label className="block text-slate-400 text-xs mb-1.5">Secteur d&apos;activité *</label>
+                      <input value={leadScrapeKeyword} onChange={e => setLeadScrapeKeyword(e.target.value)}
+                        placeholder="ex: restaurant, avocat, agence immobilière..."
+                        className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89]" />
+                    </div>
+                    <div>
+                      <label className="block text-slate-400 text-xs mb-1.5">Villes ({leadScrapeLocations.length})</label>
+                      <div className="grid grid-cols-3 gap-1.5 max-h-40 overflow-y-auto">
+                        {LEAD_LOCATIONS.map(l => (
+                          <button key={l} type="button"
+                            onClick={() => setLeadScrapeLocations(prev => prev.includes(l) ? prev.filter(x => x !== l) : [...prev, l])}
+                            className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all text-left ${
+                              leadScrapeLocations.includes(l) ? 'bg-[#E14B89]/15 border border-[#E14B89]/40 text-white' : 'bg-[#1a1a24] border border-slate-800 text-slate-400'
+                            }`}>
+                            {l}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    {leadScraping && (
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-400 truncate mr-2">{leadScrapeMessage}</span>
+                          <span className="text-white font-medium flex-shrink-0">{leadScrapeProgress}%</span>
+                        </div>
+                        <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                          <div className="h-full rounded-full transition-all duration-500" style={{ width: `${leadScrapeProgress}%`, background: 'linear-gradient(135deg, #E14B89, #F8903C)' }} />
+                        </div>
+                      </div>
+                    )}
+                    <button type="submit" disabled={leadScraping || !leadScrapeKeyword.trim() || leadScrapeLocations.length === 0}
+                      className="w-full bg-gradient-to-r from-[#E14B89] to-[#F8903C] hover:opacity-90 text-white py-2.5 rounded-xl text-sm font-medium transition-opacity disabled:opacity-40">
+                      {leadScraping ? 'Scraping en cours...' : 'Lancer la recherche'}
+                    </button>
+                  </form>
+                ) : (
+                  <div className="space-y-4">
+                    <p className="text-slate-400 text-sm">Importez un fichier Excel (.xlsx) avec les colonnes : Nom, Entreprise, Email, Téléphone</p>
+                    <button onClick={() => { fileInputRef.current?.click(); setShowLeadScrapeModal(false) }}
+                      className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-[#E14B89] to-[#F8903C] hover:opacity-90 text-white py-2.5 rounded-xl text-sm font-medium transition-opacity">
+                      <Upload size={16} /> Choisir un fichier
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
           )}
         </div>
       )}
@@ -974,10 +1601,13 @@ export default function CommercialDetailPage() {
                         <p className="text-slate-600 text-xs mt-1 ml-[22px]">{formatDate(speech.updatedAt)}</p>
                       </div>
                       <div className="flex items-center gap-1 flex-shrink-0">
-                        <button onClick={e => { e.stopPropagation(); openSpeechModal(speech) }} className="p-1.5 text-slate-600 hover:text-white transition-colors">
+                        <button onClick={e => { e.stopPropagation(); setViewSpeech(speech) }} className="p-1.5 text-slate-600 hover:text-[#E14B89] transition-colors" title="Voir">
+                          <Eye size={14} />
+                        </button>
+                        <button onClick={e => { e.stopPropagation(); openSpeechModal(speech) }} className="p-1.5 text-slate-600 hover:text-white transition-colors" title="Modifier">
                           <Pencil size={14} />
                         </button>
-                        <button onClick={e => { e.stopPropagation(); deleteSpeech(speech.id) }} className="p-1.5 text-slate-600 hover:text-red-400 transition-colors">
+                        <button onClick={e => { e.stopPropagation(); deleteSpeech(speech.id) }} className="p-1.5 text-slate-600 hover:text-red-400 transition-colors" title="Supprimer">
                           <Trash2 size={14} />
                         </button>
                         <ChevronDown size={14} className={`text-slate-600 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
@@ -1012,6 +1642,87 @@ export default function CommercialDetailPage() {
                 <ModalActions onCancel={() => setShowSpeechModal(false)} submitLabel={editSpeech ? 'Sauvegarder' : 'Creer'} />
               </form>
             </ModalOverlay>
+          )}
+
+          {/* Speech reader modal */}
+          {viewSpeech && (
+            <div className="fixed inset-0 bg-[#0a0a12]/95 backdrop-blur-sm z-50 flex items-start justify-center overflow-y-auto">
+              <div className="w-full max-w-2xl mx-auto px-6 py-12 sm:py-16">
+                {/* Close + Download */}
+                <div className="fixed top-6 right-6 flex items-center gap-2 z-50">
+                  <button onClick={async () => {
+                    const el = document.getElementById('speech-view-content')
+                    if (!el) return
+                    try {
+                      const { default: html2canvas } = await import('html2canvas-pro')
+                      const canvas = await html2canvas(el, { scale: 2, backgroundColor: '#0a0a12', useCORS: true, logging: false })
+                      const base64 = canvas.toDataURL('image/png').split(',')[1]
+                      const bin = atob(base64)
+                      const bytes = new Uint8Array(bin.length)
+                      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+                      const { PDFDocument } = await import('pdf-lib')
+                      const pdfDoc = await PDFDocument.create()
+                      const img = await pdfDoc.embedPng(bytes)
+                      const pageWidth = 595.28
+                      const pageHeight = pageWidth * (img.height / img.width)
+                      const page = pdfDoc.addPage([pageWidth, pageHeight])
+                      page.drawImage(img, { x: 0, y: 0, width: pageWidth, height: pageHeight })
+                      const pdfBytes = await pdfDoc.save()
+                      const blob = new Blob([new Uint8Array(pdfBytes)], { type: 'application/pdf' })
+                      const url = URL.createObjectURL(blob)
+                      const a = document.createElement('a')
+                      a.href = url
+                      a.download = `speech-${viewSpeech.title.toLowerCase().replace(/[^a-z0-9]/g, '-')}.pdf`
+                      document.body.appendChild(a)
+                      a.click()
+                      document.body.removeChild(a)
+                      URL.revokeObjectURL(url)
+                    } catch (err) {
+                      alert('Erreur: ' + (err instanceof Error ? err.message : 'Erreur'))
+                    }
+                  }}
+                    className="p-2 text-slate-500 hover:text-[#E14B89] transition-colors bg-slate-800/50 rounded-xl hover:bg-slate-800" title="Télécharger PDF">
+                    <FileText size={20} />
+                  </button>
+                  <button onClick={() => setViewSpeech(null)}
+                    className="p-2 text-slate-500 hover:text-white transition-colors bg-slate-800/50 rounded-xl hover:bg-slate-800">
+                    <X size={20} />
+                  </button>
+                </div>
+
+                {/* Title */}
+                <div id="speech-view-content">
+                <h1 className="text-2xl sm:text-3xl font-bold text-white mb-2 leading-tight">{viewSpeech.title}</h1>
+                <p className="text-slate-500 text-sm mb-10">{formatDate(viewSpeech.updatedAt)}</p>
+
+                {/* Divider */}
+                <div className="w-12 h-0.5 rounded-full mb-10" style={{ background: 'linear-gradient(135deg, #E14B89, #F8903C)' }} />
+
+                {/* Content */}
+                <div className="prose prose-invert max-w-none">
+                  {viewSpeech.content.split('\n').map((line, i) => {
+                    const trimmed = line.trim()
+                    if (!trimmed) return <div key={i} className="h-4" />
+                    // Detect section headers (all caps, short lines, or lines ending with :)
+                    const isHeader = (trimmed === trimmed.toUpperCase() && trimmed.length < 60 && trimmed.length > 2) || trimmed.endsWith(':')
+                    if (isHeader) {
+                      return <h2 key={i} className="text-lg font-semibold text-white mt-8 mb-3">{trimmed}</h2>
+                    }
+                    // Detect bullet points
+                    if (trimmed.startsWith('•') || trimmed.startsWith('-') || trimmed.startsWith('→')) {
+                      return (
+                        <p key={i} className="text-slate-300 text-[15px] leading-relaxed pl-5 mb-1.5 relative">
+                          <span className="absolute left-0 text-[#E14B89]">{trimmed[0]}</span>
+                          {trimmed.slice(1).trim()}
+                        </p>
+                      )
+                    }
+                    return <p key={i} className="text-slate-300 text-[15px] leading-[1.8] mb-3">{trimmed}</p>
+                  })}
+                </div>
+                </div>
+              </div>
+            </div>
           )}
         </div>
       )}
@@ -1164,6 +1875,353 @@ export default function CommercialDetailPage() {
           )}
         </div>
       )}
+
+      {activeTab === 'plaquette' && (() => {
+        const langs = { fr: 'Français', en: 'English', es: 'Español' } as const
+        type Lang = keyof typeof langs
+        const t: Record<Lang, Record<string, string>> = {
+          fr: {
+            heroTitle: 'Votre outil de gestion\n100% sur mesure',
+            heroSub: 'Centralisez toute la gestion de votre entreprise dans une application web moderne, sécurisée et personnalisée.',
+            problemLabel: 'Le constat',
+            problemTitle: 'Vous perdez du temps et de l\'argent avec des outils dispersés',
+            problemDesc: 'Excel, Google Sheets, emails, WhatsApp... Vos données sont éparpillées, votre équipe perd en efficacité, et vous n\'avez aucune visibilité sur votre activité.',
+            crmLabel: 'Pourquoi pas un CRM classique ?',
+            crmTitle: 'Les outils généralistes ne répondent pas à vos besoins spécifiques',
+            crmDesc: 'Salesforce, HubSpot, Monday... Ces plateformes sont conçues pour tout le monde, donc pour personne en particulier. Vous payez pour des dizaines de fonctionnalités inutiles, et il vous manque toujours celle dont vous avez besoin. Avec notre solution, chaque fonctionnalité est pensée pour votre métier. Et le produit vous appartient.',
+            solutionLabel: 'Notre solution',
+            solutionTitle: 'Un outil qui centralise tout',
+            f1t: 'Suivi et relances clients', f1d: 'Pipeline commercial, historique des échanges, relances automatiques',
+            f2t: 'Devis et factures en 1 clic', f2d: 'Génération automatique, signature en ligne, suivi des paiements',
+            f3t: 'Agenda connecté', f3d: 'Synchronisation Google Calendar, planification, rendez-vous automatiques',
+            f4t: 'Gestion d\'équipe', f4d: 'Attribution des tâches, suivi d\'avancement, droits d\'accès personnalisés',
+            f5t: 'Automatisations', f5d: 'Emails automatiques, notifications, génération de documents, synchronisation outils externes',
+            f6t: 'Sécurité & hébergement', f6d: 'Données chiffrées, sauvegardes automatiques, hébergement haute disponibilité',
+            unlimitedTitle: 'Fonctionnalités illimitées',
+            unlimitedSub: 'Chaque fonctionnalité est développée sur mesure pour votre métier',
+            ownerTitle: 'Le produit vous appartient',
+            ownerDesc: 'Contrairement aux abonnements SaaS, votre application vous appartient. Pas de frais mensuels cachés, pas de dépendance à un éditeur, pas de données piégées.',
+            delay: '3 sem.', delayLabel: 'Délai de livraison',
+            price: '5 000€', priceLabel: 'À partir de (HT)',
+            custom: '100%', customLabel: 'Sur mesure',
+            howTitle: 'Comment ça marche',
+            s1t: 'Échange gratuit', s1d: 'On analyse vos besoins et on vous propose une solution adaptée',
+            s2t: 'Maquettes & validation', s2d: 'On conçoit les maquettes de votre application, vous validez chaque écran',
+            s3t: 'Développement', s3d: 'Notre équipe développe votre outil avec les dernières technologies',
+            s4t: 'Livraison & formation', s4d: 'Votre outil est en ligne, on vous forme à son utilisation',
+            ctaTitle: 'Prêt à centraliser votre activité ?',
+            ctaSub: 'Prenez rendez-vous pour une démonstration gratuite et sans engagement',
+            ctaBtn: 'Prendre rendez-vous',
+            footer1: 'Agence Kameo — Création de sites internet haut de gamme & applications web sur mesure',
+            footer2: 'contact@agence-kameo.fr — 06 76 23 00 37',
+            fl1: 'CRM personnalisé', fl2: 'Tableau de bord', fl3: 'Génération de PDF', fl4: 'Gestion documentaire', fl5: 'Notifications', fl6: 'Rapports et statistiques', fl7: 'Intégration API', fl8: 'Système de rôles', fl9: 'Messagerie interne', fl10: 'Recherche avancée', fl11: 'Import / Export', fl12: 'Mode hors ligne',
+          },
+          en: {
+            heroTitle: 'Your custom-built\nmanagement tool',
+            heroSub: 'Centralize your entire business management in a modern, secure, and personalized web application.',
+            problemLabel: 'The problem',
+            problemTitle: 'You\'re losing time and money with scattered tools',
+            problemDesc: 'Excel, Google Sheets, emails, WhatsApp... Your data is everywhere, your team loses efficiency, and you have no visibility on your activity.',
+            crmLabel: 'Why not a standard CRM?',
+            crmTitle: 'Generic tools don\'t meet your specific needs',
+            crmDesc: 'Salesforce, HubSpot, Monday... These platforms are designed for everyone, so for no one in particular. You pay for dozens of useless features, and you\'re always missing the one you need. With our solution, every feature is designed for your business. And you own the product.',
+            solutionLabel: 'Our solution',
+            solutionTitle: 'One tool that centralizes everything',
+            f1t: 'Client follow-up & reminders', f1d: 'Sales pipeline, exchange history, automatic follow-ups',
+            f2t: 'Quotes & invoices in 1 click', f2d: 'Automatic generation, online signature, payment tracking',
+            f3t: 'Connected calendar', f3d: 'Google Calendar sync, scheduling, automatic appointments',
+            f4t: 'Team management', f4d: 'Task assignment, progress tracking, custom access rights',
+            f5t: 'Automations', f5d: 'Automatic emails, notifications, document generation, external tool sync',
+            f6t: 'Security & hosting', f6d: 'Encrypted data, automatic backups, high-availability hosting',
+            unlimitedTitle: 'Unlimited features',
+            unlimitedSub: 'Every feature is custom-built for your business',
+            ownerTitle: 'You own the product',
+            ownerDesc: 'Unlike SaaS subscriptions, your application belongs to you. No hidden monthly fees, no vendor lock-in, no trapped data.',
+            delay: '3 weeks', delayLabel: 'Delivery time',
+            price: '5,000€', priceLabel: 'Starting from (excl. tax)',
+            custom: '100%', customLabel: 'Custom-built',
+            howTitle: 'How it works',
+            s1t: 'Free consultation', s1d: 'We analyze your needs and propose a tailored solution',
+            s2t: 'Mockups & validation', s2d: 'We design your app mockups, you validate each screen',
+            s3t: 'Development', s3d: 'Our team builds your tool with the latest technologies',
+            s4t: 'Delivery & training', s4d: 'Your tool is live, we train your team on how to use it',
+            ctaTitle: 'Ready to centralize your business?',
+            ctaSub: 'Book a free, no-commitment demo',
+            ctaBtn: 'Book a meeting',
+            footer1: 'Agence Kameo — Premium website creation & custom web applications',
+            footer2: 'contact@agence-kameo.fr — +33 6 76 23 00 37',
+            fl1: 'Custom CRM', fl2: 'Dashboard', fl3: 'PDF generation', fl4: 'Document management', fl5: 'Notifications', fl6: 'Reports & analytics', fl7: 'API integration', fl8: 'Role system', fl9: 'Internal messaging', fl10: 'Advanced search', fl11: 'Import / Export', fl12: 'Offline mode',
+          },
+          es: {
+            heroTitle: 'Su herramienta de gestión\n100% a medida',
+            heroSub: 'Centralice toda la gestión de su empresa en una aplicación web moderna, segura y personalizada.',
+            problemLabel: 'El problema',
+            problemTitle: 'Pierde tiempo y dinero con herramientas dispersas',
+            problemDesc: 'Excel, Google Sheets, emails, WhatsApp... Sus datos están en todas partes, su equipo pierde eficiencia y no tiene visibilidad sobre su actividad.',
+            crmLabel: '¿Por qué no un CRM clásico?',
+            crmTitle: 'Las herramientas genéricas no responden a sus necesidades',
+            crmDesc: 'Salesforce, HubSpot, Monday... Estas plataformas están diseñadas para todos, es decir, para nadie en particular. Paga por docenas de funciones inútiles y siempre le falta la que necesita. Con nuestra solución, cada función está pensada para su negocio. Y el producto le pertenece.',
+            solutionLabel: 'Nuestra solución',
+            solutionTitle: 'Una herramienta que lo centraliza todo',
+            f1t: 'Seguimiento de clientes', f1d: 'Pipeline comercial, historial de intercambios, recordatorios automáticos',
+            f2t: 'Presupuestos y facturas en 1 clic', f2d: 'Generación automática, firma en línea, seguimiento de pagos',
+            f3t: 'Agenda conectada', f3d: 'Sincronización Google Calendar, planificación, citas automáticas',
+            f4t: 'Gestión de equipo', f4d: 'Asignación de tareas, seguimiento de progreso, permisos personalizados',
+            f5t: 'Automatizaciones', f5d: 'Emails automáticos, notificaciones, generación de documentos, sincronización externa',
+            f6t: 'Seguridad y alojamiento', f6d: 'Datos cifrados, copias de seguridad, alojamiento de alta disponibilidad',
+            unlimitedTitle: 'Funcionalidades ilimitadas',
+            unlimitedSub: 'Cada función se desarrolla a medida para su negocio',
+            ownerTitle: 'El producto le pertenece',
+            ownerDesc: 'A diferencia de las suscripciones SaaS, su aplicación le pertenece. Sin costes mensuales ocultos, sin dependencia de un editor, sin datos atrapados.',
+            delay: '3 sem.', delayLabel: 'Plazo de entrega',
+            price: '5.000€', priceLabel: 'Desde (sin IVA)',
+            custom: '100%', customLabel: 'A medida',
+            howTitle: 'Cómo funciona',
+            s1t: 'Reunión gratuita', s1d: 'Analizamos sus necesidades y proponemos una solución adaptada',
+            s2t: 'Maquetas y validación', s2d: 'Diseñamos las maquetas de su aplicación, usted valida cada pantalla',
+            s3t: 'Desarrollo', s3d: 'Nuestro equipo desarrolla su herramienta con las últimas tecnologías',
+            s4t: 'Entrega y formación', s4d: 'Su herramienta está en línea, le formamos en su uso',
+            ctaTitle: '¿Listo para centralizar su actividad?',
+            ctaSub: 'Reserve una demostración gratuita y sin compromiso',
+            ctaBtn: 'Reservar una reunión',
+            footer1: 'Agence Kameo — Creación de sitios web premium y aplicaciones web a medida',
+            footer2: 'contact@agence-kameo.fr — +33 6 76 23 00 37',
+            fl1: 'CRM personalizado', fl2: 'Panel de control', fl3: 'Generación PDF', fl4: 'Gestión documental', fl5: 'Notificaciones', fl6: 'Informes', fl7: 'Integración API', fl8: 'Sistema de roles', fl9: 'Mensajería interna', fl10: 'Búsqueda avanzada', fl11: 'Import / Export', fl12: 'Modo offline',
+          },
+        }
+        const l = t[plaqLang]
+
+        async function downloadPDF() {
+          const el = document.getElementById('plaquette-content')
+          if (!el) { alert('Élément non trouvé'); return }
+          try {
+            const { default: html2canvas } = await import('html2canvas-pro')
+            const canvas = await html2canvas(el, { scale: 2, backgroundColor: '#0a0a12', useCORS: true, logging: false })
+            const imgData = canvas.toDataURL('image/png')
+            // Convert data URL to ArrayBuffer without fetch
+            const base64 = imgData.split(',')[1]
+            const binaryStr = atob(base64)
+            const imgBytes = new Uint8Array(binaryStr.length)
+            for (let i = 0; i < binaryStr.length; i++) imgBytes[i] = binaryStr.charCodeAt(i)
+            const { PDFDocument } = await import('pdf-lib')
+            const pdfDoc = await PDFDocument.create()
+            const img = await pdfDoc.embedPng(imgBytes)
+            // Render as single continuous page (no splits = no artifacts)
+            const pageWidth = 595.28
+            const totalHeight = pageWidth * (img.height / img.width)
+            const page = pdfDoc.addPage([pageWidth, totalHeight])
+            page.drawImage(img, { x: 0, y: 0, width: pageWidth, height: totalHeight })
+            const bytes = await pdfDoc.save()
+            const blob = new Blob([new Uint8Array(bytes)], { type: 'application/pdf' })
+            const url = URL.createObjectURL(blob)
+            const a = document.createElement('a')
+            a.href = url
+            a.download = `kameo-webapp-plaquette-${plaqLang}.pdf`
+            document.body.appendChild(a)
+            a.click()
+            document.body.removeChild(a)
+            URL.revokeObjectURL(url)
+          } catch (err) {
+            console.error('PDF error:', err)
+            alert('Erreur lors de la génération du PDF: ' + (err instanceof Error ? err.message : 'Erreur inconnue'))
+          }
+        }
+
+        return (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <h2 className="text-white font-semibold">Plaquette commerciale — Web App</h2>
+            <div className="flex items-center gap-3">
+              <div className="flex bg-[#111118] border border-slate-800 rounded-xl p-0.5">
+                {(Object.keys(langs) as Lang[]).map(k => (
+                  <button key={k} onClick={() => setPlaqLang(k)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${plaqLang === k ? 'bg-[#E14B89]/10 text-[#E14B89]' : 'text-slate-400 hover:text-white'}`}>
+                    {langs[k]}
+                  </button>
+                ))}
+              </div>
+              <button onClick={downloadPDF} className="flex items-center gap-2 bg-[#E14B89] hover:opacity-90 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors">
+                Télécharger PDF
+              </button>
+            </div>
+          </div>
+
+          <div id="plaquette-content" className="bg-[#0a0a12] overflow-hidden max-w-3xl mx-auto" style={{ borderRadius: '16px' }}>
+            {/* Hero */}
+            <div className="relative px-8 sm:px-12 py-16 text-center" style={{ background: 'linear-gradient(135deg, #E14B89 0%, #F8903C 100%)' }}>
+              <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at 20% 50%, white 1px, transparent 1px), radial-gradient(circle at 80% 20%, white 1px, transparent 1px)', backgroundSize: '60px 60px' }} />
+              <div className="relative">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/kameo-logo.png" alt="Kameo" className="h-8 mx-auto mb-8 brightness-0 invert" />
+                <h1 className="text-3xl sm:text-4xl font-bold text-white mb-4 leading-tight whitespace-pre-line">{l.heroTitle}</h1>
+                <p className="text-white/80 text-lg max-w-lg mx-auto mb-6">{l.heroSub}</p>
+                <div className="flex items-center justify-center gap-8 text-white/60 text-xs">
+                  <span>Interface moderne</span>
+                  <span className="w-1 h-1 rounded-full bg-white/40" />
+                  <span>100% sécurisé</span>
+                  <span className="w-1 h-1 rounded-full bg-white/40" />
+                  <span>Support dédié</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Pain point */}
+            <div className="px-8 sm:px-12 py-10 border-b border-slate-800/50">
+              <div className="bg-red-500/5 border border-red-500/20 rounded-2xl p-8 text-center">
+                <p className="text-red-400 text-sm font-medium mb-3">{l.problemLabel}</p>
+                <p className="text-white text-xl font-semibold mb-3">{l.problemTitle}</p>
+                <p className="text-slate-400 text-sm max-w-lg mx-auto leading-relaxed">{l.problemDesc}</p>
+                <div className="flex flex-wrap justify-center gap-3 mt-6">
+                  {['Excel', 'Google Sheets', 'Emails', 'WhatsApp', 'Notion'].map(tool => (
+                    <span key={tool} className="px-3 py-1.5 bg-red-500/10 border border-red-500/15 rounded-lg text-red-400/80 text-xs">{tool}</span>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* CRM vs Custom */}
+            <div className="px-8 sm:px-12 py-10 border-b border-slate-800/50">
+              <div className="bg-amber-500/5 border border-amber-500/20 rounded-2xl p-8">
+                <p className="text-amber-400 text-sm font-medium mb-3 text-center">{l.crmLabel}</p>
+                <p className="text-white text-xl font-semibold mb-3 text-center">{l.crmTitle}</p>
+                <p className="text-slate-400 text-sm max-w-lg mx-auto leading-relaxed text-center mb-6">{l.crmDesc}</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-red-500/5 border border-red-500/10 rounded-xl p-4 text-center">
+                    <p className="text-red-400 text-xs font-medium mb-2">CRM généraliste</p>
+                    <div className="space-y-1.5 text-xs text-slate-500">
+                      <p>✕ Fonctionnalités inutiles</p>
+                      <p>✕ Abonnement mensuel</p>
+                      <p>✕ Données piégées</p>
+                      <p>✕ Interface générique</p>
+                    </div>
+                  </div>
+                  <div className="border rounded-xl p-4 text-center" style={{ borderColor: 'rgba(225,75,137,0.3)', background: 'rgba(225,75,137,0.03)' }}>
+                    <p className="text-xs font-medium mb-2" style={{ color: '#E14B89' }}>Kameo Web App</p>
+                    <div className="space-y-1.5 text-xs text-slate-400">
+                      <p>✓ 100% adapté à votre métier</p>
+                      <p>✓ Le produit vous appartient</p>
+                      <p>✓ Vos données, vos règles</p>
+                      <p>✓ Interface sur mesure</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Solution */}
+            <div className="px-8 sm:px-12 py-10 border-b border-slate-800/50">
+              <div className="text-center mb-8">
+                <p className="text-sm font-medium mb-2" style={{ background: 'linear-gradient(135deg, #E14B89, #F8903C)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>{l.solutionLabel}</p>
+                <h2 className="text-2xl font-bold text-white">{l.solutionTitle}</h2>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {[
+                  { icon: '📊', title: l.f1t, desc: l.f1d },
+                  { icon: '📄', title: l.f2t, desc: l.f2d },
+                  { icon: '📅', title: l.f3t, desc: l.f3d },
+                  { icon: '👥', title: l.f4t, desc: l.f4d },
+                  { icon: '⚙️', title: l.f5t, desc: l.f5d },
+                  { icon: '🔒', title: l.f6t, desc: l.f6d },
+                ].map((f, i) => (
+                  <div key={i} className="bg-slate-800/30 border border-slate-800 rounded-xl p-5">
+                    <span className="text-2xl mb-3 block">{f.icon}</span>
+                    <h3 className="text-white font-semibold text-sm mb-1.5">{f.title}</h3>
+                    <p className="text-slate-400 text-xs leading-relaxed">{f.desc}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Fonctionnalités */}
+            <div className="px-8 sm:px-12 py-10 border-b border-slate-800/50">
+              <div className="text-center mb-6">
+                <h2 className="text-xl font-bold text-white">{l.unlimitedTitle}</h2>
+                <p className="text-slate-400 text-sm mt-1">{l.unlimitedSub}</p>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {[l.fl1, l.fl2, l.fl3, l.fl4, l.fl5, l.fl6, l.fl7, l.fl8, l.fl9, l.fl10, l.fl11, l.fl12].map((f, i) => (
+                  <div key={i} className="flex items-center gap-2.5 bg-slate-800/20 border border-slate-800/50 rounded-lg px-3 py-3">
+                    <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: 'linear-gradient(135deg, #E14B89, #F8903C)' }} />
+                    <span className="text-slate-300 text-xs">{f}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Ownership */}
+            <div className="px-8 sm:px-12 py-10 border-b border-slate-800/50">
+              <div className="bg-green-500/5 border border-green-500/20 rounded-2xl p-8 text-center">
+                <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center mx-auto mb-4">
+                  <span className="text-green-400 text-xl">✓</span>
+                </div>
+                <p className="text-white text-xl font-semibold mb-3">{l.ownerTitle}</p>
+                <p className="text-slate-400 text-sm max-w-lg mx-auto leading-relaxed">{l.ownerDesc}</p>
+              </div>
+            </div>
+
+            {/* Chiffres clés */}
+            <div className="px-8 sm:px-12 py-12 border-b border-slate-800/50" style={{ background: 'linear-gradient(180deg, rgba(225,75,137,0.03) 0%, transparent 100%)' }}>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 text-center">
+                <div>
+                  <div className="text-4xl font-bold mb-2" style={{ background: 'linear-gradient(135deg, #E14B89, #F8903C)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>{l.delay}</div>
+                  <p className="text-slate-400 text-xs">{l.delayLabel}</p>
+                </div>
+                <div>
+                  <div className="text-4xl font-bold text-white mb-2">{l.custom}</div>
+                  <p className="text-slate-400 text-xs">{l.customLabel}</p>
+                </div>
+                <div>
+                  <div className="text-4xl font-bold text-white mb-2">24/7</div>
+                  <p className="text-slate-400 text-xs">{plaqLang === 'fr' ? 'Accessible partout' : plaqLang === 'en' ? 'Accessible everywhere' : 'Accesible en todo lugar'}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Process */}
+            <div className="px-8 sm:px-12 py-10 border-b border-slate-800/50">
+              <h2 className="text-xl font-bold text-white text-center mb-8">{l.howTitle}</h2>
+              <div className="space-y-0">
+                {[
+                  { step: '01', title: l.s1t, desc: l.s1d },
+                  { step: '02', title: l.s2t, desc: l.s2d },
+                  { step: '03', title: l.s3t, desc: l.s3d },
+                  { step: '04', title: l.s4t, desc: l.s4d },
+                ].map((s, i) => (
+                  <div key={i} className="flex items-start gap-5">
+                    <div className="flex flex-col items-center">
+                      <div className="w-11 h-11 rounded-xl flex items-center justify-center text-sm font-bold text-white flex-shrink-0" style={{ background: 'linear-gradient(135deg, #E14B89, #F8903C)' }}>
+                        {s.step}
+                      </div>
+                      {i < 3 && <div className="w-px h-8 bg-slate-800 mt-1" />}
+                    </div>
+                    <div className="pb-6">
+                      <h3 className="text-white font-semibold text-sm">{s.title}</h3>
+                      <p className="text-slate-400 text-xs mt-1 leading-relaxed">{s.desc}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Technologies */}
+            <div className="px-8 sm:px-12 py-10 border-b border-slate-800/50">
+              <p className="text-center text-slate-500 text-xs mb-5">{plaqLang === 'fr' ? 'Technologies utilisées' : plaqLang === 'en' ? 'Technologies used' : 'Tecnologias utilizadas'}</p>
+              <div className="flex flex-wrap justify-center gap-3">
+                {['Next.js', 'React', 'TypeScript', 'PostgreSQL', 'Prisma', 'Tailwind CSS', 'Vercel'].map(tech => (
+                  <span key={tech} className="px-4 py-2 bg-slate-800/40 border border-slate-800 rounded-lg text-slate-400 text-xs font-medium">{tech}</span>
+                ))}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-8 sm:px-12 py-8 text-center">
+              <p className="text-slate-600 text-xs">{l.footer1}</p>
+              <p className="text-slate-700 text-xs mt-1">{l.footer2}</p>
+            </div>
+          </div>
+        </div>
+        )
+      })()}
     </div>
   )
 }
