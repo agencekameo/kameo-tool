@@ -16,6 +16,17 @@ interface Signature {
   logoUrl: string
 }
 
+// Hardcoded photo URLs — always used for default signatures regardless of DB
+const DEFAULT_PHOTOS: Record<string, string> = {
+  benjamin: '/benjamin-dayan.png',
+  louison: '/louison-boutet.png',
+  jonathan: '/jonathan-derai.png',
+}
+
+function resolvePhotoUrl(sig: Signature): string {
+  return DEFAULT_PHOTOS[sig.id] || sig.photoUrl
+}
+
 const DEFAULT_SIGNATURES: Signature[] = [
   {
     id: 'benjamin',
@@ -59,7 +70,7 @@ function signatureToHtml(sig: Signature, baseUrl: string) {
   return `<table cellpadding="0" cellspacing="0" style="margin-top:28px;border-top:1px solid #eee;padding-top:24px;">
 <tr>
 <td style="padding-right:40px;vertical-align:top;width:90px;">
-<img src="${baseUrl}${sig.photoUrl}" alt="${sig.fullName}" width="56" height="56" style="border-radius:50%;display:block;width:56px;height:56px;" />
+<img src="${baseUrl}${resolvePhotoUrl(sig)}" alt="${sig.fullName}" width="56" height="56" style="border-radius:50%;display:block;width:56px;height:56px;" />
 <div style="height:20px;"></div>
 <img src="${baseUrl}${sig.logoUrl}" alt="${sig.company}" width="80" style="border-radius:8px;display:block;width:80px;object-fit:contain;" />
 </td>
@@ -243,7 +254,7 @@ export default function SignaturesTab() {
               <div className="flex items-start gap-8">
                 <div className="flex flex-col items-center gap-4 flex-shrink-0">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={sig.photoUrl} alt={sig.fullName} className="w-12 h-12 rounded-full object-cover" />
+                  <img src={`${resolvePhotoUrl(sig)}?v=2`} alt={sig.fullName} className="w-12 h-12 rounded-full object-cover" />
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={sig.logoUrl} alt={sig.company} className="w-16 rounded-lg object-contain" />
                 </div>
