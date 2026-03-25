@@ -97,11 +97,18 @@ export default function SignaturesTab() {
         if (data.value) {
           try {
             const saved: Signature[] = JSON.parse(data.value)
-            // Merge defaults into saved: add missing sigs
+            // Merge defaults into saved: add missing sigs, fix photoUrl/logoUrl for defaults
             let needsSave = false
             const merged = DEFAULT_SIGNATURES.map(def => {
               const existing = saved.find(s => s.id === def.id)
-              if (existing) return existing
+              if (existing) {
+                // Always force correct photoUrl and logoUrl for default signatures
+                if (existing.photoUrl !== def.photoUrl || existing.logoUrl !== def.logoUrl) {
+                  needsSave = true
+                  return { ...existing, photoUrl: def.photoUrl, logoUrl: def.logoUrl }
+                }
+                return existing
+              }
               needsSave = true
               return def
             })
