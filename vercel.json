@@ -3,6 +3,18 @@
     {
       "path": "/api/maintenances/reset",
       "schedule": "1 0 1 * *"
+    },
+    {
+      "path": "/api/cron/invoices",
+      "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/cron/callbacks",
+      "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/gmb",
+      "schedule": "0 9 * * *"
     }
   ]
 }

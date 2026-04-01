@@ -1,5 +1,6 @@
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { demoGuard } from '@/lib/demo'
 import { NextRequest, NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
 
@@ -23,6 +24,7 @@ export async function GET() {
 export async function PATCH(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const guard = demoGuard(session); if (guard) return guard
 
   let body: Record<string, unknown>
   try {
@@ -50,11 +52,21 @@ export async function PATCH(req: NextRequest) {
     data.name = trimmed
   }
 
-  // Validate email
+  // Validate email change (requires current password)
   if (email !== undefined) {
     const trimmed = String(email).trim().toLowerCase()
     if (!isValidEmail(trimmed)) {
       return NextResponse.json({ error: 'Email invalide' }, { status: 400 })
+    }
+    // Require current password to change email
+    if (!currentPassword) {
+      return NextResponse.json({ error: 'Mot de passe actuel requis pour changer l\'email' }, { status: 400 })
+    }
+    const user = await prisma.user.findUnique({ where: { id: session.user.id } })
+    if (!user) return NextResponse.json({ error: 'Utilisateur introuvable' }, { status: 404 })
+    const valid = await bcrypt.compare(String(currentPassword), user.password)
+    if (!valid) {
+      return NextResponse.json({ error: 'Mot de passe actuel incorrect' }, { status: 400 })
     }
     // Check email uniqueness (excluding current user)
     const existing = await prisma.user.findFirst({
@@ -116,7 +128,6 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json(user)
   } catch (err) {
     console.error('[profile PATCH]', err)
-    const message = err instanceof Error ? err.message : 'Erreur interne'
-    return NextResponse.json({ error: `Erreur lors de la mise à jour : ${message}` }, { status: 500 })
+    return NextResponse.json({ error: 'Erreur lors de la mise à jour' }, { status: 500 })
   }
 }

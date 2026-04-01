@@ -2,7 +2,9 @@ import NextAuth from 'next-auth'
 import Credentials from 'next-auth/providers/credentials'
 import { prisma } from '@/lib/db'
 import bcrypt from 'bcryptjs'
+import crypto from 'crypto'
 import { authConfig } from '@/auth.config'
+import { rateLimit } from '@/lib/security'
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
@@ -17,7 +19,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       async authorize(credentials) {
         // ── Impersonation login ──────────────────────────────────────────
         if (credentials?.impersonationToken) {
-          const tokenKey = `impersonate:${credentials.impersonationToken}`
+          const tokenHash = crypto.createHash('sha256').update(String(credentials.impersonationToken)).digest('hex')
+          const tokenKey = `impersonate:${tokenHash}`
           const setting = await prisma.setting.findUnique({
             where: { key: tokenKey },
           })
@@ -51,8 +54,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // ── Normal login ─────────────────────────────────────────────────
         if (!credentials?.email || !credentials?.password) return null
 
+        // Rate limit: max 5 attempts per email per 15 minutes
+        const email = (credentials.email as string).toLowerCase()
+        if (!rateLimit(`login:${email}`, 5, 15 * 60 * 1000)) return null
+
         const user = await prisma.user.findUnique({
-          where: { email: credentials.email as string },
+          where: { email },
         })
 
         if (!user) return null

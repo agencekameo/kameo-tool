@@ -19,22 +19,17 @@ export function RevenueCard() {
   const currentYear = now.getFullYear()
 
   const [filter, setFilter] = useState(`${currentYear}-${currentMonth}`)
-  const [revenue, setRevenue] = useState<number | null>(null)
+  const [byMonth, setByMonth] = useState<Record<string, number> | null>(null)
   const [open, setOpen] = useState(false)
 
   useEffect(() => {
-    async function fetchRevenue() {
-      const [year, month] = filter.split('-')
-      const params = new URLSearchParams({ year })
-      if (month !== '0') params.set('month', month)
-      const res = await fetch(`/api/dashboard/revenue?${params}`)
-      if (res.ok) {
-        const data = await res.json()
-        setRevenue(data.revenue)
-      }
-    }
-    fetchRevenue()
-  }, [filter])
+    fetch(`/api/dashboard/revenue?year=${currentYear}`)
+      .then(r => r.json())
+      .then(d => { if (d.byMonth) setByMonth(d.byMonth) })
+      .catch(() => {})
+  }, [currentYear])
+
+  const revenue = byMonth ? byMonth[filter.split('-')[1]] ?? null : null
 
   const options = [
     { value: `${currentYear}-0`, label: `Année ${currentYear}` },

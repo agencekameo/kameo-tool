@@ -1,5 +1,6 @@
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { demoWhere, demoProspectWhere } from '@/lib/demo'
 import { formatCurrency, formatDate, PROJECT_STATUS_COLORS, PROJECT_STATUS_LABELS, PROJECT_TYPE_LABELS, TASK_PRIORITY_COLORS, TASK_PRIORITY_LABELS } from '@/lib/utils'
 import Link from 'next/link'
 import { FolderKanban, Users, CheckSquare, ArrowRight, Clock } from 'lucide-react'
@@ -30,10 +31,15 @@ const PROSPECT_STATUS_BG: Record<string, string> = {
   SIGNE: 'bg-green-500/15',
 }
 
-async function getDashboardData(userId: string) {
-  const [projects, tasks, clients, prospects] = await Promise.all([
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function getDashboardData(userId: string, session: any) {
+  const activeStatuses = ['BRIEF', 'REDACTION', 'MAQUETTE', 'DEVELOPPEMENT', 'REVIEW']
+  const demoFilter = demoWhere(session)
+  const demoProspectFilter = demoProspectWhere(session)
+
+  const [projects, activeProjectCount, tasks, clients, prospects] = await Promise.all([
     prisma.project.findMany({
-      where: { status: { in: ['BRIEF', 'REDACTION', 'MAQUETTE', 'DEVELOPPEMENT', 'REVIEW'] } },
+      where: { AND: [{ status: { in: activeStatuses } }, demoFilter] },
       select: {
         id: true,
         name: true,
@@ -44,6 +50,9 @@ async function getDashboardData(userId: string) {
       },
       orderBy: { updatedAt: 'desc' },
       take: 5,
+    }),
+    prisma.project.count({
+      where: { AND: [{ status: { in: activeStatuses } }, demoFilter] },
     }),
     prisma.task.findMany({
       where: { assigneeId: userId, status: { not: 'DONE' } },
@@ -60,24 +69,18 @@ async function getDashboardData(userId: string) {
       orderBy: [{ priority: 'desc' }, { dueDate: 'asc' }],
       take: 6,
     }),
-    prisma.client.count(),
-    prisma.prospect.findMany({ select: { id: true, status: true, budget: true } }),
+    prisma.client.count({ where: demoWhere(session) }),
+    prisma.prospect.findMany({ where: demoProspectFilter, select: { id: true, name: true, company: true, status: true, budget: true } }),
   ])
 
-  const projectsByStatus = await prisma.project.groupBy({
-    by: ['status'],
-    _count: true,
-    where: { status: { in: ['BRIEF', 'REDACTION', 'MAQUETTE', 'DEVELOPPEMENT', 'REVIEW'] } },
-  })
-
-  return { projects, tasks, clients, projectsByStatus, prospects }
+  return { projects, activeProjectCount, tasks, clients, prospects }
 }
 
 export default async function DashboardPage() {
   const session = await auth()
-  const { projects, tasks, clients, prospects } = await getDashboardData(session!.user!.id)
+  const { projects, activeProjectCount, tasks, clients, prospects } = await getDashboardData(session!.user!.id, session)
 
-  const activeProjects = projects.length
+  const activeProjects = activeProjectCount
   const pendingTasks = tasks.length
 
   const hour = new Date().getHours()
@@ -93,6 +96,8 @@ export default async function DashboardPage() {
   const signedBudget = prospects
     .filter(p => p.status === 'SIGNE')
     .reduce((sum, p) => sum + (p.budget ?? 0), 0)
+  const devisEnvoyeProspects = prospects.filter(p => p.status === 'DEVIS_ENVOYE')
+  const devisEnvoyeBudget = devisEnvoyeProspects.reduce((sum, p) => sum + (p.budget ?? 0), 0)
 
   return (
     <div className="p-4 sm:p-8">
@@ -105,7 +110,7 @@ export default async function DashboardPage() {
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         {[
           {
             label: 'Projets actifs',
@@ -153,7 +158,7 @@ export default async function DashboardPage() {
       {/* Main grid */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 mb-6">
         {/* Projets récents */}
-        <div className="col-span-3 bg-[#111118] border border-slate-800 rounded-2xl p-6">
+        <div className="lg:col-span-3 bg-[#111118] border border-slate-800 rounded-2xl p-4 sm:p-6">
           <div className="flex items-center justify-between mb-5">
             <h2 className="text-white font-semibold">Projets en cours</h2>
             <Link href="/projects" className="text-[#E14B89] text-sm hover:opacity-80 transition-opacity flex items-center gap-1">
@@ -190,7 +195,7 @@ export default async function DashboardPage() {
         </div>
 
         {/* Mes tâches */}
-        <div className="col-span-2 bg-[#111118] border border-slate-800 rounded-2xl p-6">
+        <div className="lg:col-span-2 bg-[#111118] border border-slate-800 rounded-2xl p-4 sm:p-6">
           <div className="flex items-center justify-between mb-5">
             <h2 className="text-white font-semibold">Mes tâches</h2>
             <Link href="/tasks" className="text-[#E14B89] text-sm hover:opacity-80 transition-opacity flex items-center gap-1">
@@ -241,10 +246,36 @@ export default async function DashboardPage() {
               Voir tout <ArrowRight size={13} />
             </Link>
           </div>
+
+          {/* Devis envoyé focus */}
+          {devisEnvoyeProspects.length > 0 && (
+            <div className="mb-5">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-xs px-2.5 py-1 rounded-full font-medium bg-blue-500/15 text-blue-400">Devis envoyé</span>
+                <span className="text-white text-sm font-semibold">{devisEnvoyeProspects.length}</span>
+                {devisEnvoyeBudget > 0 && (
+                  <span className="text-blue-400 text-xs ml-auto font-medium">{formatCurrency(devisEnvoyeBudget)} potentiel</span>
+                )}
+              </div>
+              <div className="space-y-2">
+                {devisEnvoyeProspects.map(p => (
+                  <Link key={p.id} href="/commercial" className="flex items-center justify-between bg-blue-500/5 hover:bg-blue-500/10 border border-blue-500/10 rounded-xl px-3 py-2.5 transition-colors group">
+                    <div className="min-w-0">
+                      <p className="text-white text-sm font-medium truncate group-hover:text-blue-400 transition-colors">{p.name}</p>
+                      {p.company && <p className="text-slate-500 text-xs truncate">{p.company}</p>}
+                    </div>
+                    {p.budget && <span className="text-blue-400 text-sm font-semibold flex-shrink-0 ml-3">{formatCurrency(p.budget)}</span>}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Pipeline bars */}
           <div className="space-y-3 mb-5">
             {pipelineCounts.map(({ status, count }) => (
               <div key={status} className="flex items-center gap-3">
-                <span className={`text-xs px-2.5 py-1 rounded-full font-medium flex-shrink-0 w-36 text-center ${PROSPECT_STATUS_BG[status]} ${PROSPECT_STATUS_COLORS[status]}`}>
+                <span className={`text-xs px-2.5 py-1 rounded-full font-medium flex-shrink-0 w-28 sm:w-36 text-center ${PROSPECT_STATUS_BG[status]} ${PROSPECT_STATUS_COLORS[status]}`}>
                   {PROSPECT_STATUS_LABELS[status]}
                 </span>
                 <div className="flex-1 bg-slate-800 rounded-full h-1.5">

@@ -32,7 +32,7 @@ export async function getCalendarsForUser(userId: string) {
   return tokens.map(t => t.email)
 }
 
-export async function getEventsForEmail(email: string, maxResults = 50) {
+export async function getEventsForEmail(email: string, maxResults = 50, timeMinParam?: string, timeMaxParam?: string) {
   const token = await prisma.googleCalendarToken.findUnique({ where: { email } })
   if (!token) return []
 
@@ -43,7 +43,35 @@ export async function getEventsForEmail(email: string, maxResults = 50) {
     expiry_date: token.expiresAt.getTime(),
   })
 
-  // Auto-refresh if expired
+  // Force refresh if expired
+  const isExpired = token.expiresAt.getTime() < Date.now() + 60000 // 1 min buffer
+  if (isExpired && token.refreshToken) {
+    try {
+      const { credentials } = await oauth2Client.refreshAccessToken()
+      oauth2Client.setCredentials(credentials)
+      await prisma.googleCalendarToken.update({
+        where: { email },
+        data: {
+          accessToken: credentials.access_token ?? token.accessToken,
+          refreshToken: credentials.refresh_token ?? token.refreshToken,
+          expiresAt: credentials.expiry_date ? new Date(credentials.expiry_date) : token.expiresAt,
+        },
+      })
+    } catch (refreshErr) {
+      const errMsg = refreshErr instanceof Error ? refreshErr.message : String(refreshErr)
+      console.error(`[calendar] Failed to refresh token for ${email}:`, errMsg)
+      // Mark token as invalid so the UI can prompt re-connection
+      if (errMsg.includes('invalid_grant') || errMsg.includes('revoked')) {
+        await prisma.googleCalendarToken.update({
+          where: { email },
+          data: { expiresAt: new Date(0) },
+        }).catch(() => {})
+      }
+      return []
+    }
+  }
+
+  // Auto-refresh listener for future calls
   oauth2Client.on('tokens', async (tokens) => {
     if (tokens.refresh_token || tokens.access_token) {
       await prisma.googleCalendarToken.update({
@@ -62,11 +90,14 @@ export async function getEventsForEmail(email: string, maxResults = 50) {
   const oneWeekLater = new Date(now)
   oneWeekLater.setDate(oneWeekLater.getDate() + 7)
 
+  const effectiveTimeMin = timeMinParam || now.toISOString()
+  const effectiveTimeMax = timeMaxParam || oneWeekLater.toISOString()
+
   try {
     const res = await calendar.events.list({
       calendarId: 'primary',
-      timeMin: now.toISOString(),
-      timeMax: oneWeekLater.toISOString(),
+      timeMin: effectiveTimeMin,
+      timeMax: effectiveTimeMax,
       maxResults,
       singleEvents: true,
       orderBy: 'startTime',
@@ -116,7 +147,8 @@ export async function getEventsForEmail(email: string, maxResults = 50) {
         meetingType,
       }
     })
-  } catch {
+  } catch (err) {
+    console.error(`[calendar] Error fetching events for ${email}:`, err)
     return []
   }
 }

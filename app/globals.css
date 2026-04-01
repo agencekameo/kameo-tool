@@ -4,6 +4,11 @@
   box-sizing: border-box;
 }
 
+/* Safe area for mobile bottom bar (notch devices) */
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
 /* Cursor pointer sur tous les éléments cliquables */
 button, [role="button"], select,
 input[type="checkbox"], input[type="radio"], input[type="file"],
@@ -33,6 +38,15 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: #3a3a4a;
+}
+
+/* Hidden scrollbar (scrollable but no visible bar) */
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
 }
 
 /* Input date styling */
@@ -598,3 +612,5 @@ main,
     width: auto;
   }
 }
+
+/* PDF printing is handled via window.open() in devis page — no print CSS needed here */

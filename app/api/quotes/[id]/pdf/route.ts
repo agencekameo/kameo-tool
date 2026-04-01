@@ -11,20 +11,31 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
   const quote = await prisma.quote.findUnique({
     where: { id },
-    include: { items: { orderBy: { position: 'asc' } } },
+    include: {
+      items: { orderBy: { position: 'asc' } },
+      client: { select: { website: true } },
+    },
   })
 
   if (!quote) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  const { buffer } = await generateQuotePdf(quote)
+  try {
+    const { buffer } = await generateQuotePdf({
+      ...quote,
+      clientWebsite: quote.client?.website || null,
+    })
 
-  const fileName = `Devis ${quote.subject} - ${quote.clientName}.pdf`
-    .replace(/[/\\?%*:|"<>]/g, '-') // sanitize filename
+    const fileName = `Devis ${quote.number} - ${quote.clientName}.pdf`
+      .replace(/[/\\?%*:|"<>]/g, '-') // sanitize filename
 
-  return new NextResponse(new Uint8Array(buffer), {
-    headers: {
-      'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="${fileName}"`,
-    },
-  })
+    return new NextResponse(new Uint8Array(buffer), {
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="${fileName}"`,
+      },
+    })
+  } catch (err) {
+    console.error('[PDF generation error]', err)
+    return NextResponse.json({ error: 'Erreur lors de la génération du PDF' }, { status: 500 })
+  }
 }

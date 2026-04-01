@@ -18,10 +18,13 @@ import { formatCurrency, formatDate, formatPhone, ROLE_AVATAR_COLORS } from '@/l
 // ---------------------------------------------------------------------------
 
 interface Prospect {
-  id: string; name: string; company?: string; email?: string; phone?: string
+  id: string; name: string; firstName?: string; lastName?: string; company?: string; email?: string; phone?: string
   website?: string; googleUrl?: string
   status: string; budget?: number; source?: string; notes?: string; assignedTo?: string
   leadSearchId?: string | null
+  callbackDate?: string | null
+  statusHistory?: string[]
+  updatedAt?: string
 }
 
 interface Relance {
@@ -50,11 +53,11 @@ interface UserInfo {
 // Constants
 // ---------------------------------------------------------------------------
 
-type Tab = 'leads' | 'relances' | 'videos' | 'speech' | 'commissions' | 'plaquette'
+type Tab = 'leads' | 'stats' | 'videos' | 'speech' | 'commissions' | 'plaquette'
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'leads', label: 'Leads' },
-  { key: 'relances', label: 'Relances' },
+  { key: 'stats', label: 'Statistiques' },
   { key: 'videos', label: 'Videos' },
   { key: 'speech', label: 'Speech' },
   { key: 'plaquette', label: 'Plaquette' },
@@ -65,7 +68,9 @@ const LEAD_LOCATIONS = ['Paris', 'Lyon', 'Marseille', 'Toulouse', 'Bordeaux', 'L
 
 const STATUS_LABELS: Record<string, string> = {
   A_CONTACTER: 'A contacter',
+  PAS_REPONDU: 'Pas répondu',
   A_RAPPELER: 'A rappeler',
+  MAIL_ENVOYE: 'Mail envoyé',
   VISIO_PLANIFIE: 'Visio planifiée',
   DEVIS_TRANSMETTRE: 'Devis à transmettre',
   DEVIS_ENVOYE: 'Devis envoyé',
@@ -76,7 +81,9 @@ const STATUS_LABELS: Record<string, string> = {
 
 const STATUS_COLORS: Record<string, string> = {
   A_CONTACTER: 'bg-slate-500/15 text-slate-400',
-  A_RAPPELER: 'bg-yellow-500/15 text-yellow-400',
+  PAS_REPONDU: 'bg-yellow-500/15 text-yellow-400',
+  A_RAPPELER: 'bg-orange-500/15 text-orange-400',
+  MAIL_ENVOYE: 'bg-teal-500/15 text-teal-400',
   VISIO_PLANIFIE: 'bg-indigo-500/15 text-indigo-400',
   DEVIS_TRANSMETTRE: 'bg-blue-500/15 text-blue-400',
   DEVIS_ENVOYE: 'bg-orange-500/15 text-orange-400',
@@ -151,11 +158,25 @@ export default function CommercialDetailPage() {
   const [statusDropdownId, setStatusDropdownId] = useState<string | null>(null)
   const statusDropdownRef = useRef<HTMLDivElement>(null)
   const [leadSearchQuery, setLeadSearchQuery] = useState('')
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+
+  // Callback modal (A_RAPPELER)
+  const [showCallbackModal, setShowCallbackModal] = useState(false)
+  const [callbackLeadId, setCallbackLeadId] = useState<string | null>(null)
+  const [callbackDate, setCallbackDate] = useState('')
+  const [callbackTime, setCallbackTime] = useState('')
+  const [callbackNotes, setCallbackNotes] = useState('')
+
+  // List filter (checkboxes)
+  const [selectedLists, setSelectedLists] = useState<Set<string>>(new Set(['all']))
+  const [showListFilter, setShowListFilter] = useState(false)
+  const listFilterRef = useRef<HTMLDivElement>(null)
 
   // Email modal
   const [showEmailModal, setShowEmailModal] = useState(false)
   const [emailTarget, setEmailTarget] = useState<Prospect | null>(null)
-  const [emailForm, setEmailForm] = useState({ senderId: 'kameo', senderName: 'Jonathan Derai', subject: '', rawHtml: '', scheduled: false, scheduledDate: '', scheduledTime: '' })
+  const [emailForm, setEmailForm] = useState({ senderId: 'kameo', senderName: 'Jonathan Derai', subject: '', rawHtml: '', bodyContent: '', scheduled: false, scheduledDate: '', scheduledTime: '' })
+  const emailBodyRef = useRef<HTMLDivElement>(null)
   const [emailCivilite, setEmailCivilite] = useState<'M.' | 'Mme'>('M.')
   const [emailContactLastName, setEmailContactLastName] = useState('')
   const [sendingEmail, setSendingEmail] = useState(false)
@@ -217,6 +238,8 @@ export default function CommercialDetailPage() {
     return signatureToHtml(sig)
   }
 
+  const emailHeaderHtml = `<div style="background:linear-gradient(180deg,#000000 0%,#0a0a0a 100%);padding:28px 32px;border-radius:16px 16px 0 0;"><img src="https://kameo-tool.vercel.app/kameo-logo.png" alt="Kameo" height="32" style="height:32px;" /></div>`
+
   function buildEmailHtml(bodyContent: string, senderId: string) {
     return `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;padding:32px 0;">
@@ -235,13 +258,16 @@ ${buildSignatureBlock(senderId)}
 </body></html>`
   }
 
-  const EMAIL_TEMPLATES: { id: string; name: string; emoji: string; desc: string; subject: (greeting: string) => string; html: (greeting: string, senderId: string) => string }[] = [
+  const EMAIL_TEMPLATES: { id: string; name: string; emoji: string; desc: string; subject: (greeting: string) => string; body: (greeting: string) => string; html: (greeting: string, senderId: string) => string }[] = [
     {
       id: 'blank',
       name: 'Email vide',
       emoji: '📝',
       desc: 'Commencer de zéro',
       subject: () => '',
+      body: (greeting) => `<p style="margin:0 0 16px;font-size:15px;color:#1a1a2e;line-height:1.6;">Bonjour ${greeting},</p>
+<p style="margin:0 0 16px;font-size:15px;color:#444;line-height:1.6;"></p>
+<p style="margin:0;font-size:15px;color:#444;line-height:1.6;">Bien cordialement,</p>`,
       html: (greeting, senderId) => buildEmailHtml(`<p style="margin:0 0 16px;font-size:15px;color:#1a1a2e;line-height:1.6;">Bonjour ${greeting},</p>
 <p style="margin:0 0 16px;font-size:15px;color:#444;line-height:1.6;"></p>
 <p style="margin:0;font-size:15px;color:#444;line-height:1.6;">Bien cordialement,</p>`, senderId),
@@ -252,6 +278,68 @@ ${buildSignatureBlock(senderId)}
       emoji: '🚀',
       desc: 'Suite à un appel — présentation CRM / ERP sur-mesure',
       subject: () => 'Suite à notre échange — Votre outil de gestion sur-mesure | Kameo',
+      body: (greeting) => `<p style="margin:0 0 16px;font-size:15px;color:#1a1a2e;line-height:1.6;">Bonjour ${greeting},</p>
+<p style="margin:0 0 20px;font-size:15px;color:#444;line-height:1.6;">Suite à notre échange, je me permets de vous envoyer comme convenu un aperçu de ce que nous pouvons mettre en place pour vous.</p>
+
+<p style="margin:0 0 8px;font-size:18px;font-weight:700;color:#1a1a2e;">Un outil conçu pour <span style="color:#E14B89;">votre</span> activité</p>
+<p style="margin:0 0 20px;font-size:15px;color:#444;line-height:1.6;">Chez <strong style="color:#1a1a2e;">Kameo</strong>, nous ne vendons pas de logiciel. Nous construisons <strong style="color:#1a1a2e;">votre propre application métier</strong> — CRM, ERP, outil de gestion — 100% taillée pour la façon dont vous travaillez.</p>
+
+<table cellpadding="0" cellspacing="0" style="margin:0 0 24px;width:100%;">
+<tr>
+<td style="width:50%;padding:0 8px 12px 0;vertical-align:top;">
+<table cellpadding="0" cellspacing="0" style="width:100%;background:#f8f9fa;border-radius:12px;overflow:hidden;">
+<tr><td style="padding:20px;">
+<p style="margin:0 0 6px;font-size:28px;">📊</p>
+<p style="margin:0 0 4px;font-size:13px;font-weight:700;color:#1a1a2e;">Tableau de bord</p>
+<p style="margin:0;font-size:12px;color:#888;line-height:1.4;">Vos KPIs clés en un coup d'œil, en temps réel</p>
+</td></tr>
+</table>
+</td>
+<td style="width:50%;padding:0 0 12px 8px;vertical-align:top;">
+<table cellpadding="0" cellspacing="0" style="width:100%;background:#f8f9fa;border-radius:12px;overflow:hidden;">
+<tr><td style="padding:20px;">
+<p style="margin:0 0 6px;font-size:28px;">🤝</p>
+<p style="margin:0 0 4px;font-size:13px;font-weight:700;color:#1a1a2e;">Gestion clients</p>
+<p style="margin:0;font-size:12px;color:#888;line-height:1.4;">Contacts, historique, relances — tout centralisé</p>
+</td></tr>
+</table>
+</td>
+</tr>
+<tr>
+<td style="width:50%;padding:0 8px 12px 0;vertical-align:top;">
+<table cellpadding="0" cellspacing="0" style="width:100%;background:#f8f9fa;border-radius:12px;overflow:hidden;">
+<tr><td style="padding:20px;">
+<p style="margin:0 0 6px;font-size:28px;">📄</p>
+<p style="margin:0 0 4px;font-size:13px;font-weight:700;color:#1a1a2e;">Devis & Factures</p>
+<p style="margin:0;font-size:12px;color:#888;line-height:1.4;">Génération PDF, signature électronique, envoi auto</p>
+</td></tr>
+</table>
+</td>
+<td style="width:50%;padding:0 0 12px 8px;vertical-align:top;">
+<table cellpadding="0" cellspacing="0" style="width:100%;background:#f8f9fa;border-radius:12px;overflow:hidden;">
+<tr><td style="padding:20px;">
+<p style="margin:0 0 6px;font-size:28px;">⚡</p>
+<p style="margin:0 0 4px;font-size:13px;font-weight:700;color:#1a1a2e;">Automatisations</p>
+<p style="margin:0;font-size:12px;color:#888;line-height:1.4;">Relances, notifications, emails — sans y penser</p>
+</td></tr>
+</table>
+</td>
+</tr>
+</table>
+
+<table cellpadding="0" cellspacing="0" style="margin:0 0 24px;width:100%;">
+<tr><td style="padding:16px 20px;background:#f8f9fa;border-radius:12px;border:1px solid #e5e7eb;">
+<p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#1a1a2e;">Et aussi :</p>
+<p style="margin:0;font-size:13px;color:#555;line-height:1.8;">Suivi de projets & tâches · Agenda synchronisé · Messagerie interne · Gestion d'équipe · Accessible sur tous vos appareils · Données 100% sécurisées</p>
+</td></tr>
+</table>
+
+<p style="margin:0 0 8px;font-size:18px;font-weight:700;color:#1a1a2e;">Envie d'en savoir plus ?</p>
+<p style="margin:0 0 24px;font-size:15px;color:#444;line-height:1.6;">Je vous propose un échange de <strong style="color:#1a1a2e;">15 minutes</strong> pour voir concrètement ce que ça donnerait pour vous — sans engagement.</p>
+<table cellpadding="0" cellspacing="0" style="margin:0 0 28px;"><tr><td style="background:linear-gradient(135deg,#E14B89,#F8903C);border-radius:10px;padding:14px 32px;">
+<a href="https://calendly.com/contact-agence-kameo/30min" target="_blank" style="color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;display:block;text-align:center;">Réserver un créneau →</a>
+</td></tr></table>
+<p style="margin:0;font-size:15px;color:#444;line-height:1.6;">Bien cordialement,</p>`,
       html: (greeting, senderId) => buildEmailHtml(`<p style="margin:0 0 16px;font-size:15px;color:#1a1a2e;line-height:1.6;">Bonjour ${greeting},</p>
 <p style="margin:0 0 20px;font-size:15px;color:#444;line-height:1.6;">Suite à notre échange, je me permets de vous envoyer comme convenu un aperçu de ce que nous pouvons mettre en place pour vous.</p>
 
@@ -321,6 +409,22 @@ ${buildSignatureBlock(senderId)}
       emoji: '✉️',
       desc: 'Suite à un appel — transmettre nos coordonnées',
       subject: () => 'Nos coordonnées — Kameo',
+      body: (greeting) => `<p style="margin:0 0 16px;font-size:15px;color:#1a1a2e;line-height:1.6;">Bonjour ${greeting},</p>
+<p style="margin:0 0 20px;font-size:15px;color:#444;line-height:1.6;">Suite à notre échange, voici nos coordonnées comme convenu :</p>
+<table cellpadding="0" cellspacing="0" style="margin:0 0 24px;width:100%;background:#f8f9fa;border-radius:12px;overflow:hidden;">
+<tr><td style="padding:24px;">
+<p style="margin:0 0 4px;font-size:16px;font-weight:700;color:#1a1a2e;">Agence Kameo</p>
+<p style="margin:0 0 16px;font-size:13px;color:#888;">Agence digitale sur-mesure</p>
+<table cellpadding="0" cellspacing="0" style="width:100%;">
+<tr><td style="padding:6px 0;font-size:14px;color:#444;">📞 <a href="tel:+33676230037" style="color:#444;text-decoration:none;">06 76 23 00 37</a></td></tr>
+<tr><td style="padding:6px 0;font-size:14px;color:#444;">📧 <a href="mailto:contact@agence-kameo.fr" style="color:#444;text-decoration:none;">contact@agence-kameo.fr</a></td></tr>
+<tr><td style="padding:6px 0;font-size:14px;">🌐 <a href="https://www.agence-kameo.fr" target="_blank" style="color:#E14B89;text-decoration:none;font-weight:500;">www.agence-kameo.fr</a></td></tr>
+<tr><td style="padding:6px 0;font-size:14px;color:#444;">📍 9 rue des colonnes, Paris 75002</td></tr>
+</table>
+</td></tr>
+</table>
+<p style="margin:0 0 4px;font-size:15px;color:#444;line-height:1.6;">N'hésitez pas à nous recontacter pour toute question.</p>
+<p style="margin:0;font-size:15px;color:#444;line-height:1.6;">À très bientôt,</p>`,
       html: (greeting, senderId) => buildEmailHtml(`<p style="margin:0 0 16px;font-size:15px;color:#1a1a2e;line-height:1.6;">Bonjour ${greeting},</p>
 <p style="margin:0 0 20px;font-size:15px;color:#444;line-height:1.6;">Suite à notre échange, voici nos coordonnées comme convenu :</p>
 <table cellpadding="0" cellspacing="0" style="margin:0 0 24px;width:100%;background:#f8f9fa;border-radius:12px;overflow:hidden;">
@@ -405,7 +509,13 @@ ${buildSignatureBlock(senderId)}
     const data = await res.json()
     if (Array.isArray(data)) setProspects(data)
     const searchData = await searchRes.json()
-    if (Array.isArray(searchData)) setLeadSearches(searchData)
+    if (Array.isArray(searchData)) {
+      // Only update if the list actually changed (avoids resetting filters)
+      setLeadSearches(prev => {
+        if (prev.length === searchData.length && prev.every((s, i) => s.id === searchData[i]?.id)) return prev
+        return searchData
+      })
+    }
   }, [id])
 
   const loadRelances = useCallback(async () => {
@@ -435,7 +545,7 @@ ${buildSignatureBlock(senderId)}
   useEffect(() => {
     if (!id) return
     if (activeTab === 'leads') loadLeads()
-    else if (activeTab === 'relances') { loadRelances(); loadLeads() }
+    else if (activeTab === 'stats') { loadLeads() }
     else if (activeTab === 'videos') loadVideos()
     else if (activeTab === 'speech') loadSpeeches()
     else if (activeTab === 'commissions') { loadCommissions(); loadLeads() }
@@ -450,7 +560,7 @@ ${buildSignatureBlock(senderId)}
     }).catch(() => {})
     // Refresh active tab data
     if (activeTab === 'leads') loadLeads()
-    else if (activeTab === 'relances') { loadRelances(); loadLeads() }
+    else if (activeTab === 'stats') { loadLeads() }
     else if (activeTab === 'videos') loadVideos()
     else if (activeTab === 'speech') loadSpeeches()
     else if (activeTab === 'commissions') { loadCommissions(); loadLeads() }
@@ -462,13 +572,10 @@ ${buildSignatureBlock(senderId)}
   function openLeadModal(item?: Prospect) {
     if (item) {
       setEditLead(item)
-      const parts = item.name.split(' ')
-      const firstName = parts[0] ?? ''
-      const lastName = parts.slice(1).join(' ')
       setLeadForm({
-        firstName,
-        lastName,
-        company: item.company ?? '',
+        firstName: item.firstName ?? '',
+        lastName: item.lastName ?? '',
+        company: item.company ?? item.name ?? '',
         email: item.email ?? '',
         phone: item.phone ?? '',
         budget: item.budget?.toString() ?? '',
@@ -484,11 +591,12 @@ ${buildSignatureBlock(senderId)}
 
   async function submitLead(e: React.FormEvent) {
     e.preventDefault()
+    const fullName = `${leadForm.firstName.trim()} ${leadForm.lastName.trim()}`.trim()
     const payload = {
-      name: `${leadForm.firstName.trim()} ${leadForm.lastName.trim()}`.trim(),
+      name: fullName || leadForm.company.trim(),
       firstName: leadForm.firstName.trim() || null,
       lastName: leadForm.lastName.trim() || null,
-      company: leadForm.company || null,
+      company: leadForm.company.trim() || null,
       email: leadForm.email || null,
       phone: leadForm.phone || null,
       budget: leadForm.budget ? parseFloat(leadForm.budget) : null,
@@ -521,10 +629,21 @@ ${buildSignatureBlock(senderId)}
     }
   }
 
-  async function deleteLead(leadId: string) {
-    if (!confirm('Supprimer ce lead ?')) return
-    await fetch(`/api/prospects/${leadId}`, { method: 'DELETE' })
-    setProspects(prev => prev.filter(p => p.id !== leadId))
+  // Delete lead state
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [deleteLeadId, setDeleteLeadId] = useState<string | null>(null)
+
+  function deleteLead(leadId: string) {
+    setDeleteLeadId(leadId)
+    setShowDeleteModal(true)
+  }
+
+  async function confirmDeleteLead() {
+    if (!deleteLeadId) return
+    await fetch(`/api/prospects/${deleteLeadId}`, { method: 'DELETE' })
+    setProspects(prev => prev.filter(p => p.id !== deleteLeadId))
+    setShowDeleteModal(false)
+    setDeleteLeadId(null)
   }
 
   async function handleImportExcel(e: React.ChangeEvent<HTMLInputElement>) {
@@ -553,15 +672,43 @@ ${buildSignatureBlock(senderId)}
   // ---- Inline status change ----
   async function changeLeadStatus(leadId: string, newStatus: string) {
     setStatusDropdownId(null)
+    if (newStatus === 'A_RAPPELER') {
+      const lead = prospects.find(p => p.id === leadId)
+      setCallbackLeadId(leadId)
+      setCallbackDate(new Date().toISOString().slice(0, 10))
+      setCallbackTime('')
+      setCallbackNotes(lead?.notes ?? '')
+      setShowCallbackModal(true)
+      return
+    }
+    const body: Record<string, unknown> = { status: newStatus }
+    // Clear callbackDate when changing away from A_RAPPELER
+    body.callbackDate = null
     const res = await fetch(`/api/prospects/${leadId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: newStatus }),
+      body: JSON.stringify(body),
     })
     if (res.ok) {
       const updated = await res.json()
       setProspects(prev => prev.map(p => p.id === leadId ? updated : p))
     }
+  }
+
+  async function submitCallback() {
+    if (!callbackLeadId || !callbackDate) return
+    const dateStr = callbackTime ? `${callbackDate}T${callbackTime}:00` : `${callbackDate}T09:00:00`
+    const res = await fetch(`/api/prospects/${callbackLeadId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'A_RAPPELER', callbackDate: new Date(dateStr).toISOString(), notes: callbackNotes.trim() || null }),
+    })
+    if (res.ok) {
+      const updated = await res.json()
+      setProspects(prev => prev.map(p => p.id === callbackLeadId ? updated : p))
+    }
+    setShowCallbackModal(false)
+    setCallbackLeadId(null)
   }
 
   // ---- Email lead ----
@@ -576,6 +723,7 @@ ${buildSignatureBlock(senderId)}
       senderName: 'Jonathan Derai',
       subject: '',
       rawHtml: '',
+      bodyContent: '',
       scheduled: false,
       scheduledDate: '',
       scheduledTime: '',
@@ -588,10 +736,12 @@ ${buildSignatureBlock(senderId)}
     const tpl = EMAIL_TEMPLATES.find(t => t.id === templateId)
     if (!tpl) return
     const greeting = `${emailCivilite === 'Mme' ? 'Madame' : 'Monsieur'} ${emailContactLastName.trim()}`
+    const body = tpl.body(greeting)
     setEmailForm(prev => ({
       ...prev,
       subject: tpl.subject(greeting),
-      rawHtml: tpl.html(greeting, prev.senderId),
+      bodyContent: body,
+      rawHtml: buildEmailHtml(body, prev.senderId),
     }))
     setEmailTemplateId(templateId)
   }
@@ -600,6 +750,9 @@ ${buildSignatureBlock(senderId)}
     e.preventDefault()
     if (!emailTarget?.email) return
     setSendingEmail(true)
+    // Rebuild full HTML from edited body content
+    const currentBody = emailBodyRef.current?.innerHTML || emailForm.bodyContent
+    const finalHtml = currentBody ? buildEmailHtml(currentBody, emailForm.senderId) : emailForm.rawHtml
     try {
       const res = await fetch('/api/email/send', {
         method: 'POST',
@@ -607,13 +760,25 @@ ${buildSignatureBlock(senderId)}
         body: JSON.stringify({
           to: emailTarget.email,
           subject: emailForm.subject,
-          rawHtml: emailForm.rawHtml,
-          body: emailForm.rawHtml ? undefined : 'Voir la version HTML.',
+          rawHtml: finalHtml,
+          body: finalHtml ? undefined : 'Voir la version HTML.',
           senderId: emailForm.senderId,
           senderName: emailForm.senderName,
         }),
       })
       if (res.ok) {
+        // Auto-set lead status to MAIL_ENVOYE
+        if (emailTarget.id) {
+          const statusRes = await fetch(`/api/prospects/${emailTarget.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'MAIL_ENVOYE', callbackDate: null }),
+          })
+          if (statusRes.ok) {
+            const updated = await statusRes.json()
+            setProspects(prev => prev.map(p => p.id === emailTarget.id ? updated : p))
+          }
+        }
         setShowEmailModal(false)
         alert('Email envoyé !')
       } else {
@@ -633,12 +798,23 @@ ${buildSignatureBlock(senderId)}
       if (statusDropdownRef.current && !statusDropdownRef.current.contains(e.target as Node)) {
         setStatusDropdownId(null)
       }
+      if (listFilterRef.current && !listFilterRef.current.contains(e.target as Node)) {
+        setShowListFilter(false)
+      }
     }
-    if (statusDropdownId) {
+    if (statusDropdownId || showListFilter) {
       document.addEventListener('mousedown', handleClickOutside)
       return () => document.removeEventListener('mousedown', handleClickOutside)
     }
-  }, [statusDropdownId])
+  }, [statusDropdownId, showListFilter])
+
+  // Initialize selectedLists to 'all' only on first load
+  const searchesInitialized = useRef(false)
+  useEffect(() => {
+    if (leadSearches.length > 0 && !searchesInitialized.current) {
+      searchesInitialized.current = true
+    }
+  }, [leadSearches])
 
   // ---- Relance handlers ----
   function openRelanceModal() {
@@ -856,13 +1032,7 @@ ${buildSignatureBlock(senderId)}
         <div>
           {/* Actions bar */}
           <div className="flex flex-wrap items-center gap-3 mb-5 justify-between">
-            <div className="flex items-center gap-2">
-              {activeLeadSearchId && (
-                <button onClick={() => setActiveLeadSearchId(null)} className="flex items-center gap-1.5 text-slate-400 hover:text-white text-sm transition-colors">
-                  <ArrowLeft size={14} /> Toutes les listes
-                </button>
-              )}
-            </div>
+            <div className="flex items-center gap-2" />
             <div className="flex items-center gap-3">
               <button onClick={() => openLeadModal()} className="flex items-center gap-2 border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-white px-4 py-2 rounded-xl text-sm transition-colors">
                 <Plus size={16} /> Ajouter manuellement
@@ -874,192 +1044,246 @@ ${buildSignatureBlock(senderId)}
             </div>
           </div>
 
-          {/* Search lists or lead detail */}
-          {!activeLeadSearchId ? (
-            <>
-              {/* Search lists overview */}
-              {leadSearches.length === 0 && prospects.filter(p => !p.leadSearchId).length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-20 text-center">
-                  <Briefcase size={24} className="text-slate-700 mb-3" />
-                  <p className="text-slate-500 text-sm mb-1">Aucun lead</p>
-                  <p className="text-slate-600 text-xs">Créez une nouvelle liste pour commencer la prospection</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {/* Manual leads (not in any search) */}
-                  {prospects.filter(p => !p.leadSearchId).length > 0 && (
-                    <div
-                      onClick={() => setActiveLeadSearchId('manual')}
-                      className="bg-[#111118] border border-slate-800 rounded-xl p-4 hover:border-slate-700 transition-colors cursor-pointer group"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-white text-sm font-medium group-hover:text-[#E14B89] transition-colors">Leads manuels</p>
-                          <p className="text-slate-500 text-xs mt-0.5">Ajoutés manuellement ou importés</p>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <span className="text-slate-400 text-sm font-medium">{prospects.filter(p => !p.leadSearchId).length}</span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  {/* Search-based lists */}
-                  {leadSearches.map(search => (
-                    <div key={search.id} className="bg-[#111118] border border-slate-800 rounded-xl p-4 hover:border-slate-700 transition-colors cursor-pointer group">
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1 min-w-0" onClick={() => setActiveLeadSearchId(search.id)}>
-                          <p className="text-white text-sm font-medium group-hover:text-[#E14B89] transition-colors truncate">{search.keyword}</p>
-                          <p className="text-slate-500 text-xs mt-0.5">{search.location} · {search.resultCount} résultats · {search.withEmail} avec email · {new Date(search.createdAt).toLocaleDateString('fr-FR')}</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={async (e) => {
-                              e.stopPropagation()
-                              if (!confirm(`Supprimer la liste "${search.keyword}" et tous ses leads ?`)) return
-                              await fetch('/api/leads/searches', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ searchId: search.id }) })
-                              setLeadSearches(prev => prev.filter(s => s.id !== search.id))
-                              setProspects(prev => prev.filter(p => p.leadSearchId !== search.id))
-                            }}
-                            className="p-1.5 text-slate-600 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </>
-          ) : (
-            <>
-              {/* Status filters */}
-              <div className="flex flex-wrap gap-2 mb-5">
-                {Object.entries(STATUS_LABELS).filter(([key]) => !['DEVIS_TRANSMETTRE', 'DEVIS_ENVOYE', 'A_RELANCER'].includes(key)).map(([key, label]) => ({ key, label })).map(f => (
+          {/* Filters row: status left, lists right */}
+          <div className="flex flex-wrap items-center gap-2 mb-5 justify-between">
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(STATUS_LABELS).filter(([key]) => !['DEVIS_TRANSMETTRE', 'DEVIS_ENVOYE', 'A_RELANCER'].includes(key)).map(([key, label]) => {
+                const count = prospects.filter(p => p.status === key).length
+                return (
                   <button
-                    key={f.key}
-                    onClick={() => setLeadFilter(f.key)}
+                    key={key}
+                    onClick={() => setLeadFilter(key)}
                     className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                      leadFilter === f.key
+                      leadFilter === key
                         ? 'bg-[#E14B89]/10 text-[#E14B89] border border-[#E14B89]/20'
                         : 'bg-[#111118] border border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
                     }`}
                   >
-                    {f.label}
+                    {label}{count > 0 ? ` (${count})` : ''}
                   </button>
-                ))}
-              </div>
+                )
+              })}
+            </div>
+            {/* Lists filter dropdown */}
+            <div className="relative" ref={listFilterRef}>
+              <button
+                onClick={() => setShowListFilter(!showListFilter)}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                  !selectedLists.has('all')
+                    ? 'bg-[#E14B89]/10 text-[#E14B89] border border-[#E14B89]/20'
+                    : 'bg-[#111118] border border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
+                }`}
+              >
+                <Briefcase size={12} /> Listes
+                <ChevronDown size={12} />
+              </button>
+              {showListFilter && (
+                <div className="absolute top-full right-0 mt-1 bg-[#1a1a24] border border-slate-700 rounded-xl py-2 z-50 min-w-[240px] shadow-xl">
+                  {/* All */}
+                  <button
+                    onClick={() => setSelectedLists(new Set(['all']))}
+                    className={`w-full text-left px-3 py-2 text-xs transition-colors flex items-center gap-2 ${selectedLists.has('all') ? 'text-white' : 'text-slate-400 hover:text-white hover:bg-slate-700/30'}`}
+                  >
+                    <span className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${selectedLists.has('all') ? 'bg-[#E14B89] border-[#E14B89]' : 'border-slate-600'}`}>
+                      {selectedLists.has('all') && <Check size={10} className="text-white" />}
+                    </span>
+                    Toutes les listes
+                  </button>
+                  <div className="border-t border-slate-800 my-1" />
+                  {/* Manual leads */}
+                  {prospects.some(p => !p.leadSearchId) && (
+                    <button
+                      onClick={() => {
+                        const next = new Set(selectedLists)
+                        next.delete('all')
+                        if (next.has('manual')) next.delete('manual'); else next.add('manual')
+                        if (next.size === 0) next.add('all')
+                        setSelectedLists(next)
+                      }}
+                      className={`w-full text-left px-3 py-2 text-xs transition-colors flex items-center gap-2 ${selectedLists.has('manual') ? 'text-white' : 'text-slate-400 hover:text-white hover:bg-slate-700/30'}`}
+                    >
+                      <span className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${selectedLists.has('manual') ? 'bg-[#E14B89] border-[#E14B89]' : 'border-slate-600'}`}>
+                        {selectedLists.has('manual') && <Check size={10} className="text-white" />}
+                      </span>
+                      Leads manuels
+                      <span className="text-slate-600 ml-auto">{prospects.filter(p => !p.leadSearchId).length}</span>
+                    </button>
+                  )}
+                  {/* Search-based lists */}
+                  {leadSearches.map(search => (
+                    <button
+                      key={search.id}
+                      onClick={() => {
+                        const next = new Set(selectedLists)
+                        next.delete('all')
+                        if (next.has(search.id)) next.delete(search.id); else next.add(search.id)
+                        if (next.size === 0) next.add('all')
+                        setSelectedLists(next)
+                      }}
+                      className={`w-full text-left px-3 py-2 text-xs transition-colors flex items-center gap-2 ${selectedLists.has(search.id) ? 'text-white' : 'text-slate-400 hover:text-white hover:bg-slate-700/30'}`}
+                    >
+                      <span className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${selectedLists.has(search.id) ? 'bg-[#E14B89] border-[#E14B89]' : 'border-slate-600'}`}>
+                        {selectedLists.has(search.id) && <Check size={10} className="text-white" />}
+                      </span>
+                      <span className="truncate">{search.keyword} · {search.location}</span>
+                      <span className="text-slate-600 ml-auto flex-shrink-0">{search.resultCount}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
 
-              {/* Search bar */}
-              <div className="relative mb-4">
-                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                <input
-                  type="text"
-                  value={leadSearchQuery}
-                  onChange={e => setLeadSearchQuery(e.target.value)}
-                  placeholder="Rechercher un lead..."
-                  className="w-full bg-[#111118] border border-slate-800 rounded-xl pl-9 pr-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors placeholder:text-slate-600"
-                />
-              </div>
+          {/* Search bar */}
+          <div className="relative mb-4">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+            <input
+              type="text"
+              value={leadSearchQuery}
+              onChange={e => setLeadSearchQuery(e.target.value)}
+              placeholder="Rechercher un lead..."
+              className="w-full bg-[#111118] border border-slate-800 rounded-xl pl-9 pr-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors placeholder:text-slate-600"
+            />
+          </div>
 
-              {/* Filtered leads for active search */}
-              {(() => {
-                const searchLeads = activeLeadSearchId === 'manual'
-                  ? prospects.filter(p => !p.leadSearchId)
-                  : prospects.filter(p => p.leadSearchId === activeLeadSearchId)
-                const q = leadSearchQuery.toLowerCase().trim()
-                const visibleLeads = searchLeads
-                  .filter(l => leadFilter === 'ALL' || l.status === leadFilter)
-                  .filter(l => !q || l.name.toLowerCase().includes(q) || l.company?.toLowerCase().includes(q) || l.email?.toLowerCase().includes(q) || l.phone?.includes(q))
-                return visibleLeads.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-20 text-center">
-                    <Briefcase size={24} className="text-slate-700 mb-3" />
-                    <p className="text-slate-500 text-sm">Aucun lead</p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {visibleLeads.map(lead => (
+          {/* All leads filtered */}
+          {(() => {
+            const filteredByList = selectedLists.has('all')
+              ? prospects
+              : prospects.filter(p => {
+                  if (!p.leadSearchId && selectedLists.has('manual')) return true
+                  if (p.leadSearchId && selectedLists.has(p.leadSearchId)) return true
+                  return false
+                })
+            const q = leadSearchQuery.toLowerCase().trim()
+            const visibleLeads = filteredByList
+              .filter(l => leadFilter === 'ALL' || l.status === leadFilter)
+              .filter(l => !q || l.name.toLowerCase().includes(q) || l.company?.toLowerCase().includes(q) || l.email?.toLowerCase().includes(q) || l.phone?.includes(q))
+              .sort((a, b) => {
+                // Sort A_RAPPELER by callbackDate
+                if (leadFilter === 'A_RAPPELER' && a.callbackDate && b.callbackDate) {
+                  return new Date(a.callbackDate).getTime() - new Date(b.callbackDate).getTime()
+                }
+                return 0
+              })
+            return visibleLeads.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-20 text-center">
+                <Briefcase size={24} className="text-slate-700 mb-3" />
+                <p className="text-slate-500 text-sm">Aucun lead</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {visibleLeads.map(lead => (
                 <div
                   key={lead.id}
                   className="bg-[#111118] border border-slate-800 rounded-xl p-4 hover:border-slate-700 transition-colors group cursor-pointer"
                   onClick={() => openLeadModal(lead)}
                 >
-                  <div className="flex items-center gap-4">
-                    <div className="min-w-0 w-[180px] flex-shrink-0">
-                      <p className="text-white text-sm font-medium truncate">{lead.name}</p>
-                      {lead.company && <p className="text-slate-500 text-xs truncate">{lead.company}</p>}
+                  <div className="flex items-center gap-3">
+                    {/* Entreprise/nom + statut — gauche */}
+                    <div className="flex items-center gap-3 flex-shrink-0">
+                      <div className="min-w-0 w-[160px]">
+                        <p className="text-white text-sm font-medium truncate">{lead.company || lead.name}</p>
+                        <p className="text-slate-500 text-xs truncate">{lead.company ? lead.name : ''}</p>
+                      </div>
+                      <div className="relative" ref={statusDropdownId === lead.id ? statusDropdownRef : undefined}>
+                        <button
+                          onClick={e => { e.stopPropagation(); setStatusDropdownId(statusDropdownId === lead.id ? null : lead.id) }}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1 hover:opacity-80 transition-opacity ${STATUS_COLORS[lead.status] ?? 'bg-slate-500/15 text-slate-400'}`}
+                        >
+                          {STATUS_LABELS[lead.status] ?? lead.status}
+                          <ChevronDown size={12} />
+                        </button>
+                        {statusDropdownId === lead.id && (
+                          <div className="absolute top-full left-0 mt-1 bg-[#1a1a24] border border-slate-700 rounded-xl py-1 z-50 min-w-[180px] shadow-xl">
+                            {Object.entries(STATUS_LABELS).filter(([key]) => !['DEVIS_TRANSMETTRE', 'DEVIS_ENVOYE', 'A_RELANCER'].includes(key)).map(([key, label]) => (
+                              <button
+                                key={key}
+                                onClick={e => { e.stopPropagation(); changeLeadStatus(lead.id, key) }}
+                                className={`w-full text-left px-3 py-2 text-xs transition-colors flex items-center gap-2 ${
+                                  lead.status === key ? 'text-white bg-slate-700/50' : 'text-slate-400 hover:text-white hover:bg-slate-700/30'
+                                }`}
+                              >
+                                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${STATUS_COLORS[key]?.split(' ')[0]?.replace('/15', '') ?? 'bg-slate-500'}`} />
+                                {label}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <div className="relative flex-shrink-0" ref={statusDropdownId === lead.id ? statusDropdownRef : undefined}>
-                      <button
-                        onClick={e => { e.stopPropagation(); setStatusDropdownId(statusDropdownId === lead.id ? null : lead.id) }}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1 hover:opacity-80 transition-opacity ${STATUS_COLORS[lead.status] ?? 'bg-slate-500/15 text-slate-400'}`}
-                      >
-                        {STATUS_LABELS[lead.status] ?? lead.status}
-                        <ChevronDown size={12} />
-                      </button>
-                      {statusDropdownId === lead.id && (
-                        <div className="absolute top-full left-0 mt-1 bg-[#1a1a24] border border-slate-700 rounded-xl py-1 z-50 min-w-[180px] shadow-xl">
-                          {Object.entries(STATUS_LABELS).filter(([key]) => !['DEVIS_TRANSMETTRE', 'DEVIS_ENVOYE', 'A_RELANCER'].includes(key)).map(([key, label]) => (
-                            <button
-                              key={key}
-                              onClick={e => { e.stopPropagation(); changeLeadStatus(lead.id, key) }}
-                              className={`w-full text-left px-3 py-2 text-xs transition-colors flex items-center gap-2 ${
-                                lead.status === key ? 'text-white bg-slate-700/50' : 'text-slate-400 hover:text-white hover:bg-slate-700/30'
-                              }`}
-                            >
-                              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${STATUS_COLORS[key]?.split(' ')[0]?.replace('/15', '') ?? 'bg-slate-500'}`} />
-                              {label}
-                            </button>
-                          ))}
-                        </div>
+                    {/* Infos contact — milieu */}
+                    <div className="flex-1 flex items-center gap-5 min-w-0 pl-8">
+                      {/* Callback date for A_RAPPELER */}
+                      {lead.status === 'A_RAPPELER' && lead.callbackDate && (
+                        <span className="hidden md:flex items-center gap-1.5 text-orange-400 text-xs flex-shrink-0">
+                          <Clock size={12} />
+                          {new Date(lead.callbackDate).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}
+                          {(() => {
+                            const d = new Date(lead.callbackDate)
+                            const h = d.getHours(); const m = d.getMinutes()
+                            return (h !== 9 || m !== 0) ? ` ${String(h).padStart(2, '0')}h${String(m).padStart(2, '0')}` : ''
+                          })()}
+                        </span>
+                      )}
+                      {lead.website && (
+                        <a href={lead.website.startsWith('http') ? lead.website : `https://${lead.website}`} target="_blank" rel="noopener noreferrer"
+                          onClick={e => e.stopPropagation()}
+                          className="hidden md:flex items-center gap-1.5 text-[#E14B89] hover:text-[#F8903C] text-xs flex-shrink-0 transition-colors">
+                          <Globe size={12} /> Site
+                        </a>
+                      )}
+                      {lead.phone && (
+                        <span className="hidden md:flex items-center gap-1.5 text-slate-500 text-xs flex-shrink-0">
+                          <Phone size={12} /> {lead.phone}
+                        </span>
+                      )}
+                      {lead.email && (
+                        <span className="hidden lg:flex items-center gap-1.5 text-slate-500 text-xs truncate max-w-[220px] flex-shrink-0">
+                          <Mail size={12} /> {lead.email}
+                        </span>
+                      )}
+                      {lead.notes && (
+                        <span className="hidden xl:flex items-center gap-1.5 text-slate-600 text-xs truncate max-w-[180px] flex-shrink-0 italic">
+                          {lead.notes}
+                        </span>
                       )}
                     </div>
-                    <div className="flex-1" />
-                    {lead.phone && (
-                      <span className="hidden md:flex items-center gap-1.5 text-slate-500 text-xs flex-shrink-0">
-                        <Phone size={12} /> {lead.phone}
-                      </span>
-                    )}
-                    {lead.website && (
-                      <a href={lead.website.startsWith('http') ? lead.website : `https://${lead.website}`} target="_blank" rel="noopener noreferrer"
+                    {/* Actions — droite */}
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <a
+                        href="https://calendly.com/contact-agence-kameo/30min"
+                        target="_blank"
+                        rel="noopener noreferrer"
                         onClick={e => e.stopPropagation()}
-                        className="hidden md:flex items-center gap-1.5 text-[#E14B89] hover:text-[#F8903C] text-xs flex-shrink-0 transition-colors">
-                        <Globe size={12} /> Site
-                      </a>
-                    )}
-                    {lead.email && (
-                      <span className="hidden lg:flex items-center gap-1.5 text-slate-500 text-xs truncate max-w-[180px] flex-shrink-0">
-                        <Mail size={12} /> {lead.email}
-                      </span>
-                    )}
-                    {lead.budget != null && lead.budget > 0 && (
-                      <span className="text-slate-400 text-xs flex-shrink-0 hidden sm:block">
-                        {formatCurrency(lead.budget)}
-                      </span>
-                    )}
-                    {lead.email && (
-                      <button
-                        onClick={e => { e.stopPropagation(); openEmailModal(lead) }}
-                        className="p-1.5 text-slate-500 hover:text-[#E14B89] transition-colors flex-shrink-0"
-                        title="Envoyer un email"
+                        className="p-1.5 text-slate-500 hover:text-[#F8903C] transition-colors"
+                        title="Réserver un créneau Calendly"
                       >
-                        <Send size={14} />
+                        <Calendar size={14} />
+                      </a>
+                      {lead.email && (
+                        <button
+                          onClick={e => { e.stopPropagation(); openEmailModal(lead) }}
+                          className="p-1.5 text-slate-500 hover:text-[#E14B89] transition-colors"
+                          title="Envoyer un email"
+                        >
+                          <Send size={14} />
+                        </button>
+                      )}
+                      <button
+                        onClick={e => { e.stopPropagation(); deleteLead(lead.id) }}
+                        className="p-1.5 transition-colors text-slate-600 hover:text-red-400 opacity-0 group-hover:opacity-100"
+                        title="Supprimer"
+                      >
+                        <Trash2 size={14} />
                       </button>
-                    )}
-                    <button
-                      onClick={e => { e.stopPropagation(); deleteLead(lead.id) }}
-                      className="p-1.5 text-slate-600 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 flex-shrink-0"
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                    </div>
                   </div>
                 </div>
               ))}
-                  </div>
-                )
-              })()}
-            </>
-          )}
+              </div>
+            )
+          })()}
 
           {/* Lead modal */}
           {showLeadModal && (
@@ -1068,22 +1292,8 @@ ${buildSignatureBlock(senderId)}
               <form onSubmit={submitLead} className="space-y-4">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className={labelClass}>Prénom *</label>
-                    <input required value={leadForm.firstName} onChange={e => setLeadForm({ ...leadForm, firstName: e.target.value })} className={inputClass} />
-                  </div>
-                  <div>
-                    <label className={labelClass}>Nom *</label>
-                    <input required value={leadForm.lastName} onChange={e => setLeadForm({ ...leadForm, lastName: e.target.value })} className={inputClass} />
-                  </div>
-                </div>
-                <div>
-                  <label className={labelClass}>Entreprise</label>
-                  <input value={leadForm.company} onChange={e => setLeadForm({ ...leadForm, company: e.target.value })} className={inputClass} />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className={labelClass}>Email</label>
-                    <input type="email" value={leadForm.email} onChange={e => setLeadForm({ ...leadForm, email: e.target.value })} className={inputClass} />
+                    <label className={labelClass}>Entreprise *</label>
+                    <input required value={leadForm.company} onChange={e => setLeadForm({ ...leadForm, company: e.target.value })} className={inputClass} />
                   </div>
                   <div>
                     <label className={labelClass}>Telephone</label>
@@ -1092,13 +1302,17 @@ ${buildSignatureBlock(senderId)}
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className={labelClass}>Budget (EUR)</label>
-                    <input type="number" value={leadForm.budget} onChange={e => setLeadForm({ ...leadForm, budget: e.target.value })} className={inputClass} />
+                    <label className={labelClass}>Prénom</label>
+                    <input value={leadForm.firstName} onChange={e => setLeadForm({ ...leadForm, firstName: e.target.value })} className={inputClass} />
                   </div>
                   <div>
-                    <label className={labelClass}>Source</label>
-                    <input value={leadForm.source} onChange={e => setLeadForm({ ...leadForm, source: e.target.value })} placeholder="LinkedIn, reference..." className={inputClass} />
+                    <label className={labelClass}>Nom</label>
+                    <input value={leadForm.lastName} onChange={e => setLeadForm({ ...leadForm, lastName: e.target.value })} className={inputClass} />
                   </div>
+                </div>
+                <div>
+                  <label className={labelClass}>Email</label>
+                  <input type="email" value={leadForm.email} onChange={e => setLeadForm({ ...leadForm, email: e.target.value })} className={inputClass} />
                 </div>
                 <div>
                   <label className={labelClass}>Notes</label>
@@ -1106,6 +1320,63 @@ ${buildSignatureBlock(senderId)}
                 </div>
                 <ModalActions onCancel={() => setShowLeadModal(false)} submitLabel={editLead ? 'Sauvegarder' : 'Creer'} />
               </form>
+            </ModalOverlay>
+          )}
+
+          {/* Callback modal (A_RAPPELER) */}
+          {showCallbackModal && (
+            <ModalOverlay onClose={() => { setShowCallbackModal(false); setCallbackLeadId(null) }}>
+              <h2 className="text-white font-semibold text-lg mb-1">A rappeler</h2>
+              <p className="text-slate-500 text-xs mb-5">Quand souhaitez-vous rappeler ce lead ?</p>
+              <form onSubmit={e => { e.preventDefault(); submitCallback() }} className="space-y-4">
+                <div>
+                  <label className={labelClass}>Date *</label>
+                  <input
+                    type="date"
+                    required
+                    value={callbackDate}
+                    onChange={e => setCallbackDate(e.target.value)}
+                    min={new Date().toISOString().slice(0, 10)}
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>Heure (optionnel)</label>
+                  <input
+                    type="time"
+                    value={callbackTime}
+                    onChange={e => setCallbackTime(e.target.value)}
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>Notes</label>
+                  <textarea
+                    value={callbackNotes}
+                    onChange={e => setCallbackNotes(e.target.value)}
+                    rows={3}
+                    placeholder="Ex: Rappeler pour discuter du devis..."
+                    className={textareaClass}
+                  />
+                </div>
+                <ModalActions onCancel={() => { setShowCallbackModal(false); setCallbackLeadId(null) }} submitLabel="Confirmer" />
+              </form>
+            </ModalOverlay>
+          )}
+
+          {/* Delete confirmation modal */}
+          {showDeleteModal && (
+            <ModalOverlay onClose={() => { setShowDeleteModal(false); setDeleteLeadId(null) }}>
+              <h2 className="text-white font-semibold text-lg mb-2">Supprimer le lead</h2>
+              <p className="text-slate-400 text-sm mb-5">Etes-vous sur de vouloir supprimer ce lead ? Cette action est irreversible.</p>
+              <div className="flex gap-3">
+                <button onClick={() => { setShowDeleteModal(false); setDeleteLeadId(null) }} className="flex-1 border border-slate-700 text-slate-400 hover:text-white py-2.5 rounded-xl text-sm transition-colors">
+                  Annuler
+                </button>
+                <button onClick={confirmDeleteLead} className="flex-1 bg-red-500 hover:bg-red-600 text-white py-2.5 rounded-xl text-sm font-medium transition-colors">
+                  Supprimer
+                </button>
+              </div>
             </ModalOverlay>
           )}
 
@@ -1193,10 +1464,25 @@ ${buildSignatureBlock(senderId)}
                       </div>
                       <div>
                         <label className="flex items-center justify-between mb-1.5">
-                          <span className={labelClass + ' mb-0'}>Aperçu email</span>
+                          <span className={labelClass + ' mb-0'}>Contenu email</span>
+                          <span className="text-slate-600 text-[10px]">Cliquez sur le texte pour modifier</span>
                         </label>
                         <div className="rounded-xl overflow-hidden border border-slate-700 max-h-[400px] overflow-y-auto bg-[#f5f5f5]">
-                          <div dangerouslySetInnerHTML={{ __html: emailForm.rawHtml }} />
+                          {/* Header — read-only */}
+                          <div dangerouslySetInnerHTML={{ __html: emailHeaderHtml }} />
+                          {/* Body — editable */}
+                          <div style={{ padding: '32px 32px 0', background: '#ffffff', fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif" }}>
+                            <div
+                              ref={emailBodyRef}
+                              contentEditable
+                              suppressContentEditableWarning
+                              dangerouslySetInnerHTML={{ __html: emailForm.bodyContent }}
+                              className="outline-none focus:ring-1 focus:ring-[#E14B89]/30 rounded-lg min-h-[60px]"
+                              style={{ fontSize: '15px', lineHeight: '1.6', color: '#444' }}
+                            />
+                            {/* Signature — read-only */}
+                            <div dangerouslySetInnerHTML={{ __html: buildSignatureBlock(emailForm.senderId) }} />
+                          </div>
                         </div>
                       </div>
                       <div>
@@ -1396,70 +1682,69 @@ ${buildSignatureBlock(senderId)}
       {/* ----------------------------------------------------------------- */}
       {/* TAB: RELANCES                                                     */}
       {/* ----------------------------------------------------------------- */}
-      {activeTab === 'relances' && (
-        <div>
-          <div className="mb-5">
-            <button onClick={openRelanceModal} disabled={prospects.length === 0} className="flex items-center gap-2 bg-gradient-to-r from-[#E14B89] to-[#F8903C] hover:opacity-90 text-white px-4 py-2 rounded-xl text-sm font-medium transition-opacity disabled:opacity-50">
-              <Plus size={16} /> Nouvelle relance
-            </button>
-            {prospects.length === 0 && <p className="text-slate-600 text-xs mt-2">Ajoutez d&apos;abord des leads pour creer des relances</p>}
+      {activeTab === 'stats' && (() => {
+        const today = new Date().toISOString().slice(0, 10)
+        const todayProspects = prospects.filter(p => p.statusHistory?.some(s => s) && p.updatedAt && p.updatedAt.slice(0, 10) === today)
+
+        const countStatus = (status: string) => prospects.filter(p => p.status === status || (p.statusHistory || []).includes(status)).length
+        const countToday = (status: string) => todayProspects.filter(p => p.status === status).length
+
+        const stats = [
+          { label: 'Leads total', value: prospects.length, color: 'text-slate-400', bg: 'bg-slate-500/15' },
+          { label: 'Pas répondu', value: countStatus('PAS_REPONDU'), color: 'text-yellow-400', bg: 'bg-yellow-500/15' },
+          { label: 'Mails envoyés', value: countStatus('MAIL_ENVOYE'), color: 'text-teal-400', bg: 'bg-teal-500/15' },
+          { label: 'Visios planifiées', value: countStatus('VISIO_PLANIFIE'), color: 'text-indigo-400', bg: 'bg-indigo-500/15' },
+          { label: 'À rappeler', value: prospects.filter(p => p.status === 'A_RAPPELER').length, color: 'text-orange-400', bg: 'bg-orange-500/15' },
+          { label: 'Refusés', value: countStatus('REFUSE'), color: 'text-red-400', bg: 'bg-red-500/15' },
+          { label: 'Signés', value: countStatus('SIGNE'), color: 'text-green-400', bg: 'bg-green-500/15' },
+        ]
+
+        const todayStats = [
+          { label: 'Appels (statuts modifiés)', value: countToday('PAS_REPONDU') + countToday('A_RAPPELER') + countToday('MAIL_ENVOYE') + countToday('VISIO_PLANIFIE') + countToday('REFUSE') + countToday('SIGNE') },
+          { label: 'Mails envoyés', value: countToday('MAIL_ENVOYE') },
+          { label: 'Visios planifiées', value: countToday('VISIO_PLANIFIE') },
+          { label: 'Refusés', value: countToday('REFUSE') },
+          { label: 'Signés', value: countToday('SIGNE') },
+        ]
+
+        const conversionRate = prospects.length > 0 ? Math.round((countStatus('SIGNE') / prospects.length) * 100) : 0
+
+        return (
+          <div className="space-y-6">
+            {/* Today */}
+            <div className="bg-[#111118] border border-slate-800 rounded-2xl p-5">
+              <h3 className="text-white font-medium mb-4">Aujourd&apos;hui</h3>
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+                {todayStats.map(s => (
+                  <div key={s.label} className="text-center">
+                    <p className="text-2xl font-bold text-white">{s.value}</p>
+                    <p className="text-slate-500 text-xs mt-1">{s.label}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Global stats */}
+            <div className="bg-[#111118] border border-slate-800 rounded-2xl p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-white font-medium">Vue d&apos;ensemble</h3>
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-500 text-xs">Taux de conversion</span>
+                  <span className={`text-sm font-bold ${conversionRate >= 20 ? 'text-emerald-400' : conversionRate >= 10 ? 'text-amber-400' : 'text-slate-400'}`}>{conversionRate}%</span>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+                {stats.map(s => (
+                  <div key={s.label} className={`${s.bg} rounded-xl p-3 text-center`}>
+                    <p className={`text-xl font-bold ${s.color}`}>{s.value}</p>
+                    <p className="text-slate-500 text-[10px] mt-1">{s.label}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
-
-          {/* A faire */}
-          <RelanceSection
-            title="A faire"
-            relances={relances.filter(r => !r.done).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())}
-            onToggle={toggleRelanceDone}
-            onDelete={deleteRelance}
-            emptyText="Aucune relance en attente"
-          />
-
-          {/* Terminee */}
-          <RelanceSection
-            title="Terminees"
-            relances={relances.filter(r => r.done)}
-            onToggle={toggleRelanceDone}
-            onDelete={deleteRelance}
-            emptyText="Aucune relance terminee"
-            dimmed
-          />
-
-          {/* Relance modal */}
-          {showRelanceModal && (
-            <ModalOverlay onClose={() => setShowRelanceModal(false)}>
-              <h2 className="text-white font-semibold text-lg mb-5">Nouvelle relance</h2>
-              <form onSubmit={submitRelance} className="space-y-4">
-                <div>
-                  <label className={labelClass}>Prospect *</label>
-                  <select required value={relanceForm.prospectId} onChange={e => setRelanceForm({ ...relanceForm, prospectId: e.target.value })} className={selectClass}>
-                    <option value="">Selectionner...</option>
-                    {prospects.map(p => <option key={p.id} value={p.id}>{p.name}{p.company ? ` (${p.company})` : ''}</option>)}
-                  </select>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className={labelClass}>Type</label>
-                    <select value={relanceForm.type} onChange={e => setRelanceForm({ ...relanceForm, type: e.target.value })} className={selectClass}>
-                      <option value="APPEL">Appel</option>
-                      <option value="EMAIL">Email</option>
-                      <option value="REUNION">Reunion</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className={labelClass}>Date *</label>
-                    <input required type="date" value={relanceForm.date} onChange={e => setRelanceForm({ ...relanceForm, date: e.target.value })} className={inputClass} />
-                  </div>
-                </div>
-                <div>
-                  <label className={labelClass}>Notes</label>
-                  <textarea value={relanceForm.notes} onChange={e => setRelanceForm({ ...relanceForm, notes: e.target.value })} rows={3} className={textareaClass} />
-                </div>
-                <ModalActions onCancel={() => setShowRelanceModal(false)} submitLabel="Creer" />
-              </form>
-            </ModalOverlay>
-          )}
-        </div>
-      )}
+        )
+      })()}
 
       {/* ----------------------------------------------------------------- */}
       {/* TAB: VIDEOS                                                       */}

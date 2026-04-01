@@ -13,12 +13,14 @@ export async function GET(req: NextRequest) {
   // Allow viewing other users' calendars (team visibility)
   const viewUserId = req.nextUrl.searchParams.get('userId')
   const shared = req.nextUrl.searchParams.get('shared') === 'true'
+  const timeMin = req.nextUrl.searchParams.get('timeMin') || undefined
+  const timeMax = req.nextUrl.searchParams.get('timeMax') || undefined
   const targetUserId = viewUserId || currentUserId
 
   // Return list of all users who have connected calendars
   const tokens = await prisma.googleCalendarToken.findMany({
     where: { userId: { not: null } },
-    select: { userId: true, email: true },
+    select: { userId: true, email: true, expiresAt: true },
   })
   const userIds = [...new Set(tokens.map(t => t.userId).filter(Boolean))] as string[]
   let calendarUsers: { id: string; name: string; email: string; image: string | null }[] = []
@@ -35,6 +37,11 @@ export async function GET(req: NextRequest) {
     }))
   }
 
+  // Detect invalid tokens (expiresAt = epoch 0 means revoked)
+  const invalidTokenEmails = tokens
+    .filter(t => t.userId === targetUserId && t.expiresAt && new Date(t.expiresAt).getTime() === 0)
+    .map(t => t.email)
+
   // Build email→userId mapping for shared view
   const emailToUserId: Record<string, string> = {}
   tokens.forEach(t => { if (t.userId) emailToUserId[t.email] = t.userId })
@@ -49,7 +56,7 @@ export async function GET(req: NextRequest) {
 
   // Fetch events from all connected calendars in parallel
   const eventArrays = await Promise.all(
-    calendarEmails.map(email => getEventsForEmail(email, 50))
+    calendarEmails.map(email => getEventsForEmail(email, 50, timeMin, timeMax))
   )
 
   // Merge, add ownerUserId, and sort by start time
@@ -67,6 +74,7 @@ export async function GET(req: NextRequest) {
     calendarUsers,
     currentUserId,
     viewingUserId: targetUserId,
+    invalidTokenEmails,
   })
 }
 

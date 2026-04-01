@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
+import { usePolling } from '@/hooks/usePolling'
 import {
   FileText, Plus, Trash2, Download, Link, Sparkles, X,
   ChevronRight, Search, Calendar, FolderKanban, Loader2, Eye, Pencil,
@@ -54,6 +55,18 @@ export default function RessourcesPage() {
       setProjects(Array.isArray(projData) ? projData : [])
     }).finally(() => setLoading(false))
   }, [])
+
+  function refreshData() {
+    Promise.all([
+      fetch('/api/cahier-des-charges').then(r => r.json()),
+      fetch('/api/projects').then(r => r.json()),
+    ]).then(([docData, projData]) => {
+      setDocs(Array.isArray(docData) ? docData : [])
+      setProjects(Array.isArray(projData) ? projData : [])
+    }).catch(() => {})
+  }
+
+  usePolling(refreshData)
 
   const filtered = docs.filter(d =>
     d.title.toLowerCase().includes(search.toLowerCase()) ||

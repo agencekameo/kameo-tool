@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { usePolling } from '@/hooks/usePolling'
 import { Plus, Search, Pin, Pencil, Trash2, X, Check } from 'lucide-react'
 import { RESOURCE_CATEGORY_COLORS, RESOURCE_CATEGORY_LABELS } from '@/lib/utils'
 
@@ -30,6 +31,12 @@ export default function WikiPage() {
   useEffect(() => {
     fetch('/api/resources').then(r => r.json()).then(setResources).finally(() => setLoading(false))
   }, [])
+
+  function refreshData() {
+    fetch('/api/resources').then(r => r.json()).then(setResources).catch(() => {})
+  }
+
+  usePolling(refreshData)
 
   const filtered = resources.filter(r => {
     const matchSearch = r.title.toLowerCase().includes(search.toLowerCase()) ||

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { usePolling } from '@/hooks/usePolling'
 import { Activity, Trash2, Pencil, Plus, Search } from 'lucide-react'
 import { ROLE_AVATAR_COLORS } from '@/lib/utils'
 
@@ -62,6 +63,15 @@ export default function LogsPage() {
       fetch('/api/users').then(r => r.json()),
     ]).then(([l, u]) => { setLogs(l); setUsers(u) }).finally(() => setLoading(false))
   }, [])
+
+  function refreshData() {
+    Promise.all([
+      fetch('/api/logs').then(r => r.json()),
+      fetch('/api/users').then(r => r.json()),
+    ]).then(([l, u]) => { setLogs(l); setUsers(u) }).catch(() => {})
+  }
+
+  usePolling(refreshData)
 
   const entities = ['TOUS', ...Array.from(new Set(logs.map(l => l.entity)))]
   const actions = ['TOUS', 'CRÉÉ', 'MODIFIÉ', 'SUPPRIMÉ']

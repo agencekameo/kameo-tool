@@ -62,6 +62,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ tok
       clientAddress: quote.clientAddress,
       subject: quote.subject,
       validUntil: quote.validUntil,
+      deliveryDays: quote.deliveryDays,
+      clientLogo: quote.clientLogo,
       notes: quote.notes,
       discount: quote.discount,
       items: quote.items.map(item => ({

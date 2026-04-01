@@ -31,6 +31,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
           id: true,
           name: true,
           type: true,
+          services: true,
           client: { select: { name: true, company: true } },
         },
       },
@@ -113,6 +114,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
             where: { id: project.id },
             data: { status: firstStep as never },
           })
+
+          // Recalculate freelance deadlines from today (form completion date)
+          const assignees = await prisma.projectAssignee.findMany({
+            where: { projectId: project.id, delayDays: { not: null } },
+            orderBy: { createdAt: 'asc' },
+          })
+          let cumulativeDays = 0
+          for (const a of assignees) {
+            if (a.delayDays) {
+              cumulativeDays += a.delayDays
+              const dl = new Date()
+              dl.setDate(dl.getDate() + cumulativeDays)
+              await prisma.projectAssignee.update({
+                where: { id: a.id },
+                data: { deadline: dl },
+              })
+            }
+          }
         }
       }
     }

@@ -39,6 +39,9 @@ import {
   X,
   Briefcase,
   Handshake,
+  ClipboardList,
+  Settings,
+  ChevronDown,
 } from 'lucide-react'
 import { cn, ROLE_LABELS } from '@/lib/utils'
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
@@ -116,7 +119,8 @@ const sections: { label: string; items: NavItem[] }[] = [
     label: 'Suivi',
     items: [
       { href: '/projects', label: 'Projets', icon: FolderKanban },
-      { href: '/maintenances', label: 'Maint.', icon: Wrench },
+      { href: '/small-projects', label: 'Petits projets', icon: ClipboardList },
+      { href: '/maintenances', label: 'Maintenances', icon: Wrench },
       { href: '/aysha', label: 'Aysha', icon: ListTodo },
     ],
   },
@@ -135,31 +139,35 @@ const sections: { label: string; items: NavItem[] }[] = [
     items: [
       { href: '/wiki', label: 'Wiki', icon: BookOpen },
       { href: '/audit', label: 'Audit SEO', icon: Search },
-      { href: '/gmb', label: 'GMB', icon: MapPin },
+      { href: '/redaction', label: 'Rédaction', icon: FileText },
+      { href: '/gmb', label: 'Fiches Google', icon: MapPin },
     ],
   },
 ]
 
 const adminItems: { href: string; label: string; Icon: typeof LayoutDashboard }[] = [
-  { href: '/users', label: 'Équipe', Icon: Users2 },
-  { href: '/logs', label: 'Logs', Icon: Activity },
+  { href: '/parametres', label: 'Paramètres', Icon: Settings },
   { href: '/contrats', label: 'Contrats', Icon: FileCheck2 },
-  { href: '/backups', label: 'Backups', Icon: HardDrive },
-  { href: '/notes-de-frais', label: 'Frais', Icon: Receipt },
+  { href: '/mandats', label: 'Mandats', Icon: FileText },
 ]
 
 export function Sidebar({
   mobileOpen = false,
   onMobileClose,
+  collapsed = false,
+  onToggleCollapse,
 }: {
   mobileOpen?: boolean
   onMobileClose?: () => void
+  collapsed?: boolean
+  onToggleCollapse?: () => void
 }) {
   const pathname = usePathname()
   const { data: session } = useSession()
   const { theme, setTheme } = useTheme()
   const role = (session?.user as { role?: string })?.role ?? ''
   const isAdmin = role === 'ADMIN'
+  const isDemoRole = role === 'DEMO'
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
@@ -167,6 +175,7 @@ export function Sidebar({
   const [notifOpen, setNotifOpen] = useState(false)
   const [notifications, setNotifications] = useState<Notification[]>([])
   const notifRef = useRef<HTMLDivElement>(null)
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({ "Vue d'ensemble": true, 'Suivi': true })
   const router = useRouter()
 
   const unreadCount = notifications.filter(n => !n.read).length
@@ -213,7 +222,7 @@ export function Sidebar({
 
   // Filter sections based on role
   const filteredSections = useMemo(() => {
-    if (isAdmin) return sections
+    if (isAdmin || isDemoRole) return sections
     const allowed = ROLE_ALLOWED_PATHS[role]
     if (!allowed) return sections // fallback: show all for unknown roles
     return sections
@@ -222,7 +231,7 @@ export function Sidebar({
         items: section.items.filter(item => allowed.includes(item.href)),
       }))
       .filter(section => section.items.length > 0)
-  }, [role, isAdmin])
+  }, [role, isAdmin, isDemoRole])
 
   // Fetch avatar from API (not from session — avatar is NOT stored in JWT)
   useEffect(() => {
@@ -273,25 +282,25 @@ export function Sidebar({
   const [headerSize, setHeaderSize] = useState(20)
 
   const totalNavItems = useMemo(() => {
-    return filteredSections.reduce((acc, s) => acc + s.items.length, 0) + (isAdmin ? adminItems.length : 0)
-  }, [filteredSections, isAdmin])
+    return filteredSections.reduce((acc, s) => acc + s.items.length, 0) + ((isAdmin || isDemoRole) ? adminItems.length : 0)
+  }, [filteredSections, isAdmin, isDemoRole])
 
-  const totalSections = filteredSections.length + (isAdmin ? 1 : 0)
+  const totalSections = filteredSections.length + ((isAdmin || isDemoRole) ? 1 : 0)
 
   useEffect(() => {
     const el = navRef.current
     if (!el) return
     const recalc = () => {
       const h = el.clientHeight
-      const lineH = 15
-      // Start with comfortable values and shrink until it fits
-      let py = 4, gap = 8, hdr = 20
-      for (let attempt = 0; attempt < 10; attempt++) {
-        const total = totalNavItems * (lineH + py * 2) + totalSections * hdr + (totalSections - 1) * gap + 8
+      const lineH = 12
+      // Start with comfortable values and shrink aggressively until it fits
+      let py = 3, gap = 4, hdr = 16
+      for (let attempt = 0; attempt < 20; attempt++) {
+        const total = totalNavItems * (lineH + py * 2) + totalSections * hdr + (totalSections - 1) * gap + 4
         if (total <= h) break
-        if (py > 1) { py--; continue }
-        if (gap > 2) { gap--; continue }
-        if (hdr > 14) { hdr -= 2; continue }
+        if (py > 0) { py--; continue }
+        if (gap > 0) { gap--; continue }
+        if (hdr > 8) { hdr -= 2; continue }
         break
       }
       setNavPy(py)
@@ -307,44 +316,94 @@ export function Sidebar({
   return (
     <aside
       className={cn(
-        'fixed left-0 top-0 h-screen w-60 bg-[#0d0d14] border-r border-slate-800/60 flex flex-col z-40',
-        'transition-transform duration-300 ease-in-out',
-        'md:translate-x-0',
-        mobileOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'
+        'fixed top-0 h-screen bg-[#0d0d14] border-r border-slate-800/60 flex flex-col z-40',
+        'transition-all duration-300 ease-in-out',
+        collapsed ? 'md:w-[68px]' : 'md:w-60',
+        'w-60', // Mobile always full width
+        // Desktop: left side, always visible
+        'md:left-0 md:translate-x-0',
+        // Mobile: right side, slide in/out
+        'left-auto right-0 md:right-auto md:left-0',
+        mobileOpen ? 'translate-x-0 shadow-2xl' : 'translate-x-full md:translate-x-0'
       )}
     >
-      {/* Logo + Notifications */}
-      <div className="px-4 py-2.5 border-b border-slate-800/60 flex-shrink-0 flex items-center justify-between" ref={notifRef}>
-        <Image
-          src={isLight ? '/kameo-logo-light.svg' : '/kameo-logo.svg'}
-          alt="Kameo"
-          width={100}
-          height={28}
-          priority
-          className="flex-shrink-0"
-          style={{ objectFit: 'contain', objectPosition: 'left' }}
-        />
+      {/* Collapse toggle button — desktop only */}
+      {onToggleCollapse && (
         <button
-          onClick={() => setNotifOpen(!notifOpen)}
-          className="relative w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-800/60 transition-colors"
+          onClick={onToggleCollapse}
+          className="hidden md:flex absolute -right-3 top-1/2 -translate-y-1/2 z-50 w-6 h-6 bg-[#111118] border border-slate-700 rounded-full items-center justify-center text-slate-500 hover:text-white hover:border-slate-500 transition-colors"
+          title={collapsed ? 'Agrandir' : 'Réduire'}
         >
-          <Bell size={16} />
-          {unreadCount > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-[#E14B89] rounded-full flex items-center justify-center">
-              <span className="text-white text-[9px] font-bold">{unreadCount > 9 ? '9+' : unreadCount}</span>
-            </span>
-          )}
+          <ChevronRight size={12} className={`transition-transform ${collapsed ? '' : 'rotate-180'}`} />
         </button>
+      )}
+      {/* Header: Logo (desktop) / Close + title (mobile) */}
+      <div className="px-4 py-2 border-b border-slate-800/60 flex-shrink-0 flex items-center justify-between" ref={notifRef}>
+        {/* Desktop: logo + theme toggle + notif bell */}
+        <div className="hidden md:flex items-center justify-between w-full">
+          {!collapsed ? (
+            <Image
+              src={isLight ? '/kameo-logo-light.svg' : '/kameo-logo.svg'}
+              alt="Kameo"
+              width={100}
+              height={28}
+              priority
+              className="flex-shrink-0"
+              style={{ objectFit: 'contain', objectPosition: 'left' }}
+            />
+          ) : (
+            <Image
+              src="/kameo-logo.svg"
+              alt="K"
+              width={28}
+              height={28}
+              priority
+              className="flex-shrink-0 mx-auto"
+              style={{ objectFit: 'contain', objectPosition: 'center', clipPath: 'inset(0 72% 0 0)' }}
+            />
+          )}
+          {!collapsed && (
+            <div className="flex items-center gap-0.5">
+              <button
+                onClick={() => setTheme(isLight ? 'dark' : 'light')}
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-800/60 transition-colors"
+                title={isLight ? 'Mode sombre' : 'Mode clair'}
+              >
+                {isLight ? <Moon size={15} /> : <Sun size={15} />}
+              </button>
+              <button
+                onClick={() => setNotifOpen(!notifOpen)}
+                className="relative w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-800/60 transition-colors"
+              >
+                <Bell size={16} />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-[#E14B89] rounded-full flex items-center justify-center">
+                    <span className="text-white text-[9px] font-bold">{unreadCount > 9 ? '9+' : unreadCount}</span>
+                  </span>
+                )}
+              </button>
+            </div>
+          )}
+        </div>
 
-        {/* Notification panel */}
+        {/* Mobile: close button + Menu title */}
+        <div className="flex md:hidden items-center justify-between w-full">
+          <span className="text-white font-semibold text-sm">Menu</span>
+          <button
+            onClick={onMobileClose}
+            className="p-2 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800/50 transition-colors"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* Desktop notification panel */}
         {notifOpen && (
-          <div className="absolute left-60 top-0 w-80 max-h-[80vh] bg-[#111118] border border-slate-700 rounded-2xl shadow-2xl z-50 flex flex-col overflow-hidden">
+          <div className={`hidden md:flex absolute top-0 w-80 max-h-[80vh] bg-[#111118] border border-slate-700 rounded-2xl shadow-2xl z-50 flex-col overflow-hidden ${collapsed ? 'left-[68px]' : 'left-60'}`}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
               <h3 className="text-white text-sm font-semibold">Notifications</h3>
               {unreadCount > 0 && (
-                <button onClick={markAllRead} className="text-[#E14B89] text-xs hover:underline">
-                  Tout marquer lu
-                </button>
+                <button onClick={markAllRead} className="text-[#E14B89] text-xs hover:underline">Tout marquer lu</button>
               )}
             </div>
             <div className="flex-1 overflow-y-auto">
@@ -387,63 +446,100 @@ export function Sidebar({
       </div>
 
       {/* Navigation */}
-      <nav ref={navRef} className="flex-1 min-h-0 px-2 py-1 overflow-hidden flex flex-col" style={{ gap: `${navGap}px` }}>
-        {filteredSections.map(section => (
-          <div key={section.label}>
-            <p className="px-3 text-[9px] font-semibold text-slate-600 uppercase tracking-wider" style={{ height: `${headerSize}px`, lineHeight: `${headerSize}px` }}>
-              {section.label}
-            </p>
-            {section.items.map(({ href, label, icon: Icon }) => (
-              <Link
-                key={href}
-                href={href}
-                style={{ paddingTop: `${navPy}px`, paddingBottom: `${navPy}px` }}
-                className={cn(
-                  'flex items-center gap-2 px-3 rounded-lg text-[12px] font-medium transition-all duration-150',
-                  isActive(href)
-                    ? 'bg-[#E14B89]/10 text-[#E14B89] border border-[#E14B89]/20'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
-                )}
+      <nav ref={navRef} className="flex-1 min-h-0 px-2 py-1 overflow-y-auto flex flex-col scrollbar-none" style={{ gap: `${navGap}px` }}>
+        {filteredSections.map(section => {
+          const isOpen = openSections[section.label] ?? false
+          return (
+            <div key={section.label}>
+              {/* Desktop: static header */}
+              {!collapsed && (
+                <p className="hidden md:block px-3 text-[8px] font-semibold text-slate-600 uppercase tracking-wider" style={{ height: `${headerSize}px`, lineHeight: `${headerSize}px` }}>
+                  {section.label}
+                </p>
+              )}
+              {/* Mobile: clickable collapsible header */}
+              <button
+                onClick={() => setOpenSections(prev => ({ ...prev, [section.label]: !prev[section.label] }))}
+                className="md:hidden flex items-center justify-between w-full px-3 py-2.5 text-slate-400 hover:text-white transition-colors"
               >
-                <Icon size={13} className="flex-shrink-0" />
-                <span className="flex-1 truncate">{label}</span>
-                {isActive(href) && <ChevronRight size={10} className="text-[#E14B89]/60 flex-shrink-0" />}
-              </Link>
-            ))}
-          </div>
-        ))}
+                <span className="text-xs font-semibold uppercase tracking-wider">{section.label}</span>
+                <ChevronDown size={14} className={cn('transition-transform', isOpen && 'rotate-180')} />
+              </button>
+              {/* Desktop: always show items / Mobile: show only if open */}
+              <div className={cn('md:block', isOpen ? 'block' : 'hidden md:block')}>
+                {section.items.map(({ href, label, icon: Icon }) => (
+                  <Link
+                    key={href}
+                    href={href}
+                    onClick={onMobileClose}
+                    style={{ paddingTop: `${navPy}px`, paddingBottom: `${navPy}px` }}
+                    title={collapsed ? label : undefined}
+                    className={cn(
+                      'flex items-center rounded-lg text-[11px] md:text-[11px] text-[13px] font-medium transition-all duration-150',
+                      collapsed ? 'justify-center px-2' : 'gap-2 px-3',
+                      isActive(href)
+                        ? 'bg-[#E14B89]/10 text-[#E14B89] border border-[#E14B89]/20'
+                        : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                    )}
+                  >
+                    <Icon size={15} className="flex-shrink-0 md:w-[13px] md:h-[13px]" />
+                    {!collapsed && <span className="flex-1 truncate">{label}</span>}
+                    {!collapsed && isActive(href) && <ChevronRight size={10} className="text-[#E14B89]/60 flex-shrink-0" />}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )
+        })}
 
-        {/* Admin section — admin only */}
-        {isAdmin && (
-          <div>
-            <p className="px-3 text-[9px] font-semibold text-slate-600 uppercase tracking-wider" style={{ height: `${headerSize}px`, lineHeight: `${headerSize}px` }}>
-              Admin
-            </p>
-            {adminItems.map(({ href, label, Icon }) => (
-              <Link
-                key={href}
-                href={href}
-                style={{ paddingTop: `${navPy}px`, paddingBottom: `${navPy}px` }}
-                className={cn(
-                  'flex items-center gap-2 px-3 rounded-lg text-[12px] font-medium transition-all duration-150',
-                  pathname.startsWith(href)
-                    ? 'bg-[#E14B89]/10 text-[#E14B89] border border-[#E14B89]/20'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
-                )}
+        {/* Admin section */}
+        {(isAdmin || isDemoRole) && (() => {
+          const isOpen = openSections['Admin'] ?? false
+          return (
+            <div>
+              {!collapsed && (
+                <p className="hidden md:block px-3 text-[8px] font-semibold text-slate-600 uppercase tracking-wider" style={{ height: `${headerSize}px`, lineHeight: `${headerSize}px` }}>
+                  Admin
+                </p>
+              )}
+              <button
+                onClick={() => setOpenSections(prev => ({ ...prev, Admin: !prev.Admin }))}
+                className="md:hidden flex items-center justify-between w-full px-3 py-2.5 text-slate-400 hover:text-white transition-colors"
               >
-                <Icon size={13} className="flex-shrink-0" />
-                <span className="flex-1">{label}</span>
-                {pathname.startsWith(href) && (
-                  <ChevronRight size={10} className="text-[#E14B89]/60 flex-shrink-0" />
-                )}
-              </Link>
-            ))}
-          </div>
-        )}
+                <span className="text-xs font-semibold uppercase tracking-wider">Admin</span>
+                <ChevronDown size={14} className={cn('transition-transform', isOpen && 'rotate-180')} />
+              </button>
+              <div className={cn('md:block', isOpen ? 'block' : 'hidden md:block')}>
+                {adminItems.map(({ href, label, Icon }) => (
+                  <Link
+                    key={href}
+                    href={href}
+                    onClick={onMobileClose}
+                    style={{ paddingTop: `${navPy}px`, paddingBottom: `${navPy}px` }}
+                    title={collapsed ? label : undefined}
+                    className={cn(
+                      'flex items-center rounded-lg text-[11px] md:text-[11px] text-[13px] font-medium transition-all duration-150',
+                      collapsed ? 'justify-center px-2' : 'gap-2 px-3',
+                      pathname.startsWith(href)
+                        ? 'bg-[#E14B89]/10 text-[#E14B89] border border-[#E14B89]/20'
+                        : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                    )}
+                  >
+                    <Icon size={15} className="flex-shrink-0 md:w-[13px] md:h-[13px]" />
+                    {!collapsed && <span className="flex-1">{label}</span>}
+                    {!collapsed && pathname.startsWith(href) && (
+                      <ChevronRight size={10} className="text-[#E14B89]/60 flex-shrink-0" />
+                    )}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )
+        })()}
       </nav>
 
       {/* User dropdown */}
-      <div className="px-2 py-1.5 border-t border-slate-800/60 flex-shrink-0" ref={dropdownRef}>
+      <div className="px-2 py-1 border-t border-slate-800/60 flex-shrink-0" ref={dropdownRef}>
         {dropdownOpen && (
           <div className="mb-2 bg-[#111118] border border-slate-700 rounded-xl overflow-hidden shadow-xl">
             <Link
@@ -462,13 +558,6 @@ export function Sidebar({
               <Mail size={14} />
               Composer un email
             </Link>
-            <button
-              onClick={() => { setTheme(isLight ? 'dark' : 'light'); setDropdownOpen(false) }}
-              className="w-full flex items-center gap-2.5 px-4 py-2.5 text-slate-300 hover:text-white hover:bg-slate-800/50 transition-colors text-sm"
-            >
-              {isLight ? <Moon size={14} /> : <Sun size={14} />}
-              {isLight ? 'Mode sombre' : 'Mode clair'}
-            </button>
             <div className="border-t border-slate-800" />
             <button
               onClick={() => signOut({ callbackUrl: '/login' })}
@@ -482,8 +571,10 @@ export function Sidebar({
 
         <button
           onClick={() => setDropdownOpen(!dropdownOpen)}
+          title={collapsed ? session?.user?.name ?? '' : undefined}
           className={cn(
-            'flex items-center gap-3 px-3 py-2 rounded-xl transition-all w-full group',
+            'flex items-center rounded-xl transition-all w-full group',
+            collapsed ? 'justify-center px-1 py-2' : 'gap-3 px-3 py-2',
             dropdownOpen ? 'bg-slate-800/70' : 'hover:bg-slate-800/50'
           )}
         >
@@ -502,17 +593,21 @@ export function Sidebar({
               </div>
             )}
           </div>
-          <div className="flex-1 min-w-0 text-left">
-            <p className="text-xs font-medium text-white truncate">{session?.user?.name}</p>
-            <p className="text-slate-500 text-xs truncate">{ROLE_LABELS[role] ?? role}</p>
-          </div>
-          <ChevronUp
-            size={13}
-            className={cn(
-              'text-slate-600 flex-shrink-0 transition-transform',
-              dropdownOpen ? 'rotate-0' : 'rotate-180'
-            )}
-          />
+          {!collapsed && (
+            <>
+              <div className="flex-1 min-w-0 text-left">
+                <p className="text-xs font-medium text-white truncate">{session?.user?.name}</p>
+                <p className="text-slate-500 text-xs truncate">{ROLE_LABELS[role] ?? role}</p>
+              </div>
+              <ChevronUp
+                size={13}
+                className={cn(
+                  'text-slate-600 flex-shrink-0 transition-transform',
+                  dropdownOpen ? 'rotate-0' : 'rotate-180'
+                )}
+              />
+            </>
+          )}
         </button>
       </div>
     </aside>

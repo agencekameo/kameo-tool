@@ -1,5 +1,6 @@
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { demoGuard, demoWhere } from '@/lib/demo'
 import { createLog } from '@/lib/log'
 import { createNotificationForAdmins } from '@/lib/notifications'
 import { NextRequest, NextResponse } from 'next/server'
@@ -12,11 +13,12 @@ export async function GET() {
     const isAdmin = role === 'ADMIN'
 
     const projects = await prisma.project.findMany({
-      where: isAdmin ? {} : { assignments: { some: { userId: session.user.id } } },
+      where: { ...(isAdmin ? {} : { assignments: { some: { userId: session.user.id } } }), ...demoWhere(session) },
       include: {
-        client: { select: { id: true, name: true, company: true } },
+        client: { select: { id: true, name: true, company: true, website: true } },
         tasks: { select: { id: true, status: true } },
-        assignments: { select: { user: { select: { id: true, name: true, avatar: true } } } },
+        assignments: { select: { user: { select: { id: true, name: true, avatar: true, role: true } }, deadline: true, status: true }, orderBy: { createdAt: 'asc' } },
+        clientForm: { select: { cdcCompleted: true, briefCompleted: true, designCompleted: true, accesCompleted: true, docsCompleted: true, cdcData: true } },
       },
       orderBy: { updatedAt: 'desc' },
     })
@@ -30,12 +32,13 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const guard = demoGuard(session); if (guard) return guard
 
   try {
     const body = await req.json()
 
     // Destructure only known Project fields to avoid Prisma "unknown field" errors
-    const { name, clientId, type, status, price, deadline, notes, services, startDate } = body
+    const { name, clientId, type, status, price, deadline, notes, services, startDate, signedAt } = body
 
     if (!name || !clientId || !type) {
       return NextResponse.json({ error: 'Nom, client et type sont requis' }, { status: 400 })
@@ -50,6 +53,7 @@ export async function POST(req: NextRequest) {
         price: price !== undefined && price !== null && price !== '' ? Number(price) : null,
         deadline: deadline ? new Date(deadline) : null,
         startDate: startDate ? new Date(startDate) : null,
+        signedAt: signedAt ? new Date(signedAt) : null,
         notes: notes || null,
         services: Array.isArray(services) ? services : [],
         createdById: session.user.id,
@@ -58,13 +62,16 @@ export async function POST(req: NextRequest) {
     })
 
     // Auto-create a group conversation for this project (non-blocking)
+    // Include all ADMIN users + the creator
     try {
+      const admins = await prisma.user.findMany({ where: { role: 'ADMIN' }, select: { id: true } })
+      const memberIds = new Set([session.user.id, ...admins.map(a => a.id)])
       await prisma.conversation.create({
         data: {
           name: project.name,
           isGroup: true,
           projectId: project.id,
-          participants: { create: [{ userId: session.user.id }] },
+          participants: { create: [...memberIds].map(id => ({ userId: id })) },
         },
       })
     } catch {
@@ -95,7 +102,6 @@ export async function POST(req: NextRequest) {
         { status: 401 }
       )
     }
-    const message = err instanceof Error ? err.message : 'Erreur interne'
-    return NextResponse.json({ error: message }, { status: 500 })
+    return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
   }
 }

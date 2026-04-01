@@ -2,7 +2,7 @@ import { prisma } from './db'
 
 export async function createLog(
   userId: string,
-  action: 'CRÉÉ' | 'MODIFIÉ' | 'SUPPRIMÉ',
+  action: 'CRÉÉ' | 'MODIFIÉ' | 'SUPPRIMÉ' | 'IMPERSONATION',
   entity: string,
   entityId?: string,
   entityLabel?: string,

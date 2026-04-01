@@ -6,7 +6,10 @@ import { Providers } from './providers'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'Kameo — Outil interne',
+  title: {
+    default: 'Kameo — Outil interne',
+    template: '%s — Kameo',
+  },
   description: "Outil de gestion interne de l'agence Kameo",
 }
 

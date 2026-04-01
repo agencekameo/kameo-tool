@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import { Save, Camera, Lock, User, Upload, Eye, EyeOff } from 'lucide-react'
 import { ROLE_LABELS, ROLE_AVATAR_COLORS } from '@/lib/utils'
+import { usePolling } from '@/hooks/usePolling'
 
 /**
  * Compress and normalize an image through Canvas.
@@ -72,6 +73,21 @@ export default function ProfilePage() {
       })
       .catch(() => {})
   }, [session?.user?.id])
+
+  function refreshProfile() {
+    if (!session?.user?.id) return
+    fetch('/api/profile')
+      .then(r => r.json())
+      .then(data => {
+        setForm({
+          name: data.name ?? '',
+          email: data.email ?? '',
+          avatar: data.avatar ?? '',
+        })
+      })
+      .catch(() => {})
+  }
+  usePolling(refreshProfile)
 
   function handlePhotoClick() {
     fileInputRef.current?.click()

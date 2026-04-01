@@ -1,5 +1,6 @@
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { createLog } from '@/lib/log'
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
 
@@ -37,10 +38,11 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   const token = crypto.randomBytes(32).toString('hex')
   const expiresAt = new Date(Date.now() + 5 * 60 * 1000)
 
-  // Store in Settings table (key: impersonate:{token})
+  // Store hashed token in Settings table (never store plaintext)
+  const tokenHash = crypto.createHash('sha256').update(token).digest('hex')
   await prisma.setting.create({
     data: {
-      key: `impersonate:${token}`,
+      key: `impersonate:${tokenHash}`,
       value: JSON.stringify({
         targetUserId: targetUser.id,
         adminId: session.user.id,
@@ -48,6 +50,16 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
       }),
     },
   })
+
+  // Audit log: track impersonation events
+  await createLog(
+    session.user.id,
+    'IMPERSONATION',
+    'User',
+    targetUser.id,
+    targetUser.name || undefined,
+    `Admin ${session.user.name || session.user.id} a démarré une impersonation de ${targetUser.name}`
+  )
 
   return NextResponse.json({
     success: true,

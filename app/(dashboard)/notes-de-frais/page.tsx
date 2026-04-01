@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { Plus, Pencil, Trash2, Receipt, Check, Clock, X, TrendingUp, ArrowRight, Users, Scale } from 'lucide-react'
 import { formatCurrency, formatDate, ROLE_AVATAR_COLORS } from '@/lib/utils'
 import { useSession } from 'next-auth/react'
+import { usePolling } from '@/hooks/usePolling'
 
 interface ExpenseReport {
   id: string
@@ -107,6 +108,20 @@ export default function NotesDefraisPage() {
       setAssociates(admins)
     }).finally(() => setLoading(false))
   }, [])
+
+  function refreshData() {
+    Promise.all([
+      fetch('/api/expense-reports').then(r => r.json()),
+      fetch('/api/users').then(r => r.json()),
+    ]).then(([r, u]) => {
+      setReports(Array.isArray(r) ? r : [])
+      const admins: Associate[] = (Array.isArray(u) ? u : []).filter(
+        (user: Associate) => user.role === 'ADMIN'
+      )
+      setAssociates(admins)
+    })
+  }
+  usePolling(refreshData)
 
   // ── Filter list ────────────────────────────────────────────────────────────
   // Only show expenses belonging to admin users

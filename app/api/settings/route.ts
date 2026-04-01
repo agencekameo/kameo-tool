@@ -1,5 +1,6 @@
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { demoGuard } from '@/lib/demo'
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function GET(req: NextRequest) {
@@ -22,6 +23,7 @@ export async function PUT(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const user = session.user as { role?: string }
   if (user.role !== 'ADMIN') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const guard = demoGuard(session); if (guard) return guard
   try {
     const { key, value } = await req.json()
     if (!key) return NextResponse.json({ error: 'Missing key' }, { status: 400 })

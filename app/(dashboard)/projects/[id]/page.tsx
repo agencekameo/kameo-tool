@@ -1,15 +1,16 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
+import { usePolling } from '@/hooks/usePolling'
 import Link from 'next/link'
 import {
   ArrowLeft, Plus, Trash2, CheckCircle2, Save, Pencil, ExternalLink,
   FileText, X, Globe, Figma, Upload, ChevronDown, ChevronRight,
   FileCheck, Info, Palette, Scale, FolderOpen, Link2, Maximize2,
   LayoutDashboard, AlertTriangle, Users2, ClipboardList, ClipboardCopy,
-  Send, Loader2, Clock, DollarSign, MessageSquare, Megaphone, Paintbrush, Lock, KeyRound, Mail,
+  Send, Loader2, Clock, DollarSign, MessageSquare, Megaphone, Paintbrush, Lock, Unlock, KeyRound, Mail, Download,
 } from 'lucide-react'
 import {
   PROJECT_STATUS_COLORS, PROJECT_STATUS_LABELS, PROJECT_TYPE_COLORS, PROJECT_TYPE_LABELS,
@@ -36,6 +37,7 @@ interface ProjectAssignment {
   projectId: string
   userId: string
   price?: number | null
+  delayDays?: number | null
   deadline?: string | null
   status: string
   counterPrice?: number | null
@@ -51,11 +53,12 @@ interface ProjectDoc {
 }
 interface Project {
   id: string; name: string; type: string; status: string; price?: number
-  deadline?: string; startDate?: string; services: string[]; notes?: string
+  deadline?: string; startDate?: string; signedAt?: string; services: string[]; notes?: string
   clientBrief?: string | null
   figmaUrl?: string | null; contentUrl?: string | null
   maintenancePlan?: string; maintenancePrice?: number | null
   maintenanceStart?: string | null; maintenanceEnd?: string | null
+  formBypassedAt?: string | null
   client: { id: string; name: string; company?: string; website?: string }
   tasks: Task[]; createdBy: { id: string; name: string }
   assignments: ProjectAssignment[]; documents: ProjectDoc[]
@@ -66,8 +69,8 @@ interface Project {
 }
 
 interface CdcFormData {
-  siteType?: string; isRefonte?: boolean; arborescence?: string; espaceClient?: boolean
-  fonctionnalites?: string[]; catalogueInfo?: string; livraisonInfo?: string; paiementInfo?: string; autresInfos?: string
+  siteType?: string; isRefonte?: boolean; siteActuel?: string; arborescence?: string; espaceClient?: boolean
+  fonctionnalites?: string[]; formulaireChamps?: string; catalogueInfo?: string; livraisonInfo?: string; paiementInfo?: string; autresInfos?: string
   // Branding fields
   styleSouhaite?: string; exemplesMarques?: string; couleurs?: string; ambiance?: string
 }
@@ -101,7 +104,7 @@ interface DocsFormData {
 
 const STATUS_ORDER = ['BRIEF', 'REDACTION', 'MAQUETTE', 'DEVELOPPEMENT', 'INTEGRATION', 'OPTIMISATIONS', 'TESTING', 'CONCEPTION', 'REVIEW', 'LIVRAISON', 'MAINTENANCE', 'ARCHIVE']
 
-const CDC_FONCTIONNALITES = ['Blog', 'Traduction multilingue', 'Newsletter', 'RDV Calendly', 'Système de réservation', 'Simulateur', 'Livechat']
+const CDC_FONCTIONNALITES = ['Blog', 'Traduction multilingue', 'Newsletter', 'RDV Calendly', 'Système de réservation', 'Simulateur', 'Livechat', 'Formulaire']
 
 const PIPELINE_BY_PRESTATION: Record<string, string[]> = {
   'Site web': ['REDACTION', 'MAQUETTE', 'INTEGRATION', 'OPTIMISATIONS', 'TESTING', 'LIVRAISON'],
@@ -115,7 +118,7 @@ const ROLE_TO_STAGE_BY_PRESTATION: Record<string, Record<string, string>> = {
   'Branding': { DESIGNER: 'CONCEPTION' },
 }
 
-const ROLE_PRIORITY: Record<string, number> = { REDACTEUR: 1, DESIGNER: 2, DEVELOPER: 3, ADMIN: 0, COMMERCIAL: 4, MEMBER: 5 }
+const ROLE_PRIORITY: Record<string, number> = { REDACTEUR: 1, DESIGNER: 2, DEVELOPER: 3, ADMIN: 0, COMMERCIAL: 4 }
 
 const DOC_CATEGORIES = [
   { key: 'CHARTE_GRAPHIQUE',   label: 'Identité visuelle',  icon: Palette,    color: 'text-pink-400'   },
@@ -128,7 +131,7 @@ type TabId = 'avancement' | 'cdc' | 'brief' | 'design' | 'acces' | 'documents' |
 
 const TABS: { id: TabId; label: string; icon: React.ElementType }[] = [
   { id: 'avancement',  label: 'Avancement',  icon: LayoutDashboard },
-  { id: 'cdc',         label: 'CDC',          icon: ClipboardList    },
+  { id: 'cdc',         label: 'Mission',      icon: ClipboardList    },
   { id: 'brief',       label: 'Brief',        icon: Megaphone        },
   { id: 'design',      label: 'Design',       icon: Paintbrush       },
   { id: 'acces',       label: 'Accès',        icon: KeyRound         },
@@ -225,7 +228,7 @@ export default function ProjectDetailPage() {
       fetch(`/api/projects/${id}/invoices`).then(r => r.json()),
     ]).then(([p, u, inv]) => {
       setProject(p)
-      setForm({ ...p, price: p.price?.toString() ?? '', deadline: p.deadline ? p.deadline.split('T')[0] : '' })
+      setForm({ ...p, price: p.price?.toString() ?? '', deadline: p.deadline ? p.deadline.split('T')[0] : '', signedAt: p.signedAt ? p.signedAt.slice(0, 7) : '' })
       setUsers(u)
       setInvoices(inv)
       setFigmaInput(p.figmaUrl ?? '')
@@ -242,6 +245,20 @@ export default function ProjectDetailPage() {
       }
     })
   }, [id])
+
+  const refreshData = useCallback(() => {
+    Promise.all([
+      fetch(`/api/projects/${id}`).then(r => r.json()),
+      fetch('/api/users').then(r => r.json()),
+      fetch(`/api/projects/${id}/invoices`).then(r => r.json()),
+    ]).then(([p, u, inv]) => {
+      setProject(p)
+      setUsers(u)
+      setInvoices(inv)
+    })
+  }, [id])
+
+  usePolling(refreshData)
 
   // ── Status click ───────────────────────────────────────────────────────────
   async function handleStatusClick(newStatus: string) {
@@ -350,6 +367,7 @@ export default function ProjectDetailPage() {
         ...form,
         price: form.price ? parseFloat(form.price as string) : null,
         deadline: (form.deadline as string) || null,
+        signedAt: form.signedAt ? `${form.signedAt}-01` : null,
       }),
     })
     const updated = await res.json()
@@ -413,6 +431,287 @@ export default function ProjectDetailPage() {
   }
 
   // ── Client Form ──────────────────────────────────────────────────────────
+  const [cdcGenerating, setCdcGenerating] = useState(false)
+  const [cdcDropdown, setCdcDropdown] = useState(false)
+  const cdcDropdownRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (cdcDropdownRef.current && !cdcDropdownRef.current.contains(e.target as Node)) setCdcDropdown(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
+  async function handleDownloadCDC(format: 'pdf' | 'png' = 'pdf') {
+    if (!project) return
+    setCdcGenerating(true)
+    try {
+      const { PDFDocument, rgb, StandardFonts } = await import('pdf-lib')
+      const pdf = await PDFDocument.create()
+      const font = await pdf.embedFont(StandardFonts.Helvetica)
+      const fontBold = await pdf.embedFont(StandardFonts.HelveticaBold)
+
+      const pink = rgb(0.882, 0.294, 0.537)
+      const white = rgb(1, 1, 1)
+      const gray = rgb(0.5, 0.5, 0.55)
+      const dark = rgb(0.12, 0.12, 0.16)
+      const PAGE_W = 595
+      const PAGE_H = 842
+      const MARGIN = 50
+      const MAX_W = PAGE_W - MARGIN * 2
+      let page = pdf.addPage([PAGE_W, PAGE_H])
+      let y = PAGE_H - MARGIN
+
+      // Sanitize text for WinAnsiEncoding (pdf-lib StandardFonts)
+      function sanitize(str: unknown): string {
+        if (!str) return ''
+        const s = String(str)
+        return s
+          .replace(/[\u2018\u2019]/g, "'")
+          .replace(/[\u201C\u201D]/g, '"')
+          .replace(/\u2026/g, '...')
+          .replace(/\u2013/g, '-')
+          .replace(/\u2014/g, '--')
+          .replace(/\u00A0/g, ' ')
+          .replace(/[\r]/g, '')
+          // eslint-disable-next-line no-control-regex
+          .replace(/[^\x20-\xFF\n]/g, '')
+      }
+
+      function newPage() {
+        page = pdf.addPage([PAGE_W, PAGE_H])
+        page.drawRectangle({ x: 0, y: 0, width: PAGE_W, height: PAGE_H, color: dark })
+        y = PAGE_H - MARGIN
+      }
+
+      function checkY(need: number) {
+        if (y - need < MARGIN) newPage()
+      }
+
+      function drawTitle(text: string) {
+        text = sanitize(text).replace(/\n/g, '')
+        checkY(26)
+        y -= 4
+        page.drawRectangle({ x: MARGIN - 5, y: y - 8, width: MAX_W + 10, height: 22, color: rgb(0.08, 0.08, 0.1), borderColor: rgb(0.2, 0.2, 0.25), borderWidth: 0.5 })
+        page.drawText(text, { x: MARGIN + 5, y: y - 3, size: 10, font: fontBold, color: pink })
+        y -= 22
+      }
+
+      function drawLabel(label: string, value: string) {
+        if (!value || value === 'undefined') return
+        label = sanitize(label)
+        value = sanitize(value).replace(/\n/g, ' ')
+        checkY(13)
+        page.drawText(label + ' :', { x: MARGIN, y, size: 7.5, font: fontBold, color: gray })
+        const words = value.split(' ')
+        let line = ''
+        let firstLine = true
+        for (const word of words) {
+          const test = line ? line + ' ' + word : word
+          if (font.widthOfTextAtSize(test, 8.5) > MAX_W - 110) {
+            page.drawText(line, { x: MARGIN + 110, y, size: 8.5, font, color: white })
+            y -= 12
+            checkY(12)
+            line = word
+            firstLine = false
+          } else {
+            line = test
+          }
+        }
+        if (line) {
+          page.drawText(line, { x: firstLine ? MARGIN + 110 : MARGIN + 110, y, size: 8.5, font, color: white })
+          y -= 13
+        }
+      }
+
+      function drawText(text: string) {
+        if (!text) return
+        text = sanitize(text)
+        const lines = text.split('\n')
+        for (const rl of lines) {
+          const rawLine = rl.replace(/\n/g, '').trim()
+          if (!rawLine) { y -= 4; continue }
+          const words = rawLine.split(' ')
+          let line = ''
+          for (const word of words) {
+            const test = line ? line + ' ' + word : word
+            if (font.widthOfTextAtSize(test, 8.5) > MAX_W) {
+              checkY(12)
+              page.drawText(line, { x: MARGIN, y, size: 8.5, font, color: rgb(0.75, 0.75, 0.78) })
+              y -= 12
+              line = word
+            } else {
+              line = test
+            }
+          }
+          if (line) {
+            checkY(12)
+            page.drawText(line, { x: MARGIN, y, size: 8.5, font, color: rgb(0.75, 0.75, 0.78) })
+            y -= 12
+          }
+        }
+        y -= 2
+      }
+
+      // ── Cover ──
+      page.drawRectangle({ x: 0, y: 0, width: PAGE_W, height: PAGE_H, color: dark })
+      const s = (v: unknown) => sanitize(v).replace(/\n/g, ' ')
+      page.drawText('CAHIER DES CHARGES', { x: MARGIN, y: PAGE_H / 2 + 40, size: 28, font: fontBold, color: pink })
+      page.drawText(s(project.name), { x: MARGIN, y: PAGE_H / 2, size: 18, font: fontBold, color: white })
+      page.drawText(s(project.client.company || project.client.name), { x: MARGIN, y: PAGE_H / 2 - 25, size: 12, font, color: gray })
+      page.drawText(s(`Type : ${PROJECT_TYPE_LABELS[project.type] || project.type}`), { x: MARGIN, y: PAGE_H / 2 - 50, size: 10, font, color: gray })
+      page.drawText('Agence Kameo', { x: MARGIN, y: MARGIN + 20, size: 10, font: fontBold, color: pink })
+      page.drawText(new Date().toLocaleDateString('fr-FR'), { x: MARGIN, y: MARGIN, size: 9, font, color: gray })
+
+      // ── Section helper: start new section, only new page if < 80px left ──
+      function section(title: string) {
+        if (y < MARGIN + 80) newPage()
+        else y -= 8 // small gap between sections
+        drawTitle(title)
+      }
+
+      // ── Mission (CDC) ──
+      newPage()
+      const cdc = (project.clientForm?.cdcData || {}) as CdcFormData
+      drawTitle('MISSION')
+      drawLabel('Type de site', cdc.siteType === 'ECOMMERCE' ? 'E-commerce' : cdc.siteType === 'VITRINE' ? 'Site vitrine' : cdc.siteType || '')
+      drawLabel('Refonte', cdc.isRefonte ? 'Oui' : 'Non')
+      if (cdc.siteActuel) drawLabel('Site actuel', cdc.siteActuel)
+      if (cdc.arborescence) { drawLabel('Arborescence', ''); drawText(cdc.arborescence) }
+      drawLabel('Espace client', cdc.espaceClient ? 'Oui' : 'Non')
+      if (cdc.fonctionnalites?.length) drawLabel('Fonctionnalites', cdc.fonctionnalites.join(', '))
+      if (cdc.formulaireChamps) drawLabel('Champs formulaire', cdc.formulaireChamps)
+      if (cdc.catalogueInfo) { drawLabel('Catalogue', ''); drawText(cdc.catalogueInfo) }
+      if (cdc.livraisonInfo) drawLabel('Livraison', cdc.livraisonInfo)
+      if (cdc.paiementInfo) drawLabel('Paiement', cdc.paiementInfo)
+      if (cdc.autresInfos) { drawLabel('Infos complementaires', ''); drawText(cdc.autresInfos) }
+
+      // ── Brief ──
+      const brief = (project.clientForm?.briefData || {}) as BriefFormData
+      if (Object.values(brief).some(v => v)) {
+        section('BRIEF')
+        if (brief.offreResume) { drawLabel('Resume offre', ''); drawText(brief.offreResume) }
+        if (brief.offreDetail) { drawLabel('Detail offre', ''); drawText(brief.offreDetail) }
+        if (brief.fourchettePrix) drawLabel('Fourchette de prix', brief.fourchettePrix)
+        if (brief.differenciation) { drawLabel('Differenciation', ''); drawText(brief.differenciation) }
+        if (brief.usp) drawLabel('USP', brief.usp)
+        if (brief.personaTypes) { drawLabel('Personas', ''); drawText(brief.personaTypes) }
+        if (brief.personaPeurs) { drawLabel('Peurs / objections', ''); drawText(brief.personaPeurs) }
+        if (brief.parcoursAchat) { drawLabel('Parcours d\'achat', ''); drawText(brief.parcoursAchat) }
+        if (brief.toneOfVoice) drawLabel('Ton de voix', brief.toneOfVoice)
+        if (brief.valeurs) drawLabel('Valeurs', brief.valeurs)
+        if (brief.sujetsInterdits) drawLabel('Sujets interdits', brief.sujetsInterdits)
+        if (brief.termesInterdits) drawLabel('Termes interdits', brief.termesInterdits)
+      }
+
+      // ── Design ──
+      const design = (project.clientForm?.designData || {}) as DesignFormData
+      if (Object.values(design).some(v => v)) {
+        section('DESIGN')
+        if (design.fond) drawLabel('Fond', design.fond === 'clair' ? 'Clair' : 'Sombre')
+        if (design.formes) drawLabel('Formes', design.formes === 'arrondis' ? 'Arrondies' : 'Carrees')
+        if (design.stylesSouhaites?.length) drawLabel('Styles souhaites', design.stylesSouhaites.join(', '))
+        if (design.styleSouhaite) drawLabel('Style souhaite', design.styleSouhaite)
+        if (design.sitesExemple) { drawLabel('Sites d\'exemple', ''); drawText(design.sitesExemple) }
+      }
+
+      // ── Acces ──
+      const acces = (project.clientForm?.accesData || {}) as AccesFormData
+      if (Object.values(acces).some(v => v)) {
+        section('ACCES')
+        if (acces.emailPro) drawLabel('Email pro', acces.emailPro)
+        if (acces.emailProMdp) drawLabel('Mot de passe email', acces.emailProMdp)
+        if (acces.facebook) drawLabel('Facebook', acces.facebook)
+        if (acces.instagram) drawLabel('Instagram', acces.instagram)
+        if (acces.linkedin) drawLabel('LinkedIn', acces.linkedin)
+        if (acces.calendlyAcces) drawLabel('Calendly', acces.calendlyAcces)
+        if (acces.stripeAcces) drawLabel('Stripe', acces.stripeAcces)
+        if (acces.autresAcces) { drawLabel('Autres acces', ''); drawText(acces.autresAcces) }
+      }
+
+      // ── Documents ──
+      const docs = (project.clientForm?.docsData || {}) as unknown as DocsFormData
+      if (docs.categories && Object.keys(docs.categories).length > 0) {
+        section('DOCUMENTS')
+        for (const [cat, files] of Object.entries(docs.categories)) {
+          if (!files?.length) continue
+          checkY(16)
+          page.drawText(s(cat), { x: MARGIN, y, size: 9, font: fontBold, color: white })
+          y -= 13
+          for (const f of files) {
+            checkY(12)
+            page.drawText(s(`  ${f.name || f.filename}`), { x: MARGIN + 8, y, size: 8, font, color: gray })
+            y -= 11
+          }
+          y -= 3
+        }
+        if (docs.notes) { drawLabel('Notes', ''); drawText(docs.notes) }
+      }
+
+      // ── Notes projet ──
+      if (project.notes || project.clientBrief) {
+        section('NOTES')
+        if (project.clientBrief) { drawLabel('Brief client', ''); drawText(project.clientBrief) }
+        if (project.notes) { drawLabel('Notes internes', ''); drawText(project.notes) }
+      }
+
+      const bytes = await pdf.save()
+      const fileName = `CDC-${project.name.replace(/\s+/g, '-')}`
+
+      if (format === 'png') {
+        const pdfjsLib = await import('pdfjs-dist')
+        pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
+        const pdfDoc = await pdfjsLib.getDocument({ data: new Uint8Array(bytes) }).promise
+        const totalPages = pdfDoc.numPages
+        const scale = 2
+        // Render all pages, then stitch into one tall canvas
+        const pageCanvases: HTMLCanvasElement[] = []
+        let totalHeight = 0
+        let maxWidth = 0
+        for (let i = 1; i <= totalPages; i++) {
+          const pdfPage = await pdfDoc.getPage(i)
+          const viewport = pdfPage.getViewport({ scale })
+          const canvas = document.createElement('canvas')
+          canvas.width = viewport.width
+          canvas.height = viewport.height
+          const ctx = canvas.getContext('2d')!
+          await pdfPage.render({ canvasContext: ctx, viewport }).promise
+          pageCanvases.push(canvas)
+          totalHeight += viewport.height
+          if (viewport.width > maxWidth) maxWidth = viewport.width
+        }
+        // Combine into single canvas
+        const finalCanvas = document.createElement('canvas')
+        finalCanvas.width = maxWidth
+        finalCanvas.height = totalHeight
+        const finalCtx = finalCanvas.getContext('2d')!
+        let y = 0
+        for (const pc of pageCanvases) {
+          finalCtx.drawImage(pc, 0, y)
+          y += pc.height
+        }
+        const link = document.createElement('a')
+        link.href = finalCanvas.toDataURL('image/png')
+        link.download = `${fileName}.png`
+        link.click()
+      } else {
+        const blob = new Blob([new Uint8Array(bytes)], { type: 'application/pdf' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `${fileName}.pdf`
+        a.click()
+        URL.revokeObjectURL(url)
+      }
+    } catch (err) {
+      console.error('CDC error:', err)
+      alert(`Erreur lors de la génération: ${err instanceof Error ? err.message : String(err)}`)
+    }
+    setCdcGenerating(false)
+    setCdcDropdown(false)
+  }
+
   async function handleOpenFormPopover() {
     setShowFormPopover(true)
     if (formToken) return // already loaded
@@ -736,6 +1035,30 @@ export default function ProjectDetailPage() {
                 <Pencil size={14} /> Modifier
               </button>
             )}
+            {/* CDC download button */}
+            <div className="relative" ref={cdcDropdownRef}>
+              <button onClick={() => setCdcDropdown(!cdcDropdown)} disabled={cdcGenerating}
+                className="flex items-center gap-2 border border-slate-700 hover:border-slate-600 text-slate-400 hover:text-white px-4 py-2 rounded-xl text-sm transition-colors disabled:opacity-50">
+                {cdcGenerating ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                CDC
+                <ChevronDown size={12} />
+              </button>
+              {cdcDropdown && !cdcGenerating && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setCdcDropdown(false)} />
+                  <div className="absolute right-0 top-full mt-1 bg-[#111118] border border-slate-700 rounded-xl overflow-hidden shadow-xl z-50 min-w-[160px]">
+                    <button onClick={() => handleDownloadCDC('pdf')}
+                      className="w-full flex items-center gap-2.5 px-4 py-2.5 text-slate-300 hover:text-white hover:bg-slate-800/50 transition-colors text-sm">
+                      <FileText size={14} className="text-red-400" /> PDF
+                    </button>
+                    <button onClick={() => handleDownloadCDC('png')}
+                      className="w-full flex items-center gap-2.5 px-4 py-2.5 text-slate-300 hover:text-white hover:bg-slate-800/50 transition-colors text-sm">
+                      <Maximize2 size={14} className="text-blue-400" /> PNG (images)
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
             {/* Formulaire client button */}
             <div className="relative">
               <button
@@ -760,7 +1083,7 @@ export default function ProjectDetailPage() {
                         <div>
                           <div className="flex items-center gap-2 mb-1.5">
                             <ClipboardList size={12} className="text-[#E14B89]" />
-                            <span className="text-white text-xs font-medium">Cahier des charges</span>
+                            <span className="text-white text-xs font-medium">Mission</span>
                             {formStatus?.cdcCompleted && <CheckCircle2 size={11} className="text-emerald-400" />}
                           </div>
                           <div className="flex gap-2">
@@ -939,11 +1262,6 @@ export default function ProjectDetailPage() {
                     <CheckCircle2 size={8} className="inline -mt-px" />
                   </span>
                 )}
-                {tab.id === 'cdc' && project.documents.filter(d => d.category === 'CAHIER_DES_CHARGES').length > 0 && (
-                  <span className="ml-1 text-[10px] bg-slate-800 text-slate-400 rounded-full px-1.5 py-px">
-                    {project.documents.filter(d => d.category === 'CAHIER_DES_CHARGES').length}
-                  </span>
-                )}
                 {tab.id === 'liens' && [project.figmaUrl, project.contentUrl, project.client.website].filter(Boolean).length > 0 && (
                   <span className="ml-1 text-[10px] bg-slate-800 text-slate-400 rounded-full px-1.5 py-px">
                     {[project.figmaUrl, project.contentUrl, project.client.website].filter(Boolean).length}
@@ -1026,6 +1344,15 @@ export default function ProjectDetailPage() {
                     />
                   </div>
                   <div>
+                    <label className="block text-slate-400 text-xs mb-1">Mois de signature</label>
+                    <input
+                      type="month"
+                      value={(form as Record<string, unknown>).signedAt as string ?? ''}
+                      onChange={e => setForm({ ...form, signedAt: e.target.value } as typeof form)}
+                      className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
+                    />
+                  </div>
+                  <div>
                     <label className="block text-slate-400 text-xs mb-1">Notes</label>
                     <textarea
                       value={form.notes ?? ''}
@@ -1048,7 +1375,8 @@ export default function ProjectDetailPage() {
               const accesReceived = formStatus?.accesCompleted ?? false
               const docsReceived = formStatus?.docsCompleted ?? project.clientForm?.docsCompleted ?? false
               const allFormsComplete = briefReceived && designReceived && accesReceived && docsReceived
-              const projectUnlocked = allAccepted && allFormsComplete
+              const formBypassed = !!project.formBypassedAt
+              const projectUnlocked = allAccepted && (allFormsComplete || formBypassed)
 
               if (!projectUnlocked) {
                 return (
@@ -1112,9 +1440,14 @@ export default function ProjectDetailPage() {
                                       <DollarSign size={10} />{formatCurrency(a.price)}
                                     </span>
                                   )}
-                                  {a.createdAt && (
+                                  {a.delayDays != null && (
                                     <span className="text-slate-500 text-xs flex items-center gap-1">
-                                      <Clock size={10} />Proposé le {formatDate(a.createdAt)}
+                                      <Clock size={10} />{a.delayDays} jours
+                                    </span>
+                                  )}
+                                  {a.deadline && (
+                                    <span className="text-slate-500 text-xs flex items-center gap-1">
+                                      <Clock size={10} />Deadline : {formatDate(a.deadline)}
                                     </span>
                                   )}
                                 </div>
@@ -1143,6 +1476,27 @@ export default function ProjectDetailPage() {
                             </div>
                           )
                         })}
+                      </div>
+                    )}
+
+                    {/* Bypass formulaire client — ADMIN only */}
+                    {isAdmin && !allFormsComplete && (
+                      <div className="pt-3 border-t border-slate-800">
+                        <button
+                          onClick={async () => {
+                            if (!confirm('Débloquer le projet sans formulaire client ?')) return
+                            await fetch(`/api/projects/${id}`, {
+                              method: 'PATCH',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ formBypassedAt: new Date().toISOString() }),
+                            })
+                            location.reload()
+                          }}
+                          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-400 text-sm font-medium transition-colors"
+                        >
+                          <Unlock size={14} />
+                          Débloquer sans formulaire client
+                        </button>
                       </div>
                     )}
                   </div>
@@ -1369,7 +1723,7 @@ export default function ProjectDetailPage() {
         )}
 
         {/* ════════════════════════════════════════════════════════════════════
-            CDC (Cahier des charges)
+            CDC (Mission)
         ════════════════════════════════════════════════════════════════════ */}
         {activeTab === 'cdc' && (() => {
           const cdcDocs = project.documents.filter(d => d.category === 'CAHIER_DES_CHARGES')
@@ -1380,7 +1734,7 @@ export default function ProjectDetailPage() {
                 <div className="bg-[#111118] border border-slate-800 rounded-2xl p-5">
                   <div className="flex items-center gap-2 mb-4">
                     <ClipboardList size={16} className="text-violet-400" />
-                    <h2 className="text-white font-medium">Informations CDC</h2>
+                    <h2 className="text-white font-medium">Informations mission</h2>
                     <span className="text-emerald-400 text-[10px] font-medium bg-emerald-400/10 px-2 py-0.5 rounded-full">Rempli</span>
                     {!editingCdc ? (
                       <button onClick={() => { setCdcDraft({ ...cdcFormData }); setEditingCdc(true) }} className="ml-auto flex items-center gap-1.5 text-slate-400 hover:text-white text-xs transition-colors">
@@ -1438,6 +1792,14 @@ export default function ProjectDetailPage() {
                               </select>
                             </div>
                           </div>
+                          {cdcDraft.isRefonte && (
+                            <div>
+                              <label className="block text-slate-400 text-xs mb-1.5">Site internet actuel</label>
+                              <input value={cdcDraft.siteActuel || ''} onChange={e => setCdcDraft(d => d ? { ...d, siteActuel: e.target.value } : d)}
+                                placeholder="https://www.exemple.fr"
+                                className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+                            </div>
+                          )}
                           <div>
                             <label className="block text-slate-400 text-xs mb-1.5">Arborescence</label>
                             <textarea value={cdcDraft.arborescence || ''} onChange={e => setCdcDraft(d => d ? { ...d, arborescence: e.target.value } : d)} rows={3} className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors resize-none" />
@@ -1463,6 +1825,14 @@ export default function ProjectDetailPage() {
                               ))}
                             </div>
                           </div>
+                          {cdcDraft.fonctionnalites?.includes('Formulaire') && (
+                            <div>
+                              <label className="block text-slate-400 text-xs mb-1.5">Champs du formulaire</label>
+                              <textarea value={cdcDraft.formulaireChamps || ''} onChange={e => setCdcDraft(d => d ? { ...d, formulaireChamps: e.target.value } : d)} rows={3}
+                                placeholder="Ex : Nom, Prénom, Email, Téléphone, Message, Budget..."
+                                className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors resize-none" />
+                            </div>
+                          )}
                           <div>
                             <label className="block text-slate-400 text-xs mb-1.5">Autres infos</label>
                             <textarea value={cdcDraft.autresInfos || ''} onChange={e => setCdcDraft(d => d ? { ...d, autresInfos: e.target.value } : d)} rows={2} className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors resize-none" />
@@ -1515,6 +1885,13 @@ export default function ProjectDetailPage() {
                           <span className="text-slate-500 text-xs w-32 flex-shrink-0">Refonte</span>
                           <span className="text-white text-sm">{cdcFormData.isRefonte ? 'Oui' : 'Non'}</span>
                         </div>
+                        {cdcFormData.isRefonte && cdcFormData.siteActuel && (
+                          <div className="flex items-center gap-3">
+                            <span className="text-slate-500 text-xs w-32 flex-shrink-0">Site actuel</span>
+                            <a href={cdcFormData.siteActuel.startsWith('http') ? cdcFormData.siteActuel : `https://${cdcFormData.siteActuel}`}
+                              target="_blank" rel="noopener noreferrer" className="text-[#E14B89] text-sm hover:underline">{cdcFormData.siteActuel}</a>
+                          </div>
+                        )}
                         {cdcFormData.arborescence && (
                           <div className="flex gap-3">
                             <span className="text-slate-500 text-xs w-32 flex-shrink-0 pt-0.5">Arborescence</span>
@@ -1535,6 +1912,12 @@ export default function ProjectDetailPage() {
                                 <span key={f} className="text-xs bg-violet-500/10 text-violet-300 px-2 py-0.5 rounded-full">{f}</span>
                               ))}
                             </div>
+                          </div>
+                        )}
+                        {cdcFormData.fonctionnalites?.includes('Formulaire') && cdcFormData.formulaireChamps && (
+                          <div className="flex gap-3">
+                            <span className="text-slate-500 text-xs w-32 flex-shrink-0 pt-0.5">Champs formulaire</span>
+                            <span className="text-slate-300 text-sm whitespace-pre-wrap">{cdcFormData.formulaireChamps}</span>
                           </div>
                         )}
                         {cdcFormData.catalogueInfo && (
@@ -1568,60 +1951,6 @@ export default function ProjectDetailPage() {
                 </div>
               )}
 
-              {/* CDC documents */}
-              <div className="bg-[#111118] border border-slate-800 rounded-2xl p-5">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2">
-                    <FileCheck size={16} className="text-violet-400" />
-                    <h2 className="text-white font-medium">Documents CDC</h2>
-                    <span className="text-slate-600 text-xs">({cdcDocs.length})</span>
-                  </div>
-                  <button
-                    onClick={() => { setDocForm({ name: '', url: '', category: 'CAHIER_DES_CHARGES' }); setShowDocModal(true) }}
-                    className="flex items-center gap-1.5 text-[#E14B89] hover:text-[#F8903C] text-sm transition-colors"
-                  >
-                    <Plus size={15} /> Ajouter
-                  </button>
-                </div>
-
-                {cdcDocs.length === 0 ? (
-                  <div className="text-center py-8">
-                    <ClipboardList size={28} className="text-slate-700 mx-auto mb-2" />
-                    <p className="text-slate-500 text-sm">Aucun document CDC</p>
-                  </div>
-                ) : (
-                  <div className="space-y-1">
-                    {cdcDocs.map(doc => (
-                      <div key={doc.id} className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-slate-800/30 transition-colors group">
-                        <div className="w-8 h-8 rounded-lg bg-violet-500/10 flex items-center justify-center flex-shrink-0">
-                          <FileCheck size={14} className="text-violet-400" />
-                        </div>
-                        <a
-                          href={doc.url}
-                          target="_blank" rel="noopener noreferrer"
-                          className="flex-1 min-w-0"
-                        >
-                          <p className="text-white text-sm font-medium hover:text-[#E14B89] transition-colors truncate">{doc.name}</p>
-                          <p className="text-slate-600 text-xs">{doc.uploadedBy.name} · {formatDate(doc.createdAt)}</p>
-                        </a>
-                        <a
-                          href={doc.url}
-                          target="_blank" rel="noopener noreferrer"
-                          className="text-slate-600 hover:text-white transition-colors flex-shrink-0"
-                        >
-                          <ExternalLink size={13} />
-                        </a>
-                        <button
-                          onClick={() => handleDeleteDoc(doc.id)}
-                          className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 transition-all flex-shrink-0"
-                        >
-                          <X size={13} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
             </div>
           )
         })()}
@@ -2020,15 +2349,26 @@ export default function ProjectDetailPage() {
                   </button>
                 </div>
               ) : project.contentUrl ? (
-                <a
-                  href={project.contentUrl}
-                  target="_blank" rel="noopener noreferrer"
-                  className="flex items-center gap-3 bg-teal-500/5 border border-teal-500/20 hover:border-teal-500/40 text-white px-4 py-3 rounded-xl text-sm font-medium transition-colors"
-                >
-                  <FileCheck size={16} className="text-teal-400 flex-shrink-0" />
-                  <span className="truncate flex-1">{project.contentUrl}</span>
-                  <ExternalLink size={12} className="text-slate-500 flex-shrink-0" />
-                </a>
+                project.contentUrl.startsWith('/redaction/') ? (
+                  <Link
+                    href={project.contentUrl}
+                    className="flex items-center gap-3 bg-teal-500/5 border border-teal-500/20 hover:border-teal-500/40 text-white px-4 py-3 rounded-xl text-sm font-medium transition-colors"
+                  >
+                    <FileCheck size={16} className="text-teal-400 flex-shrink-0" />
+                    <span className="truncate flex-1">Rédaction SEO</span>
+                    <ChevronRight size={12} className="text-slate-500 flex-shrink-0" />
+                  </Link>
+                ) : (
+                  <a
+                    href={project.contentUrl}
+                    target="_blank" rel="noopener noreferrer"
+                    className="flex items-center gap-3 bg-teal-500/5 border border-teal-500/20 hover:border-teal-500/40 text-white px-4 py-3 rounded-xl text-sm font-medium transition-colors"
+                  >
+                    <FileCheck size={16} className="text-teal-400 flex-shrink-0" />
+                    <span className="truncate flex-1">{project.contentUrl}</span>
+                    <ExternalLink size={12} className="text-slate-500 flex-shrink-0" />
+                  </a>
+                )
               ) : (
                 <p className="text-slate-500 text-sm">
                   {canEditContent ? 'Aucun contenu — cliquez sur ✏️ pour ajouter un lien.' : 'Contenu pas encore disponible.'}
@@ -2221,9 +2561,12 @@ export default function ProjectDetailPage() {
           <div className="max-w-3xl">
             <div className="flex items-center justify-between mb-5">
               <div>
-                <h2 className="text-white font-semibold text-lg">Factures par intervenant</h2>
+                <h2 className="text-white font-semibold text-lg">{isAdmin ? 'Factures par intervenant' : 'Ma facture'}</h2>
                 <p className="text-slate-400 text-sm mt-0.5">
-                  {invoices.length} facture{invoices.length > 1 ? 's' : ''} · {project?.assignments.length ?? 0} intervenant{(project?.assignments.length ?? 0) > 1 ? 's' : ''}
+                  {isAdmin
+                    ? `${invoices.length} facture${invoices.length > 1 ? 's' : ''} · ${project?.assignments.length ?? 0} intervenant${(project?.assignments.length ?? 0) > 1 ? 's' : ''}`
+                    : `${invoices.filter(i => i.assigneeId === session?.user?.id).length} facture`
+                  }
                 </p>
               </div>
             </div>
@@ -2236,7 +2579,9 @@ export default function ProjectDetailPage() {
               </div>
             ) : (
               <div className="space-y-4">
-                {[...project.assignments].sort((a, b) => (ROLE_PRIORITY[a.user.role] ?? 99) - (ROLE_PRIORITY[b.user.role] ?? 99)).map(assignment => {
+                {[...project.assignments]
+                  .filter(a => isAdmin || a.user.id === session?.user?.id)
+                  .sort((a, b) => (ROLE_PRIORITY[a.user.role] ?? 99) - (ROLE_PRIORITY[b.user.role] ?? 99)).map(assignment => {
                   const inv = invoices.find(i => i.assigneeId === assignment.userId)
                   const gradientClass = ROLE_AVATAR_COLORS[assignment.user.role] || 'from-slate-400 to-slate-600'
                   return (
@@ -2254,7 +2599,7 @@ export default function ProjectDetailPage() {
                           <p className="text-white text-sm font-medium">{assignment.user.name}</p>
                           <p className="text-slate-500 text-xs">{ROLE_LABELS[assignment.user.role] || assignment.user.role}</p>
                         </div>
-                        {inv && isAdmin && inv.amount && (
+                        {inv && (isAdmin || assignment.user.id === session?.user?.id) && inv.amount && (
                           <span className="text-white font-semibold text-sm">{formatCurrency(inv.amount)}</span>
                         )}
                       </div>
@@ -2279,7 +2624,7 @@ export default function ProjectDetailPage() {
                                 {formatDate(inv.createdAt)}{inv.notes ? ` · ${inv.notes}` : ''}
                               </p>
                             </div>
-                            {isAdmin && (
+                            {(isAdmin || assignment.user.id === session?.user?.id) && (
                               <div className="flex items-center gap-1.5 flex-shrink-0">
                                 <button
                                   onClick={() => openInvoiceModal(assignment.user, inv)}
@@ -2288,20 +2633,22 @@ export default function ProjectDetailPage() {
                                 >
                                   <Pencil size={13} />
                                 </button>
-                                <button
-                                  onClick={() => handleDeleteInvoice(inv.id)}
-                                  className="p-1.5 rounded-lg hover:bg-red-500/10 text-slate-500 hover:text-red-400 transition-colors"
-                                  title="Supprimer"
-                                >
-                                  <Trash2 size={13} />
-                                </button>
+                                {isAdmin && (
+                                  <button
+                                    onClick={() => handleDeleteInvoice(inv.id)}
+                                    className="p-1.5 rounded-lg hover:bg-red-500/10 text-slate-500 hover:text-red-400 transition-colors"
+                                    title="Supprimer"
+                                  >
+                                    <Trash2 size={13} />
+                                  </button>
+                                )}
                               </div>
                             )}
                           </div>
                         </div>
                       ) : (
                         <div className="p-4">
-                          {isAdmin ? (
+                          {(isAdmin || assignment.user.id === session?.user?.id) ? (
                             <button
                               onClick={() => openInvoiceModal(assignment.user)}
                               className="w-full flex items-center justify-center gap-2 border border-dashed border-slate-700 hover:border-[#E14B89]/50 text-slate-500 hover:text-[#E14B89] py-3 rounded-xl text-sm transition-colors"

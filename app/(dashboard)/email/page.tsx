@@ -1,25 +1,45 @@
 'use client'
 
-import { useState } from 'react'
-import { Send, Mail, User, FileText, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Send, Mail, User, FileText, AlertCircle, CheckCircle2, Loader2, ChevronDown } from 'lucide-react'
+
+const SENDER_ACCOUNTS = [
+  { id: 'benjamin', label: 'Benjamin Dayan', email: 'benjamin.dayan@agence-kameo.fr' },
+  { id: 'kameo', label: 'Agence Kameo', email: 'contact@agence-kameo.fr' },
+  { id: 'louison', label: 'Louison', email: 'louison@agence-kameo.fr' },
+]
 
 export default function EmailPage() {
-  const [form, setForm] = useState({ to: '', subject: '', body: '' })
+  const [form, setForm] = useState({ to: '', subject: '', body: '', senderId: 'kameo' })
   const [sending, setSending] = useState(false)
   const [result, setResult] = useState<{ ok: boolean; msg: string } | null>(null)
+
+  // Reset result after 5s
+  useEffect(() => {
+    if (!result) return
+    const t = setTimeout(() => setResult(null), 5000)
+    return () => clearTimeout(t)
+  }, [result])
 
   async function handleSend(e: React.FormEvent) {
     e.preventDefault()
     setSending(true)
     setResult(null)
+    const sender = SENDER_ACCOUNTS.find(a => a.id === form.senderId)
     const res = await fetch('/api/email/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form),
+      body: JSON.stringify({
+        to: form.to,
+        subject: form.subject,
+        body: form.body,
+        senderId: form.senderId,
+        senderName: sender?.label || 'Agence Kameo',
+      }),
     })
     const data = await res.json()
     if (res.ok) {
-      setResult({ ok: true, msg: `Email envoyé à ${form.to} ✓` })
+      setResult({ ok: true, msg: `Email envoyé à ${form.to} depuis ${sender?.email}` })
       setForm(prev => ({ ...prev, to: '', subject: '', body: '' }))
     } else {
       setResult({ ok: false, msg: data.error || 'Erreur lors de l\'envoi' })
@@ -27,29 +47,44 @@ export default function EmailPage() {
     setSending(false)
   }
 
+  const selectedSender = SENDER_ACCOUNTS.find(a => a.id === form.senderId)
+
   return (
     <div className="p-4 sm:p-8 max-w-2xl">
       <div className="mb-8">
         <h1 className="text-2xl font-semibold text-white">Composer un email</h1>
-        <p className="text-slate-400 text-sm mt-1">Envoi depuis l&apos;adresse Gmail configurée</p>
-      </div>
-
-      {/* Config notice */}
-      <div className="bg-blue-500/10 border border-blue-500/20 rounded-2xl px-5 py-4 mb-6 flex items-start gap-3">
-        <AlertCircle size={16} className="text-blue-400 mt-0.5 flex-shrink-0" />
-        <div className="text-sm">
-          <p className="text-blue-300 font-medium mb-1">Configuration Gmail requise</p>
-          <p className="text-blue-400/80 text-xs">
-            Pour activer l&apos;envoi, ajoutez dans Vercel → Settings → Environment Variables :<br />
-            <code className="text-blue-300">GMAIL_USER</code> = votre adresse Gmail (ex: aysha@agence-kameo.fr)<br />
-            <code className="text-blue-300">GMAIL_APP_PASSWORD</code> = mot de passe d&apos;application Google
-            <br /><span className="text-blue-400/60 mt-1 block">Générez-le sur myaccount.google.com → Sécurité → Mots de passe des applications</span>
-          </p>
-        </div>
+        <p className="text-slate-400 text-sm mt-1">Envoi depuis les comptes Gmail configurés</p>
       </div>
 
       <div className="bg-[#111118] border border-slate-800 rounded-2xl p-6">
         <form onSubmit={handleSend} className="space-y-4">
+          {/* Expéditeur */}
+          <div>
+            <label className="flex items-center gap-2 text-slate-400 text-xs mb-1.5">
+              <Send size={12} /> Expéditeur
+            </label>
+            <div className="relative">
+              <select
+                value={form.senderId}
+                onChange={e => setForm({ ...form, senderId: e.target.value })}
+                className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors appearance-none pr-10"
+              >
+                {SENDER_ACCOUNTS.map(account => (
+                  <option key={account.id} value={account.id}>
+                    {account.label} ({account.email})
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+            </div>
+            {selectedSender && (
+              <p className="text-slate-500 text-[11px] mt-1">
+                L&apos;email sera envoyé depuis {selectedSender.email}
+              </p>
+            )}
+          </div>
+
+          {/* Destinataire */}
           <div>
             <label className="flex items-center gap-2 text-slate-400 text-xs mb-1.5">
               <User size={12} /> Destinataire
@@ -61,6 +96,8 @@ export default function EmailPage() {
               className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-4 py-3 text-white text-sm placeholder:text-slate-600 focus:outline-none focus:border-[#E14B89] transition-colors"
             />
           </div>
+
+          {/* Objet */}
           <div>
             <label className="flex items-center gap-2 text-slate-400 text-xs mb-1.5">
               <FileText size={12} /> Objet
@@ -72,6 +109,8 @@ export default function EmailPage() {
               className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-4 py-3 text-white text-sm placeholder:text-slate-600 focus:outline-none focus:border-[#E14B89] transition-colors"
             />
           </div>
+
+          {/* Message */}
           <div>
             <label className="flex items-center gap-2 text-slate-400 text-xs mb-1.5">
               <Mail size={12} /> Message

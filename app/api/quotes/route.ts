@@ -1,13 +1,20 @@
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { demoGuard, demoWhere } from '@/lib/demo'
 import { NextRequest, NextResponse } from 'next/server'
 
-function getNextQuoteNumber(lastNumber: string | null): string {
+async function getNextQuoteNumber(): Promise<string> {
   const year = new Date().getFullYear()
-  if (!lastNumber) return `DEVIS-${year}-001`
-  const parts = lastNumber.split('-')
-  const num = parseInt(parts[parts.length - 1] || '0') + 1
-  return `DEVIS-${year}-${String(num).padStart(3, '0')}`
+  const prefix = `DEVIS-${year}-`
+  // Find the highest number for this year by sorting by number descending
+  const last = await prisma.quote.findFirst({
+    where: { number: { startsWith: prefix } },
+    orderBy: { number: 'desc' },
+    select: { number: true },
+  })
+  if (!last) return `${prefix}001`
+  const num = parseInt(last.number.split('-').pop() || '0') + 1
+  return `${prefix}${String(num).padStart(3, '0')}`
 }
 
 export async function GET() {
@@ -15,6 +22,7 @@ export async function GET() {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   try {
     const quotes = await prisma.quote.findMany({
+      where: demoWhere(session),
       include: {
         items: { orderBy: { position: 'asc' } },
         client: { select: { id: true, name: true } },
@@ -24,18 +32,19 @@ export async function GET() {
     })
     return NextResponse.json(quotes)
   } catch (err) {
-    console.error('[GET /api/quotes]', err)
-    return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
+    const message = err instanceof Error ? err.message : String(err)
+    console.error('[GET /api/quotes]', message, err)
+    return NextResponse.json({ error: `Erreur serveur: ${message}` }, { status: 500 })
   }
 }
 
 export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const guard = demoGuard(session); if (guard) return guard
   try {
     const body = await req.json()
-    const last = await prisma.quote.findFirst({ orderBy: { createdAt: 'desc' }, select: { number: true } })
-    const number = getNextQuoteNumber(last?.number ?? null)
+    const number = await getNextQuoteNumber()
     const quote = await prisma.quote.create({
       data: {
         number,
@@ -43,19 +52,22 @@ export async function POST(req: NextRequest) {
         clientName: body.clientName,
         clientEmail: body.clientEmail || null,
         clientAddress: body.clientAddress || null,
-        subject: body.subject,
+        clientLogo: body.clientLogo || null,
+        subject: body.subject || `Devis ${body.clientName || ''}`.trim(),
         status: body.status || 'EN_ATTENTE',
         validUntil: body.validUntil ? new Date(body.validUntil) : null,
         notes: body.notes || null,
-        discount: body.discount || 0,
+        discount: Math.max(0, Number(body.discount) || 0),
+        discountType: body.discountType === 'FIXED' ? 'FIXED' : 'PERCENT',
+        deliveryDays: body.deliveryDays ? parseInt(body.deliveryDays) : null,
         createdById: session.user.id,
         items: {
           create: (body.items || []).map((item: { description: string; unit?: string; quantity: number; unitPrice: number; tva: number; position: number }, i: number) => ({
             description: item.description,
             unit: item.unit || 'forfait',
-            quantity: item.quantity || 1,
-            unitPrice: item.unitPrice || 0,
-            tva: item.tva || 20,
+            quantity: Math.max(0, Number(item.quantity) || 1),
+            unitPrice: Math.max(0, Number(item.unitPrice) || 0),
+            tva: Math.max(0, Math.min(100, Number(item.tva) || 20)),
             position: i,
           })),
         },
@@ -64,7 +76,8 @@ export async function POST(req: NextRequest) {
     })
     return NextResponse.json(quote)
   } catch (err) {
-    console.error('[POST /api/quotes]', err)
-    return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
+    const message = err instanceof Error ? err.message : String(err)
+    console.error('[POST /api/quotes]', message, err)
+    return NextResponse.json({ error: `Erreur serveur: ${message}` }, { status: 500 })
   }
 }

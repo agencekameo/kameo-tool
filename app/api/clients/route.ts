@@ -1,5 +1,6 @@
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { demoGuard, demoWhere } from '@/lib/demo'
 import { createLog } from '@/lib/log'
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -8,6 +9,7 @@ export async function GET() {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   try {
     const clients = await prisma.client.findMany({
+      where: demoWhere(session),
       include: {
         projects: { select: { id: true, status: true } },
       },
@@ -23,10 +25,15 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const guard = demoGuard(session); if (guard) return guard
   try {
     const body = await req.json()
+    const firstName = body.firstName || ''
+    const lastName = body.lastName || ''
     const data = {
-      name: body.name as string,
+      name: body.name || `${firstName} ${lastName}`.trim(),
+      firstName: firstName || null,
+      lastName: lastName || null,
       company: body.company || null,
       siret: body.siret || null,
       email: body.email || null,
@@ -48,7 +55,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(client)
   } catch (err: unknown) {
     console.error('[POST /api/clients]', err)
-    const message = err instanceof Error ? err.message : 'Erreur serveur'
-    return NextResponse.json({ error: message }, { status: 500 })
+    return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
   }
 }

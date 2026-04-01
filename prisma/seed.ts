@@ -35,7 +35,7 @@ async function main() {
         name: 'Aysha',
         email: 'aysha@kameo.fr',
         password: await bcrypt.hash('kameo2024', 10),
-        role: 'MEMBER',
+        role: 'DESIGNER',
       },
     }),
   ])

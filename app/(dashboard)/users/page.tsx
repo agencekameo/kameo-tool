@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useSession, signIn } from 'next-auth/react'
 import { Plus, Trash2, Clock, Eye, X, Users2, Shield, Check, Save, Loader2 } from 'lucide-react'
 import { ROLE_LABELS, ROLE_COLORS, ROLE_AVATAR_COLORS } from '@/lib/utils'
+import { usePolling } from '@/hooks/usePolling'
 
 interface User {
   id: string
@@ -20,21 +21,20 @@ const ROLE_ORDER: Record<string, number> = { ADMIN: 0, DESIGNER: 1, DEVELOPER: 2
 const sortByRole = (a: User, b: User) => (ROLE_ORDER[a.role] ?? 99) - (ROLE_ORDER[b.role] ?? 99)
 
 const ALL_PAGES = [
-  'Dashboard', 'Finances', 'Clients', 'Tâches', 'Avis',
-  'Projets', 'Maintenances', 'Aysha',
-  'Commercial', 'Devis',
-  'Wiki', 'Cahier des charges', 'Audit SEO', 'GMB',
-  'Équipe', 'Logs', 'Contrats', 'Backups', 'Notes de frais',
+  'Dashboard', 'Finances', 'Clients', 'Tâches', 'Avis', 'Agenda',
+  'Projets', 'Petits projets', 'Maintenances', 'Aysha',
+  'Prospects', 'Commerciaux', 'Devis', 'Skills', 'Partenaires',
+  'Wiki', 'Audit SEO', 'Rédaction', 'Fiches Google',
+  'Paramètres', 'Contrats', 'Mandats',
   'Messagerie',
 ]
 
 const DEFAULT_ROLE_ACCESS: Record<string, string[]> = {
   ADMIN: ALL_PAGES,
   DEVELOPER: ['Projets', 'Wiki', 'Audit SEO', 'Messagerie'],
-  REDACTEUR: ['Projets', 'Wiki', 'Audit SEO', 'Messagerie'],
-  DESIGNER: ['Projets', 'Wiki', 'Audit SEO', 'Messagerie', 'Aysha', 'GMB'],
-  MEMBER: ['Dashboard', 'Projets', 'Wiki', 'Commercial'],
-  COMMERCIAL: ['Dashboard', 'Projets', 'Wiki', 'Commercial'],
+  REDACTEUR: ['Projets', 'Wiki', 'Audit SEO', 'Rédaction', 'Messagerie'],
+  DESIGNER: ['Projets', 'Wiki', 'Audit SEO', 'Aysha', 'Fiches Google', 'Messagerie'],
+  COMMERCIAL: ['Dashboard', 'Prospects', 'Commerciaux', 'Devis', 'Audit SEO', 'Partenaires', 'Messagerie'],
 }
 
 function timeAgo(date?: string) {
@@ -57,12 +57,12 @@ function isOnline(date?: string) {
 
 // Page categories for the matrix display
 const PAGE_GROUPS = [
-  { label: "Vue d'ensemble", pages: ['Dashboard', 'Finances', 'Clients', 'Tâches', 'Avis'] },
-  { label: 'Suivi', pages: ['Projets', 'Maintenances', 'Aysha'] },
-  { label: 'Commercial', pages: ['Commercial', 'Devis'] },
-  { label: 'Ressources', pages: ['Wiki', 'Cahier des charges', 'Audit SEO', 'GMB'] },
+  { label: "Vue d'ensemble", pages: ['Dashboard', 'Finances', 'Clients', 'Tâches', 'Avis', 'Agenda'] },
+  { label: 'Suivi', pages: ['Projets', 'Petits projets', 'Maintenances', 'Aysha'] },
+  { label: 'Commercial', pages: ['Prospects', 'Commerciaux', 'Devis', 'Skills', 'Partenaires'] },
+  { label: 'Ressources', pages: ['Wiki', 'Audit SEO', 'Rédaction', 'Fiches Google'] },
   { label: 'Communication', pages: ['Messagerie'] },
-  { label: 'Admin', pages: ['Équipe', 'Logs', 'Contrats', 'Backups', 'Notes de frais'] },
+  { label: 'Admin', pages: ['Paramètres', 'Contrats', 'Mandats'] },
 ]
 
 export default function UsersPage() {
@@ -101,6 +101,14 @@ export default function UsersPage() {
       loadRolePermissions(),
     ]).finally(() => setLoading(false))
   }, [loadRolePermissions])
+
+  function refreshData() {
+    Promise.all([
+      fetch('/api/users').then(r => r.json()).then((data: User[]) => setUsers(data.sort(sortByRole))),
+      loadRolePermissions(),
+    ])
+  }
+  usePolling(refreshData)
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
@@ -188,7 +196,7 @@ export default function UsersPage() {
   }
 
   const accessPages = previewUser
-    ? (roleAccess[previewUser.role] ?? roleAccess['MEMBER'] ?? [])
+    ? (roleAccess[previewUser.role] ?? [])
     : []
 
   return (
@@ -341,7 +349,7 @@ export default function UsersPage() {
 
             {/* Roles legend */}
             <div className="px-6 py-4 border-b border-slate-800 flex flex-wrap gap-3">
-              {['ADMIN', 'DEVELOPER', 'DESIGNER', 'REDACTEUR', 'MEMBER', 'COMMERCIAL'].map(r => (
+              {['ADMIN', 'DEVELOPER', 'DESIGNER', 'REDACTEUR', 'COMMERCIAL'].map(r => (
                 <div key={r} className="flex items-center gap-2">
                   <span className={`text-xs px-2.5 py-1 rounded-full border font-medium ${ROLE_COLORS[r] ?? 'bg-slate-500/15 text-slate-400 border-slate-500/20'}`}>
                     {ROLE_LABELS[r] ?? r}
@@ -357,7 +365,7 @@ export default function UsersPage() {
                 <thead>
                   <tr>
                     <th className="text-left text-slate-500 font-medium pb-3 pr-4 w-40">Page</th>
-                    {['ADMIN', 'DEVELOPER', 'DESIGNER', 'REDACTEUR', 'MEMBER', 'COMMERCIAL'].map(r => (
+                    {['ADMIN', 'DEVELOPER', 'DESIGNER', 'REDACTEUR', 'COMMERCIAL'].map(r => (
                       <th key={r} className="text-center pb-3 px-3">
                         <span className={`inline-block text-xs px-2 py-0.5 rounded-full border font-medium ${ROLE_COLORS[r] ?? 'bg-slate-500/15 text-slate-400 border-slate-500/20'}`}>
                           {ROLE_LABELS[r] ?? r}
@@ -379,7 +387,7 @@ export default function UsersPage() {
                       {group.pages.map(page => (
                         <tr key={page} className="border-b border-slate-800/40 hover:bg-slate-800/20 transition-colors">
                           <td className="py-2.5 pr-4 text-slate-300 font-medium">{page}</td>
-                          {['ADMIN', 'DEVELOPER', 'DESIGNER', 'REDACTEUR', 'MEMBER', 'COMMERCIAL'].map(r => {
+                          {['ADMIN', 'DEVELOPER', 'DESIGNER', 'REDACTEUR', 'COMMERCIAL'].map(r => {
                             const hasAccess = (roleAccess[r] ?? []).includes(page)
                             const isAdminRole = r === 'ADMIN'
                             return (

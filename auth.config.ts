@@ -19,7 +19,7 @@ const ROLE_ALLOWED_PATHS: Record<string, string[]> = {
 const ALWAYS_ALLOWED = ['/profile', '/email']
 
 export const authConfig: NextAuthConfig = {
-  session: { strategy: 'jwt' },
+  session: { strategy: 'jwt', maxAge: 24 * 60 * 60, updateAge: 60 * 60 },
   pages: {
     signIn: '/login',
   },
@@ -49,6 +49,9 @@ export const authConfig: NextAuthConfig = {
       // Always allow public client form pages and API
       if (pathname.startsWith('/formulaire/')) return true
       if (pathname.startsWith('/api/formulaire/')) return true
+      // Always allow public audit report pages and API
+      if (pathname.startsWith('/rapport/')) return true
+      if (pathname.match(/^\/api\/audit\/[^/]+$/)) return true
       // Always allow API routes for logged-in users
       if (pathname.startsWith('/api/')) return isLoggedIn
       // Always allow public assets
@@ -63,7 +66,7 @@ export const authConfig: NextAuthConfig = {
       if (!isLoggedIn && pathname !== '/login') return false
 
       // RBAC: whitelist approach for restricted roles
-      if (isLoggedIn && role && role !== 'ADMIN') {
+      if (isLoggedIn && role && role !== 'ADMIN' && role !== 'DEMO') {
         const allowedPaths = ROLE_ALLOWED_PATHS[role]
 
         if (allowedPaths) {

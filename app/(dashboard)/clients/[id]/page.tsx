@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
+import { usePolling } from '@/hooks/usePolling'
 import {
   ArrowLeft, Mail, Phone, Globe, Building2, FileText, Plus, Trash2,
   X, AlertTriangle, FolderKanban, Pencil, Save, MapPin, Loader2,
@@ -690,6 +691,19 @@ export default function ClientDetailPage() {
       .catch(() => router.push('/clients'))
       .finally(() => setLoading(false))
   }, [id, router])
+
+  const refreshClient = useCallback(() => {
+    if (!id) return
+    fetch(`/api/clients/${id}`)
+      .then(r => {
+        if (!r.ok) throw new Error('Not found')
+        return r.json()
+      })
+      .then(setClient)
+      .catch(() => {})
+  }, [id])
+
+  usePolling(refreshClient)
 
   async function handleDelete() {
     setDeleting(true)

@@ -1,8 +1,9 @@
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { demoGuard } from '@/lib/demo'
 import { NextRequest, NextResponse } from 'next/server'
 
-const VALID_ROLES = ['ADMIN', 'DEVELOPER', 'REDACTEUR', 'DESIGNER', 'COMMERCIAL', 'MEMBER'] as const
+const VALID_ROLES = ['ADMIN', 'DEVELOPER', 'REDACTEUR', 'DESIGNER', 'COMMERCIAL'] as const
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth()
@@ -44,6 +45,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!session || (session.user as { role?: string }).role !== 'ADMIN') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
+  const guard = demoGuard(session); if (guard) return guard
 
   const { id } = await params
 
@@ -83,6 +85,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   if (!session || (session.user as { role?: string }).role !== 'ADMIN') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
+  const guard = demoGuard(session); if (guard) return guard
 
   const { id } = await params
 

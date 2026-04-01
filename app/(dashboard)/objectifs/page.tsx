@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { Target, TrendingUp } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
+import { usePolling } from '@/hooks/usePolling'
 
 const MONTH_LABELS = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc']
 const MONTH_FULL = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre']
@@ -61,6 +62,11 @@ export default function ObjectifsPage() {
   useEffect(() => {
     fetch('/api/objectifs').then(r => r.json()).then(setData).finally(() => setLoading(false))
   }, [])
+
+  function refreshData() {
+    fetch('/api/objectifs').then(r => r.json()).then(setData)
+  }
+  usePolling(refreshData)
 
   if (loading) return <div className="p-8 text-slate-500 text-sm">Chargement...</div>
   if (!data) return null

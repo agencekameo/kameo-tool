@@ -1,17 +1,21 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Plus, Trash2, Pencil, ExternalLink, LogIn, Copy, Check, Globe, Search, Share2, BookOpen, ArrowLeft, X } from 'lucide-react'
+import { Plus, Trash2, Pencil, ExternalLink, LogIn, Copy, Check, Globe, Search, Share2, BookOpen, ArrowLeft, X, AlertTriangle, Clock, Receipt, ChevronLeft, ChevronRight, CreditCard } from 'lucide-react'
 import { formatCurrency, formatDate } from '@/lib/utils'
+import { usePolling } from '@/hooks/usePolling'
 
 interface Maintenance {
   id: string
   clientName: string
+  clientEmail?: string
   url?: string
   loginUrl?: string
   cms?: string
+  level?: number
   type: string
   billing: string
+  billingDay?: number
   startDate?: string
   endDate?: string
   priceHT?: number
@@ -22,9 +26,26 @@ interface Maintenance {
   contactPhone?: string
   notes?: string
   active: boolean
+  manualPaid: boolean
+  contractId?: string
+  mandatId?: string
 }
 
+interface MandatItem { id: string; clientName: string; referenceMandat?: string; descriptionContrat?: string; signatureStatus: string; stoppedAt?: string; contractId?: string }
 interface Client { id: string; name: string; company?: string }
+interface Invoice {
+  id: string
+  number: string
+  month: number
+  year: number
+  amountHT: number
+  amountTTC: number
+  clientName: string
+  clientEmail?: string
+  sentAt?: string
+  createdAt: string
+  maintenanceId: string
+}
 
 const TABS = [
   { key: 'WEB', label: 'Web', icon: Globe },
@@ -33,17 +54,27 @@ const TABS = [
   { key: 'BLOG', label: 'Blog', icon: BookOpen },
 ]
 
+const MONTH_NAMES = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre']
+
+const LEVEL_LABELS: Record<number, string> = {
+  1: 'Niveau 1 — Hébergement',
+  2: 'Niveau 2 — Technique',
+  3: 'Niveau 3 — Contenu',
+  4: 'Niveau 4 — SEO',
+}
+
 const BILLING_LABELS: Record<string, string> = {
   MENSUEL: 'Mensuel',
   TRIMESTRIEL: 'Trimestriel',
   ANNUEL: 'Annuel',
+  MANUEL: 'Manuel',
 }
 
 const emptyForm = {
-  clientName: '', url: '', loginUrl: '', cms: '', type: 'WEB', billing: 'MENSUEL',
-  startDate: '', endDate: '', priceHT: '', commercial: '', loginEmail: '',
+  clientName: '', clientEmail: '', url: '', loginUrl: '', cms: '', level: '', type: 'WEB', billing: 'MENSUEL',
+  billingDay: '', startDate: '', endDate: '', priceHT: '', commercial: '', loginEmail: '',
   loginPassword: '', contactName: '', contactPhone: '', notes: '', active: true,
-  n8nUrl: '', sheetUrl: '',
+  n8nUrl: '', sheetUrl: '', contractId: '', mandatId: '',
 }
 
 export default function MaintenancesPage() {
@@ -55,18 +86,66 @@ export default function MaintenancesPage() {
   const [form, setForm] = useState<Record<string, string | boolean>>(emptyForm)
   const [copied, setCopied] = useState<string | null>(null)
   const [clients, setClients] = useState<Client[]>([])
+  const [mandats, setMandats] = useState<MandatItem[]>([])
   const [showCreds, setShowCreds] = useState<string | null>(null)
+
+  // Invoices modal
+  const [showInvoices, setShowInvoices] = useState(false)
+  const [invoices, setInvoices] = useState<Invoice[]>([])
+  const [invoiceMonth, setInvoiceMonth] = useState(new Date().getMonth() + 1)
+  const [invoiceYear, setInvoiceYear] = useState(new Date().getFullYear())
+  const [loadingInvoices, setLoadingInvoices] = useState(false)
 
   useEffect(() => {
     Promise.all([
       fetch('/api/maintenances').then(r => r.json()),
       fetch('/api/clients').then(r => r.json()),
-    ]).then(([m, c]) => { setMaintenances(m); setClients(c) }).finally(() => setLoading(false))
+      fetch('/api/mandats').then(r => r.json()),
+    ]).then(([m, c, md]) => { setMaintenances(m); setClients(c); setMandats(md) }).finally(() => setLoading(false))
   }, [])
+
+  function refreshData() {
+    Promise.all([
+      fetch('/api/maintenances').then(r => r.json()),
+      fetch('/api/clients').then(r => r.json()),
+      fetch('/api/mandats').then(r => r.json()),
+    ]).then(([m, c, md]) => { setMaintenances(m); setClients(c); setMandats(md) })
+  }
+  usePolling(refreshData)
+
+  async function fetchInvoices(month: number, year: number) {
+    setLoadingInvoices(true)
+    try {
+      const res = await fetch(`/api/maintenances/invoices?month=${month}&year=${year}`)
+      const data = await res.json()
+      setInvoices(data)
+    } catch { setInvoices([]) }
+    finally { setLoadingInvoices(false) }
+  }
+
+  function openInvoices() {
+    const m = new Date().getMonth() + 1
+    const y = new Date().getFullYear()
+    setInvoiceMonth(m)
+    setInvoiceYear(y)
+    setShowInvoices(true)
+    fetchInvoices(m, y)
+  }
+
+  function changeInvoiceMonth(delta: number) {
+    let m = invoiceMonth + delta
+    let y = invoiceYear
+    if (m > 12) { m = 1; y++ }
+    if (m < 1) { m = 12; y-- }
+    setInvoiceMonth(m)
+    setInvoiceYear(y)
+    fetchInvoices(m, y)
+  }
 
   const filtered = maintenances.filter(m => m.type === activeTab)
   function toMonthly(m: Maintenance): number {
     const price = m.priceHT ?? 0
+    if (m.billing === 'MANUEL') return 0
     if (m.billing === 'ANNUEL') return price / 12
     if (m.billing === 'TRIMESTRIEL') return price / 3
     return price
@@ -79,8 +158,13 @@ export default function MaintenancesPage() {
       setForm({
         ...item,
         priceHT: item.priceHT?.toString() ?? '',
+        billingDay: item.billingDay?.toString() ?? '',
+        clientEmail: item.clientEmail ?? '',
         startDate: item.startDate ? item.startDate.split('T')[0] : '',
         endDate: item.endDate ? item.endDate.split('T')[0] : '',
+        contractId: item.contractId ?? '',
+        mandatId: item.mandatId ?? '',
+        level: item.level?.toString() ?? '',
       })
     } else {
       setEditItem(null)
@@ -94,11 +178,14 @@ export default function MaintenancesPage() {
     const payload = {
       ...form,
       priceHT: form.priceHT ? parseFloat(form.priceHT as string) : null,
+      billingDay: form.billingDay ? parseInt(form.billingDay as string) : null,
+      clientEmail: form.clientEmail || null,
       startDate: form.startDate || null,
       endDate: form.endDate || null,
       url: form.url || null,
       loginUrl: form.loginUrl || null,
       cms: form.cms || null,
+      level: form.level ? parseInt(form.level as string) : null,
       commercial: form.commercial || null,
       loginEmail: form.loginEmail || null,
       loginPassword: form.loginPassword || null,
@@ -107,6 +194,8 @@ export default function MaintenancesPage() {
       notes: form.notes || null,
       n8nUrl: form.n8nUrl || null,
       sheetUrl: form.sheetUrl || null,
+      contractId: form.contractId || null,
+      mandatId: form.mandatId || null,
     }
     try {
       if (editItem) {
@@ -157,10 +246,16 @@ export default function MaintenancesPage() {
           <h1 className="text-2xl font-semibold text-white">Maintenances</h1>
           <p className="text-slate-400 text-sm mt-1">{maintenances.filter(m => m.active).length} effectués ce mois-ci</p>
         </div>
-        <button onClick={() => openModal()}
-          className="flex items-center gap-2 bg-[#E14B89] hover:opacity-90 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-colors">
-          <Plus size={16} /> Ajouter
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={openInvoices}
+            className="flex items-center gap-2 border border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800/50 px-4 py-2.5 rounded-xl text-sm font-medium transition-colors">
+            <Receipt size={16} /> Factures auto
+          </button>
+          <button onClick={() => openModal()}
+            className="flex items-center gap-2 bg-[#E14B89] hover:opacity-90 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-colors">
+            <Plus size={16} /> Ajouter
+          </button>
+        </div>
       </div>
 
       {/* Tabs */}
@@ -185,6 +280,77 @@ export default function MaintenancesPage() {
         <span className="text-white font-semibold text-lg">{formatCurrency(totalByTab)}</span>
       </div>
 
+      {/* Alerte jour de prélèvement manquant */}
+      {(() => {
+        const missingBillingDay = maintenances.filter(m => m.active && m.billing === 'MENSUEL' && m.clientEmail && !m.billingDay)
+        if (missingBillingDay.length === 0) return null
+        return (
+          <div className="bg-orange-500/10 border border-orange-500/20 rounded-2xl px-5 py-4 mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <AlertTriangle size={16} className="text-orange-400" />
+              <span className="text-orange-400 text-sm font-medium">Jour de prélèvement manquant ({missingBillingDay.length})</span>
+            </div>
+            <p className="text-slate-400 text-xs mb-3">Aucune facture ne sera envoyée tant qu&apos;un jour de prélèvement n&apos;est pas renseigné.</p>
+            <div className="space-y-2">
+              {missingBillingDay.map(m => (
+                <div key={m.id} className="flex items-center justify-between text-sm">
+                  <span className="text-white">{m.clientName} <span className="text-slate-500">({TABS.find(t => t.key === m.type)?.label})</span></span>
+                  <button onClick={() => openModal(m)} className="text-orange-400 hover:text-orange-300 text-xs transition-colors">Configurer</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* Alertes expiration */}
+      {(() => {
+        const now = new Date()
+        const in30d = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
+        const expiring = maintenances.filter(m => m.active && m.endDate && new Date(m.endDate) <= in30d && new Date(m.endDate) >= now)
+        const expired = maintenances.filter(m => m.active && m.endDate && new Date(m.endDate) < now)
+        if (expiring.length === 0 && expired.length === 0) return null
+        return (
+          <div className="space-y-3 mb-6">
+            {expired.length > 0 && (
+              <div className="bg-red-500/10 border border-red-500/20 rounded-2xl px-5 py-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <AlertTriangle size={16} className="text-red-400" />
+                  <span className="text-red-400 text-sm font-medium">Maintenances expirées ({expired.length})</span>
+                </div>
+                <div className="space-y-2">
+                  {expired.map(m => (
+                    <div key={m.id} className="flex items-center justify-between text-sm">
+                      <span className="text-white">{m.clientName} <span className="text-slate-500">({TABS.find(t => t.key === m.type)?.label})</span></span>
+                      <span className="text-red-400 text-xs">Expiré le {formatDate(m.endDate!)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {expiring.length > 0 && (
+              <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl px-5 py-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Clock size={16} className="text-amber-400" />
+                  <span className="text-amber-400 text-sm font-medium">Expire bientôt ({expiring.length})</span>
+                </div>
+                <div className="space-y-2">
+                  {expiring.map(m => {
+                    const days = Math.ceil((new Date(m.endDate!).getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+                    return (
+                      <div key={m.id} className="flex items-center justify-between text-sm">
+                        <span className="text-white">{m.clientName} <span className="text-slate-500">({TABS.find(t => t.key === m.type)?.label})</span></span>
+                        <span className="text-amber-400 text-xs">Expire dans {days} jour{days > 1 ? 's' : ''} ({formatDate(m.endDate!)})</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )
+      })()}
+
       {loading ? (
         <div className="text-slate-500 text-sm">Chargement...</div>
       ) : filtered.length === 0 ? (
@@ -195,47 +361,108 @@ export default function MaintenancesPage() {
           </button>
         </div>
       ) : (
-        <div className="bg-[#111118] border border-slate-800 rounded-2xl overflow-hidden">
-          <table className="w-full">
+        <div className="bg-[#111118] border border-slate-800 rounded-2xl overflow-hidden overflow-x-auto">
+          <table className="w-full min-w-[900px]">
             <thead>
               <tr className="border-b border-slate-800">
-                <th className="text-left px-5 py-3.5 text-slate-400 text-xs font-medium">Client</th>
-                <th className="text-left px-5 py-3.5 text-slate-400 text-xs font-medium">URL</th>
-                <th className="text-left px-5 py-3.5 text-slate-400 text-xs font-medium">CMS</th>
-                <th className="text-left px-5 py-3.5 text-slate-400 text-xs font-medium">Facturation</th>
-                <th className="text-left px-5 py-3.5 text-slate-400 text-xs font-medium">Prix HT</th>
-                <th className="text-left px-5 py-3.5 text-slate-400 text-xs font-medium">Fin</th>
-                <th className="text-left px-5 py-3.5 text-slate-400 text-xs font-medium">Statut</th>
-                <th className="text-left px-5 py-3.5 text-slate-400 text-xs font-medium">Connexion</th>
-                <th className="px-5 py-3.5" />
+                <th className="text-left px-3 py-3 text-slate-400 text-xs font-medium">Client</th>
+                <th className="text-left px-3 py-3 text-slate-400 text-xs font-medium">URL</th>
+                {activeTab === 'WEB' && <th className="text-left px-3 py-3 text-slate-400 text-xs font-medium">Niveau</th>}
+                {activeTab === 'WEB' && <th className="text-left px-3 py-3 text-slate-400 text-xs font-medium">CMS</th>}
+                <th className="text-left px-3 py-3 text-slate-400 text-xs font-medium">Fact.</th>
+                <th className="text-left px-3 py-3 text-slate-400 text-xs font-medium">Prélèvement</th>
+                <th className="text-left px-3 py-3 text-slate-400 text-xs font-medium">Prix</th>
+                <th className="text-left px-3 py-3 text-slate-400 text-xs font-medium">Fin</th>
+                <th className="text-left px-3 py-3 text-slate-400 text-xs font-medium">Mandat</th>
+                <th className="text-left px-3 py-3 text-slate-400 text-xs font-medium">Statut</th>
+                <th className="px-2 py-3" />
               </tr>
             </thead>
             <tbody>
-              {filtered.map((m, i) => (
-                <tr key={m.id} className={`border-b border-slate-800/50 hover:bg-slate-800/20 group ${i === filtered.length - 1 ? 'border-0' : ''}`}>
-                  <td className="px-5 py-3.5">
-                    <p className="text-white text-sm font-medium">{m.clientName}</p>
-                    {m.contactName && <p className="text-slate-500 text-xs">{m.contactName}</p>}
+              {filtered.map((m, i) => {
+                const isManualDue = (m.billing === 'MANUEL' || m.billing === 'ANNUEL' || m.billing === 'TRIMESTRIEL') && m.active && !m.manualPaid && m.endDate && new Date(m.endDate) <= new Date()
+                return (
+                <tr key={m.id} className={`border-b border-slate-800/50 hover:bg-slate-800/20 group ${i === filtered.length - 1 ? 'border-0' : ''} ${isManualDue ? 'bg-red-500/8 border-l-2 border-l-red-500/60' : m.active && m.billing === 'MENSUEL' && !m.billingDay ? 'bg-amber-500/5 border-l-2 border-l-amber-500/40' : ''}`}>
+                  <td className="px-3 py-2.5">
+                    <p className="text-white text-sm font-medium">{clients.find(c => c.name === m.clientName)?.company || m.clientName}</p>
+                    <p className="text-slate-500 text-xs">{m.clientName}</p>
                   </td>
-                  <td className="px-5 py-3.5">
+                  <td className="px-3 py-2.5">
                     {m.url ? (
                       <a href={m.url.startsWith('http') ? m.url : `https://${m.url}`} target="_blank" rel="noopener noreferrer"
                         className="text-[#E14B89] hover:text-[#F8903C] text-xs flex items-center gap-1 transition-colors">
                         <ExternalLink size={11} />
-                        {m.url.replace(/^https?:\/\//, '').replace(/\/$/, '').substring(0, 25)}
+                        {m.url.replace(/^https?:\/\//, '').replace(/\/$/, '').substring(0, 20)}
                       </a>
                     ) : <span className="text-slate-600 text-xs">—</span>}
                   </td>
-                  <td className="px-5 py-3.5 text-slate-400 text-sm">{m.cms || '—'}</td>
-                  <td className="px-5 py-3.5">
+                  {activeTab === 'WEB' && (
+                    <td className="px-3 py-2.5">
+                      <select value={m.level || ''} onChange={async e => {
+                        const val = e.target.value ? parseInt(e.target.value) : null
+                        const res = await fetch(`/api/maintenances/${m.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ level: val }) })
+                        if (res.ok) setMaintenances(prev => prev.map(x => x.id === m.id ? { ...x, level: val ?? undefined } : x))
+                      }} className="bg-transparent border border-slate-800 rounded-lg px-2 py-1 text-xs text-slate-300 hover:border-slate-600 focus:border-[#E14B89] focus:outline-none cursor-pointer transition-colors">
+                        <option value="">—</option>
+                        {[1, 2, 3, 4].map(n => <option key={n} value={n}>{LEVEL_LABELS[n]}</option>)}
+                      </select>
+                    </td>
+                  )}
+                  {activeTab === 'WEB' && <td className="px-3 py-2.5 text-slate-400 text-xs">{m.cms || '—'}</td>}
+                  <td className="px-3 py-2.5">
                     <span className="text-xs text-slate-400">{BILLING_LABELS[m.billing]}</span>
                   </td>
-                  <td className="px-5 py-3.5">
-                    <span className="text-white text-sm font-medium">{m.priceHT ? formatCurrency(toMonthly(m)) : '—'}</span>
-                    {m.priceHT && m.billing !== 'MENSUEL' ? <span className="text-slate-500 text-xs block">{formatCurrency(m.priceHT)}/{m.billing === 'ANNUEL' ? 'an' : 'trim.'}</span> : null}
+                  <td className="px-3 py-2.5">
+                    {m.billing === 'MENSUEL' && m.billingDay ? (
+                      <span className="text-xs text-white font-medium">Le {m.billingDay}</span>
+                    ) : m.endDate && (m.billing === 'ANNUEL' || m.billing === 'TRIMESTRIEL') ? (
+                      <span className="text-xs text-slate-400">{formatDate(m.endDate)}</span>
+                    ) : <span className="text-slate-600 text-xs">—</span>}
                   </td>
-                  <td className="px-5 py-3.5 text-slate-400 text-xs">{m.endDate ? formatDate(m.endDate) : '—'}</td>
-                  <td className="px-5 py-3.5">
+                  <td className="px-3 py-2.5">
+                    {m.billing === 'MANUEL' ? (
+                      <>
+                        <span className="text-white text-sm font-medium">{m.priceHT ? formatCurrency(m.priceHT) : '—'}</span>
+                        {m.priceHT ? <span className="text-green-400/70 text-xs block">{formatCurrency(m.priceHT * 1.2)} TTC</span> : null}
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-white text-sm font-medium">{m.priceHT ? formatCurrency(toMonthly(m)) : '—'}</span>
+                        {m.priceHT ? <span className="text-green-400/70 text-xs block">{formatCurrency(toMonthly(m) * 1.2)} TTC</span> : null}
+                        {m.priceHT && m.billing !== 'MENSUEL' ? <span className="text-slate-500 text-xs block">{formatCurrency(m.priceHT)}/{m.billing === 'ANNUEL' ? 'an' : 'trim.'}</span> : null}
+                      </>
+                    )}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    {m.endDate ? (
+                      <span className={`text-xs ${isManualDue ? 'text-red-400 font-medium' : 'text-slate-400'}`}>{formatDate(m.endDate)}</span>
+                    ) : <span className="text-slate-600 text-xs">—</span>}
+                    {isManualDue && (
+                      <button
+                        onClick={async () => {
+                          await fetch(`/api/maintenances/${m.id}`, {
+                            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ manualPaid: true }),
+                          })
+                          setMaintenances(prev => prev.map(x => x.id === m.id ? { ...x, manualPaid: true } : x))
+                        }}
+                        className="flex items-center gap-1 mt-1 text-xs px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
+                      >
+                        <CreditCard size={11} /> Marquer payé
+                      </button>
+                    )}
+                    {(m.billing === 'MANUEL' || m.billing === 'ANNUEL' || m.billing === 'TRIMESTRIEL') && m.manualPaid && (
+                      <span className="flex items-center gap-1 mt-1 text-xs text-green-400"><Check size={11} /> Payé</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    {m.mandatId ? (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-[#E14B89]/10 text-[#E14B89]">
+                        {mandats.find(md => md.id === m.mandatId)?.referenceMandat || 'Lié'}
+                      </span>
+                    ) : <span className="text-slate-600 text-xs">—</span>}
+                  </td>
+                  <td className="px-3 py-2.5">
                     <select
                       value={m.active ? 'true' : 'false'}
                       onChange={async (e) => {
@@ -252,15 +479,7 @@ export default function MaintenancesPage() {
                       <option value="false">Pas encore</option>
                     </select>
                   </td>
-                  <td className="px-5 py-3.5">
-                    {(m.loginUrl || m.loginEmail) ? (
-                      <button onClick={() => handleAutoLogin(m)} title="Se connecter au site"
-                        className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-[#E14B89]/10 text-[#E14B89] hover:bg-[#E14B89]/20 transition-colors">
-                        {copied === m.id ? <><Check size={12} className="text-green-400" /> Copié</> : <><LogIn size={12} /> Connexion</>}
-                      </button>
-                    ) : <span className="text-slate-600 text-xs">—</span>}
-                  </td>
-                  <td className="px-5 py-3.5">
+                  <td className="px-3 py-2.5">
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity justify-end">
                       <button onClick={() => setShowCreds(showCreds === m.id ? null : m.id)}
                         className="p-1.5 text-slate-500 hover:text-slate-300 transition-colors">
@@ -275,13 +494,14 @@ export default function MaintenancesPage() {
                     </div>
                   </td>
                 </tr>
-              ))}
+                )
+              })}
               {showCreds && (() => {
                 const m = filtered.find(x => x.id === showCreds)
                 if (!m) return null
                 return (
                   <tr>
-                    <td colSpan={9} className="px-5 py-4 bg-slate-800/30 border-b border-slate-800/50">
+                    <td colSpan={12} className="px-3 py-3 bg-slate-800/30 border-b border-slate-800/50">
                       <div className="flex items-center gap-6 text-sm">
                         <div>
                           <span className="text-slate-500 text-xs block mb-1">Email</span>
@@ -372,6 +592,16 @@ export default function MaintenancesPage() {
                         className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
                     </div>
                   </div>
+                  {(form.type === 'WEB') && (
+                    <div>
+                      <label className="block text-slate-400 text-xs mb-1.5">Niveau de maintenance</label>
+                      <select value={form.level as string} onChange={e => setForm({ ...form, level: e.target.value })}
+                        className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors">
+                        <option value="">— Aucun —</option>
+                        {[1, 2, 3, 4].map(n => <option key={n} value={n}>{LEVEL_LABELS[n]}</option>)}
+                      </select>
+                    </div>
+                  )}
                   <div className="grid grid-cols-3 gap-4">
                     <div>
                       <label className="block text-slate-400 text-xs mb-1.5">CMS</label>
@@ -395,6 +625,7 @@ export default function MaintenancesPage() {
                         <option value="MENSUEL">Mensuel</option>
                         <option value="TRIMESTRIEL">Trimestriel</option>
                         <option value="ANNUEL">Annuel</option>
+                        <option value="MANUEL">Manuel</option>
                       </select>
                     </div>
                     <div>
@@ -422,6 +653,7 @@ export default function MaintenancesPage() {
                         <option value="MENSUEL">Mensuel</option>
                         <option value="TRIMESTRIEL">Trimestriel</option>
                         <option value="ANNUEL">Annuel</option>
+                        <option value="MANUEL">Manuel</option>
                       </select>
                     </div>
                   </div>
@@ -449,6 +681,7 @@ export default function MaintenancesPage() {
                         <option value="MENSUEL">Mensuel</option>
                         <option value="TRIMESTRIEL">Trimestriel</option>
                         <option value="ANNUEL">Annuel</option>
+                        <option value="MANUEL">Manuel</option>
                       </select>
                     </div>
                   </div>
@@ -484,7 +717,20 @@ export default function MaintenancesPage() {
                 </>
               )}
 
-              <div className="grid grid-cols-2 gap-4">
+              {/* Mandat lié */}
+              <div>
+                <label className="block text-slate-400 text-xs mb-1.5">Mandat lié</label>
+                <select value={form.mandatId as string} onChange={e => setForm({ ...form, mandatId: e.target.value })}
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors">
+                  <option value="">— Aucun mandat —</option>
+                  {mandats.filter(md => !md.stoppedAt).map(md => (
+                    <option key={md.id} value={md.id}>{md.clientName} — {md.referenceMandat || 'Sans réf.'}{md.signatureStatus === 'SIGNE' ? ' ✓' : ''}</option>
+                  ))}
+                </select>
+                <p className="text-slate-500 text-[11px] mt-1">La suppression de cette maintenance arrêtera le mandat lié (et son contrat si applicable)</p>
+              </div>
+
+              <div className="grid grid-cols-3 gap-4">
                 <div>
                   <label className="block text-slate-400 text-xs mb-1.5">Date début</label>
                   <input type="date" value={form.startDate as string} onChange={e => setForm({ ...form, startDate: e.target.value })}
@@ -495,11 +741,23 @@ export default function MaintenancesPage() {
                   <input type="date" value={form.endDate as string} onChange={e => setForm({ ...form, endDate: e.target.value })}
                     className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
                 </div>
+                <div>
+                  <label className="block text-slate-400 text-xs mb-1.5">Jour de prélèvement</label>
+                  <input type="number" min="1" max="31" value={form.billingDay as string} onChange={e => setForm({ ...form, billingDay: e.target.value })} placeholder="1"
+                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+                </div>
               </div>
-              <div>
-                <label className="block text-slate-400 text-xs mb-1.5">Commercial</label>
-                <input value={form.commercial as string} onChange={e => setForm({ ...form, commercial: e.target.value })} placeholder="Nom du commercial"
-                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-slate-400 text-xs mb-1.5">Email client (pour factures auto)</label>
+                  <input type="email" value={form.clientEmail as string} onChange={e => setForm({ ...form, clientEmail: e.target.value })} placeholder="client@example.com"
+                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+                </div>
+                <div>
+                  <label className="block text-slate-400 text-xs mb-1.5">Commercial</label>
+                  <input value={form.commercial as string} onChange={e => setForm({ ...form, commercial: e.target.value })} placeholder="Nom du commercial"
+                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
+                </div>
               </div>
               <div>
                 <label className="block text-slate-400 text-xs mb-1.5">Notes</label>
@@ -509,7 +767,7 @@ export default function MaintenancesPage() {
               <div className="flex items-center gap-2">
                 <input type="checkbox" id="active" checked={form.active as boolean} onChange={e => setForm({ ...form, active: e.target.checked })}
                   className="accent-[#E14B89]" />
-                <label htmlFor="active" className="text-slate-400 text-sm">Contrat actif</label>
+                <label htmlFor="active" className="text-slate-400 text-sm">Maintenance active</label>
               </div>
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setShowModal(false)}
@@ -519,6 +777,87 @@ export default function MaintenancesPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ FACTURES AUTO MODAL ═══ */}
+      {showInvoices && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#111118] border border-slate-800 rounded-2xl w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between p-6 border-b border-slate-800">
+              <div>
+                <h2 className="text-white font-semibold text-lg">Factures automatiques</h2>
+                <p className="text-slate-500 text-xs mt-0.5">Factures envoyées automatiquement par le cron</p>
+              </div>
+              <button onClick={() => setShowInvoices(false)} className="text-slate-500 hover:text-white transition-colors p-1"><X size={18} /></button>
+            </div>
+
+            {/* Month navigation */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800/50">
+              <button onClick={() => changeInvoiceMonth(-1)} className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800/50 transition-colors">
+                <ChevronLeft size={18} />
+              </button>
+              <div className="text-center">
+                <span className="text-white font-semibold">{MONTH_NAMES[invoiceMonth - 1]} {invoiceYear}</span>
+                <span className="text-slate-500 text-xs ml-2">({invoices.length} facture{invoices.length !== 1 ? 's' : ''})</span>
+              </div>
+              <button onClick={() => changeInvoiceMonth(1)} className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800/50 transition-colors">
+                <ChevronRight size={18} />
+              </button>
+            </div>
+
+            {/* Totals */}
+            {invoices.length > 0 && (
+              <div className="px-6 py-3 border-b border-slate-800/50 flex items-center gap-6">
+                <div>
+                  <span className="text-slate-500 text-xs">Total HT</span>
+                  <span className="text-white font-semibold text-sm ml-2">{formatCurrency(invoices.reduce((s, inv) => s + inv.amountHT, 0))}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 text-xs">Total TTC</span>
+                  <span className="text-green-400 font-semibold text-sm ml-2">{formatCurrency(invoices.reduce((s, inv) => s + inv.amountTTC, 0))}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Invoice list */}
+            <div className="flex-1 overflow-y-auto">
+              {loadingInvoices ? (
+                <div className="p-12 text-center text-slate-500 text-sm">Chargement...</div>
+              ) : invoices.length === 0 ? (
+                <div className="p-12 text-center text-slate-500 text-sm">Aucune facture pour ce mois</div>
+              ) : (
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-slate-800">
+                      <th className="text-left px-5 py-3 text-slate-400 text-xs font-medium">N° Facture</th>
+                      <th className="text-left px-5 py-3 text-slate-400 text-xs font-medium">Client</th>
+                      <th className="text-left px-5 py-3 text-slate-400 text-xs font-medium">Email</th>
+                      <th className="text-right px-5 py-3 text-slate-400 text-xs font-medium">HT</th>
+                      <th className="text-right px-5 py-3 text-slate-400 text-xs font-medium">TTC</th>
+                      <th className="text-left px-5 py-3 text-slate-400 text-xs font-medium">Envoyé le</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {invoices.map((inv, i) => (
+                      <tr key={inv.id} className={`border-b border-slate-800/50 hover:bg-slate-800/20 ${i === invoices.length - 1 ? 'border-0' : ''}`}>
+                        <td className="px-5 py-3">
+                          <span className="text-[#E14B89] text-sm font-mono">{inv.number}</span>
+                        </td>
+                        <td className="px-5 py-3 text-white text-sm">{inv.clientName}</td>
+                        <td className="px-5 py-3 text-slate-400 text-xs">{inv.clientEmail || '—'}</td>
+                        <td className="px-5 py-3 text-right text-white text-sm">{formatCurrency(inv.amountHT)}</td>
+                        <td className="px-5 py-3 text-right text-green-400 text-sm font-medium">{formatCurrency(inv.amountTTC)}</td>
+                        <td className="px-5 py-3 text-slate-400 text-xs">
+                          {inv.sentAt ? new Date(inv.sentAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
           </div>
         </div>
       )}

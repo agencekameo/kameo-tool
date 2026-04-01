@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from 'react'
 import { Plus, GripVertical, Circle, CheckCircle2, Clock, RotateCcw, Trash2, ChevronLeft, ChevronRight, ChevronDown, X, Check } from 'lucide-react'
 import { formatDate } from '@/lib/utils'
 import { useSession } from 'next-auth/react'
+import { usePolling } from '@/hooks/usePolling'
 
 interface SubTask {
   id: string
@@ -134,6 +135,18 @@ export default function AyshaPage() {
       fetch('/api/users').then(r => r.json()).then(setUsers).catch(() => {})
     }
   }, [activeTab])
+
+  function refreshData() {
+    fetch('/api/aysha-tasks').then(r => r.json()).then(t => {
+      const taskArr = Array.isArray(t) ? t : []
+      taskArr.sort((a: AyshaTask, b: AyshaTask) => a.position - b.position)
+      setTasks(taskArr)
+    }).catch(() => {})
+    fetch('/api/absences').then(r => r.json()).then(setAbsences).catch(() => {})
+    fetch('/api/users').then(r => r.json()).then(setUsers).catch(() => {})
+  }
+
+  usePolling(refreshData)
 
   async function fetchAbsences() {
     setAbsencesLoading(true)

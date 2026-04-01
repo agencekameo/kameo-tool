@@ -29,11 +29,12 @@ export async function POST() {
 
   // Generate a reverse impersonation token (back to admin, no impersonation flag)
   const token = crypto.randomBytes(32).toString('hex')
+  const tokenHash = crypto.createHash('sha256').update(token).digest('hex')
   const expiresAt = new Date(Date.now() + 5 * 60 * 1000)
 
   await prisma.setting.create({
     data: {
-      key: `impersonate:${token}`,
+      key: `impersonate:${tokenHash}`,
       value: JSON.stringify({
         targetUserId: admin.id,
         adminId: null, // No impersonation flag — returning to own account

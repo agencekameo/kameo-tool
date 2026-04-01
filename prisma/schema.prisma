@@ -13,7 +13,7 @@ enum Role {
   REDACTEUR
   DESIGNER
   COMMERCIAL
-  MEMBER
+  DEMO
 }
 
 enum ProjectType {
@@ -81,11 +81,14 @@ enum MaintenanceBilling {
   MENSUEL
   TRIMESTRIEL
   ANNUEL
+  MANUEL
 }
 
 enum ProspectStatus {
   A_CONTACTER
+  PAS_REPONDU
   A_RAPPELER
+  MAIL_ENVOYE
   VISIO_PLANIFIE
   DEVIS_TRANSMETTRE
   DEVIS_ENVOYE
@@ -101,6 +104,7 @@ enum ExpenseCategory {
   ASSURANCE
   BANQUE
   FOURNISSEUR
+  DOMICILIATION
   AUTRE
 }
 
@@ -168,6 +172,7 @@ model User {
   projectAssignments      ProjectAssignee[]
   audits                  Audit[]
   prospects               Prospect[]
+  leadSearches            LeadSearch[]
   invoicesUploaded        ProjectInvoice[]     @relation("InvoiceUploader")
   invoicesAssigned        ProjectInvoice[]     @relation("InvoiceAssignee")
   projectDocuments        ProjectDocument[]    @relation("DocUploader")
@@ -178,11 +183,21 @@ model User {
   messages                Message[]
   conversationMemberships ConversationMember[]
   cahiersDesCharges       CahierDesCharges[]
+  redactions              Redaction[]            @relation("RedactionCreator")
   skillProgress           SkillProgress[]
   notifications           Notification[]
   relances                Relance[]              @relation("Relances")
   speeches                CommercialSpeech[]     @relation("Speeches")
   commissions             CommercialCommission[] @relation("Commissions")
+  createdClients          Client[]               @relation("ClientCreator")
+  createdResources        Resource[]             @relation("ResourceCreator")
+  createdMaintenances     MaintenanceContract[]  @relation("MaintenanceCreator")
+  createdContracts        Contract[]             @relation("ContractCreator")
+  createdMandats          Mandat[]               @relation("MandatCreator")
+  createdExpenses         Expense[]              @relation("ExpenseCreator")
+  createdArticleTemplates ArticleTemplate[]      @relation("ArticleTemplateCreator")
+  smallProjectsFreelance  SmallProject[]         @relation("SmallProjectFreelance")
+  gmbProjects             GmbProject[]           @relation("gmbProjects")
 }
 
 model Log {
@@ -220,11 +235,14 @@ model Notification {
 model Client {
   id               String          @id @default(cuid())
   name             String
+  firstName        String?
+  lastName         String?
   email            String?
   phone            String?
   company          String?
   siret            String?
   website          String?
+  logo             String?
   address          String?
   postalCode       String?
   city             String?
@@ -235,12 +253,15 @@ model Client {
   contact2Phone    String?
   maintenancePlan  MaintenancePlan @default(NONE)
   maintenancePrice Float?
+  createdById      String?
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
 
-  projects Project[]
-  quotes   Quote[]
-  backups  SiteBackup[]
+  createdBy      User?          @relation("ClientCreator", fields: [createdById], references: [id])
+  projects       Project[]
+  quotes         Quote[]
+  backups        SiteBackup[]
+  smallProjects  SmallProject[]
 }
 
 model Project {
@@ -259,8 +280,10 @@ model Project {
   contentUrl      String?
   reviewReceived  Boolean       @default(false)
   reviewExcluded  Boolean       @default(false)
+  formBypassedAt  DateTime?
   maintenancePlan  MaintenancePlan @default(NONE)
   maintenancePrice Float?
+  signedAt          DateTime?
   maintenanceStart DateTime?
   maintenanceEnd   DateTime?
   createdById String
@@ -277,6 +300,8 @@ model Project {
   conversation       Conversation?
   cahiersDesCharges  CahierDesCharges[]
   clientForm         ClientForm?
+  redactions         Redaction[]
+  partners           Partner[]
 
   @@index([clientId])
   @@index([status])
@@ -288,6 +313,7 @@ model ProjectAssignee {
   projectId       String
   userId          String
   price           Float?
+  delayDays       Int?
   deadline        DateTime?
   status          MissionStatus @default(EN_ATTENTE)
   counterPrice    Float?
@@ -329,14 +355,17 @@ model Task {
 }
 
 model Resource {
-  id        String           @id @default(cuid())
-  title     String
-  content   String
-  category  ResourceCategory
-  tags      String[]
-  pinned    Boolean          @default(false)
-  createdAt DateTime         @default(now())
-  updatedAt DateTime         @updatedAt
+  id          String           @id @default(cuid())
+  title       String
+  content     String
+  category    ResourceCategory
+  tags        String[]
+  pinned      Boolean          @default(false)
+  createdById String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  createdBy User? @relation("ResourceCreator", fields: [createdById], references: [id])
 }
 
 model Audit {
@@ -364,11 +393,13 @@ model Audit {
 model MaintenanceContract {
   id            String             @id @default(cuid())
   clientName    String
+  clientEmail   String?
   url           String?
   loginUrl      String?
   cms           String?
   type          MaintenanceType    @default(WEB)
   billing       MaintenanceBilling @default(MENSUEL)
+  billingDay    Int?               // Jour du prélèvement (1-31)
   startDate     DateTime?
   endDate       DateTime?
   priceHT       Float?
@@ -379,13 +410,46 @@ model MaintenanceContract {
   contactPhone  String?
   notes         String?
   active        Boolean            @default(true)
+  manualPaid    Boolean            @default(false)
+  level         Int?               // 1-4 for WEB maintenance level
+  contractId    String?
+  mandatId      String?
+  createdById   String?
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
+
+  contract  Contract?            @relation("MaintenanceToContract", fields: [contractId], references: [id])
+  mandat    Mandat?              @relation("MaintenanceToMandat", fields: [mandatId], references: [id])
+  createdBy User?                @relation("MaintenanceCreator", fields: [createdById], references: [id])
+  invoices  MaintenanceInvoice[]
+
+  @@index([contractId])
+  @@index([mandatId])
+}
+
+model MaintenanceInvoice {
+  id              String   @id @default(cuid())
+  maintenanceId   String
+  number          String   @unique
+  month           Int      // 1-12
+  year            Int
+  amountHT        Float
+  amountTTC       Float
+  clientName      String
+  clientEmail     String?
+  sentAt          DateTime?
+  createdAt       DateTime @default(now())
+
+  maintenance MaintenanceContract @relation(fields: [maintenanceId], references: [id], onDelete: Cascade)
+
+  @@unique([maintenanceId, month, year])
+  @@index([maintenanceId])
 }
 
 model Contract {
   id           String   @id @default(cuid())
   clientName   String
+  clientEmail  String?
   subject      String?
   type         String   @default("PRESTATION")
   billing      String   @default("ONE_SHOT")
@@ -397,46 +461,184 @@ model Contract {
   contactEmail String?
   notes        String?  @db.Text
   active       Boolean  @default(true)
+  // Client document fields
+  clientId         String?
+  clientAddress    String?
+  clientPostalCode String?
+  clientCity       String?
+  clientCountry    String?
+  clientPhone      String?
+  clientSiren      String?
+  duration         String?  // ex: "12 mois", "1 an"
+  maintenanceLevel Int?     // 1-4 for MAINTENANCE_WEB
+  // Signature
+  signatureToken  String?   @unique
+  signatureStatus String    @default("BROUILLON") // BROUILLON, ENVOYE, SIGNE
+  signedAt        DateTime?
+  signatureData   String?   @db.Text
+  signedCity      String?
+  signerName      String?
+  sentForSignAt   DateTime?
+  stoppedAt       DateTime?  // Client a voulu arrêter (pas de reconduction tacite)
+  createdById  String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  createdBy     User?                @relation("ContractCreator", fields: [createdById], references: [id])
+  maintenances  MaintenanceContract[] @relation("MaintenanceToContract")
+  mandats       Mandat[]              @relation("MandatToContract")
+}
+
+model Mandat {
+  id           String   @id @default(cuid())
+  clientName   String
+  clientEmail  String?
+  subject      String?
+  priceHT      Float?
+  billing      String   @default("MENSUEL")
+  startDate    DateTime?
+  endDate      DateTime?
+  contactName  String?
+  contactPhone String?
+  contactEmail String?
+  notes        String?  @db.Text
+  active       Boolean  @default(true)
+  // Client document fields
+  clientId         String?
+  clientAddress    String?
+  clientPostalCode String?
+  clientCity       String?
+  clientCountry    String?
+  clientPhone2     String?
+  clientSiren      String?
+  clientPrenom     String?
+  bic              String?
+  iban             String?
+  paymentType      String?  @default("RECURRENT") // RECURRENT, PONCTUEL
+  referenceMandat    String?   @unique
+  referenceContrat   String?
+  descriptionContrat String?
+  // Signature
+  signatureToken  String?   @unique
+  signatureStatus String    @default("BROUILLON") // BROUILLON, ENVOYE, SIGNE
+  signedAt        DateTime?
+  signatureData   String?   @db.Text
+  signedCity      String?
+  signerName      String?
+  sentForSignAt   DateTime?
+  stoppedAt       DateTime?  // Client a voulu arrêter
+  contractId   String?
+  createdById  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  contract     Contract?            @relation("MandatToContract", fields: [contractId], references: [id])
+  createdBy    User?                @relation("MandatCreator", fields: [createdById], references: [id])
+  maintenances MaintenanceContract[] @relation("MaintenanceToMandat")
+
+  @@index([contractId])
+}
+
+model Review {
+  id          String   @id @default(cuid())
+  clientName  String   @unique
+  status      String   @default("A_DEMANDER") // RECU, EN_ATTENTE, A_DEMANDER, HORS_CATEGORIE
+  hidden      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model Prospect {
   id         String         @id @default(cuid())
   name       String
+  firstName  String?
+  lastName   String?
   company    String?
   email      String?
   phone      String?
   address    String?
   postalCode String?
   city       String?
+  website    String?
+  googleUrl  String?
   notes      String?
-  status     ProspectStatus @default(A_CONTACTER)
+  status       ProspectStatus @default(A_CONTACTER)
+  callbackDate DateTime?
   budget     Float?
   source     String?
   assignedTo String?
   createdAt  DateTime       @default(now())
   updatedAt  DateTime       @updatedAt
 
-  cdcData    Json?
+  cdcData        Json?
+  statusHistory  String[]   @default([])
+  leadSearchId   String?
 
   assignee    User?                  @relation(fields: [assignedTo], references: [id])
+  leadSearch  LeadSearch?            @relation(fields: [leadSearchId], references: [id], onDelete: Cascade)
   relances    Relance[]
   commissions CommercialCommission[]
 
   @@index([assignedTo])
   @@index([status])
+  @@index([leadSearchId])
+}
+
+model LeadSearch {
+  id              String   @id @default(cuid())
+  keyword         String
+  location        String
+  userId          String
+  resultCount     Int      @default(0)
+  withEmail       Int      @default(0)
+  totalToScrape   Int      @default(0)
+  scrapedCount    Int      @default(0)
+  scrapingStatus  String   @default("DONE")
+  createdAt       DateTime @default(now())
+
+  user      User       @relation(fields: [userId], references: [id])
+  prospects Prospect[]
+
+  @@index([userId])
 }
 
 model Expense {
-  id        String          @id @default(cuid())
-  name      String
-  amount    Float
-  category  ExpenseCategory @default(AUTRE)
-  recurring Boolean         @default(true)
-  notes     String?
-  createdAt DateTime        @default(now())
-  updatedAt DateTime        @updatedAt
+  id           String          @id @default(cuid())
+  name         String
+  amount       Float
+  category     String          @default("AUTRE")
+  recurring    Boolean         @default(true)
+  notes        String?
+  expenseMonth Int?
+  expenseYear  Int?
+  createdById  String?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  createdBy User? @relation("ExpenseCreator", fields: [createdById], references: [id])
+}
+
+enum SmallProjectStatus {
+  NON_COMMENCE
+  EN_COURS
+  TERMINE
+}
+
+model SmallProject {
+  id           String             @id @default(cuid())
+  name         String
+  clientId     String
+  price        Float
+  charges      Float              @default(0)
+  description  String?            @db.Text
+  signedAt     DateTime
+  status       SmallProjectStatus @default(NON_COMMENCE)
+  freelanceId  String?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  client    Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  freelance User?  @relation("SmallProjectFreelance", fields: [freelanceId], references: [id])
 }
 
 model ProjectInvoice {
@@ -474,9 +676,14 @@ model ArticleTemplate {
   description String?
   unitPrice   Float
   unit        String   @default("forfait")
+  deliveryDays Int?
+  sortOrder   Int      @default(0)
   category    String?
+  createdById String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  createdBy User? @relation("ArticleTemplateCreator", fields: [createdById], references: [id])
 }
 
 model Quote {
@@ -486,11 +693,14 @@ model Quote {
   clientName    String
   clientEmail   String?
   clientAddress String?
+  clientLogo    String?
   subject       String
   status        QuoteStatus @default(EN_ATTENTE)
   validUntil    DateTime?
   notes         String?
   discount      Float       @default(0)
+  discountType  String      @default("PERCENT")
+  deliveryDays  Int?
   createdById   String
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
@@ -627,6 +837,19 @@ model CahierDesCharges {
 
   project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
   createdBy User     @relation(fields: [createdById], references: [id])
+}
+
+model Redaction {
+  id          String   @id @default(cuid())
+  projectId   String
+  analysis    String   @db.Text
+  content     String?  @db.Text
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy User    @relation("RedactionCreator", fields: [createdById], references: [id])
 }
 
 model GoogleCalendarToken {
@@ -790,4 +1013,182 @@ model SkillProgress {
 
   @@unique([userId, itemKey])
   @@index([userId])
+}
+
+// ─── Partenaires ─────────────────────────────────────────────────────────────
+
+enum PartnerStatus {
+  NOUVEAU
+  MAIL_ENVOYE
+  RELANCE_1
+  RELANCE_2
+  RDV_PRIS
+  SIGNE
+  REFUSE
+}
+
+model PartnerSearch {
+  id             String   @id @default(cuid())
+  keyword        String
+  location       String
+  resultCount    Int      @default(0)
+  scrapingStatus String   @default("DONE") // SEARCHING, SCRAPING, DONE
+  scrapedCount   Int      @default(0)
+  totalToScrape  Int      @default(0)
+  createdAt      DateTime @default(now())
+
+  partners Partner[]
+}
+
+model Partner {
+  id          String        @id @default(cuid())
+  name        String
+  category    String?
+  phone       String?
+  email       String?
+  website     String?
+  address     String?
+  rating      Float?
+  reviewCount Int?
+  status      PartnerStatus @default(NOUVEAU)
+  notes       String?
+
+  // Mail tracking
+  mailSentAt    DateTime?
+  relance1At    DateTime?
+  relance2At    DateTime?
+  mailOpenCount Int       @default(0)
+  lastOpenedAt  DateTime?
+  trackingId    String?   @unique
+
+  // Commission tracking
+  projectId        String?
+  commissionRate   Float     @default(20)
+  commissionAmount Float?
+  commissionPaid   Boolean   @default(false)
+  commissionPaidAt DateTime?
+
+  searchId  String?
+  search    PartnerSearch? @relation(fields: [searchId], references: [id], onDelete: SetNull)
+  project   Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([searchId])
+  @@index([status])
+}
+
+model EmailQuota {
+  id          String   @id @default(cuid())
+  date        DateTime @db.Date
+  account     String   // gmail account identifier
+  sentCount   Int      @default(0)
+  bounceCount Int      @default(0)
+  failCount   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([date, account])
+  @@index([date])
+}
+
+// ── Google My Business ──────────────────────────────────────────────────────
+
+model GmbProject {
+  id              String   @id @default(cuid())
+  locationId      String   // Google location ID (e.g. "locations/123")
+  locationName    String   // Display name
+  accountId       String   // Google account ID
+
+  // Project info
+  businessName    String?
+  sector          String?  // Sector / industry
+  zone            String?  // Geographic zone
+  keywords        String[] @default([]) // Target keywords
+  targetAudience  String?  // Target audience description
+  tone            String?  @default("professionnel") // Content tone
+  directives      String?  // Custom directives for AI
+  services        String?  // Services description
+  uniquePoints    String?  // Unique selling points
+
+  // Post settings
+  postsPerMonth   Int      @default(4)
+  postDays        String[] @default(["MONDAY", "THURSDAY"]) // Days to post
+  postTime        String   @default("10:00") // Time to post
+
+  // Recap settings
+  recapEnabled    Boolean  @default(false)
+  recapFrequency  String   @default("MENSUEL") // HEBDO, MENSUEL
+  recapEmail      String?  // Client email for recaps
+  recapDay        Int      @default(1) // Day of month (or day of week for HEBDO)
+
+  createdById     String?
+  createdBy       User?    @relation("gmbProjects", fields: [createdById], references: [id])
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  scheduledPosts  GmbScheduledPost[]
+  scheduledPhotos GmbScheduledPhoto[]
+  clientPortal    GmbClientPortal?
+
+  @@unique([locationId])
+  @@index([createdById])
+}
+
+model GmbScheduledPost {
+  id            String   @id @default(cuid())
+  projectId     String
+  project       GmbProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  content       String   // Post text content
+  topicType     String   @default("STANDARD") // STANDARD, OFFER, EVENT
+  scheduledAt   DateTime // When to publish
+  status        String   @default("BROUILLON") // BROUILLON, PLANIFIE, PUBLIE, ERREUR
+  publishedAt   DateTime?
+  errorMessage  String?
+  aiGenerated   Boolean  @default(false)
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([projectId])
+  @@index([status, scheduledAt])
+}
+
+model GmbScheduledPhoto {
+  id            String   @id @default(cuid())
+  projectId     String
+  project       GmbProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  imageUrl      String   // Vercel Blob URL
+  caption       String?
+  category      String   @default("ADDITIONAL") // COVER, PROFILE, ADDITIONAL, EXTERIOR, INTERIOR, PRODUCT, TEAM
+  scheduledAt   DateTime // When to publish
+  status        String   @default("PLANIFIE") // PLANIFIE, PUBLIE, ERREUR
+  publishedAt   DateTime?
+  errorMessage  String?
+  fromPortal    Boolean  @default(false) // Uploaded by client via portal
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([projectId])
+  @@index([status, scheduledAt])
+}
+
+model GmbClientPortal {
+  id            String   @id @default(cuid())
+  projectId     String   @unique
+  project       GmbProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  token         String   @unique @default(cuid())
+  active        Boolean  @default(true)
+  clientName    String?
+  clientEmail   String?
+  maxPhotos     Int      @default(20) // Max photos client can upload
+  instructions  String?  // Instructions for the client
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }

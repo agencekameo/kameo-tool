@@ -148,6 +148,7 @@ export const ROLE_LABELS: Record<string, string> = {
   REDACTEUR: 'Rédactrice',
   DESIGNER: 'Designeuse',
   COMMERCIAL: 'Commercial',
+  DEMO: 'Démo',
 }
 
 export const ROLE_COLORS: Record<string, string> = {
@@ -156,6 +157,7 @@ export const ROLE_COLORS: Record<string, string> = {
   REDACTEUR: 'bg-amber-500/15 text-amber-400 border-amber-500/20',
   DESIGNER: 'bg-pink-500/15 text-pink-400 border-pink-500/20',
   COMMERCIAL: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20',
+  DEMO: 'bg-slate-500/15 text-slate-400 border-slate-500/20',
 }
 
 export const ROLE_AVATAR_COLORS: Record<string, string> = {

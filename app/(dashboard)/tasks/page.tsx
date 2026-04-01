@@ -5,6 +5,7 @@ import { Plus, GripVertical, Circle, CheckCircle2, Clock, Trash2 } from 'lucide-
 import { TASK_STATUS_LABELS, formatDate } from '@/lib/utils'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
+import { usePolling } from '@/hooks/usePolling'
 
 interface Task {
   id: string
@@ -49,6 +50,19 @@ export default function TasksPage() {
   const [editTitle, setEditTitle] = useState('')
   const dragItem = useRef<number | null>(null)
   const dragOver = useRef<number | null>(null)
+
+  function pollTasks() {
+    fetch('/api/tasks').then(r => r.json()).then(t => {
+      const sorted = [...t].sort((a: Task, b: Task) => {
+        const pa = PRIORITY_ORDER.indexOf(a.priority)
+        const pb = PRIORITY_ORDER.indexOf(b.priority)
+        if (pa !== pb) return pa - pb
+        return a.status.localeCompare(b.status)
+      })
+      setTasks(sorted)
+    })
+  }
+  usePolling(pollTasks)
 
   useEffect(() => {
     fetch('/api/tasks').then(r => r.json()).then(t => {

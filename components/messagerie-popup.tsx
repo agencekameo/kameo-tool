@@ -298,7 +298,7 @@ export function MessageriePopup() {
       <button
         onClick={() => setOpen(v => !v)}
         className={cn(
-          'fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full shadow-xl flex items-center justify-center transition-all duration-200',
+          'fixed bottom-20 md:bottom-6 right-4 md:right-6 z-50 w-12 h-12 md:w-14 md:h-14 rounded-full shadow-xl flex items-center justify-center transition-all duration-200',
           'bg-[#E14B89] text-white hover:scale-105 hover:shadow-[#E14B89]/40 hover:shadow-2xl',
           open && 'scale-90 shadow-md'
         )}
@@ -315,8 +315,8 @@ export function MessageriePopup() {
       {/* Popup panel */}
       {open && (
         <div onClick={() => menuConvId && setMenuConvId(null)} className={cn(
-          'fixed bottom-24 right-6 z-50',
-          'w-[700px] h-[520px] max-w-[calc(100vw-1.5rem)] max-h-[calc(100vh-7rem)]',
+          'fixed bottom-[5.5rem] md:bottom-24 right-4 md:right-6 z-50',
+          'w-[700px] h-[520px] max-w-[calc(100vw-1rem)] md:max-w-[calc(100vw-1.5rem)] max-h-[calc(100vh-7rem)]',
           'bg-[#111118] border border-slate-800 rounded-2xl shadow-2xl',
           'flex flex-col overflow-hidden'
         )}>

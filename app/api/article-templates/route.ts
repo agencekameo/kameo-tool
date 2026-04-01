@@ -1,5 +1,6 @@
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { demoGuard, demoWhere } from '@/lib/demo'
 import { NextRequest, NextResponse } from 'next/server'
 
 const KNOWN_UNITS = ['forfait', 'jour', 'heure', 'page', 'mois', 'unité', 'jours', 'heures', 'pages']
@@ -40,7 +41,7 @@ export async function GET() {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   try {
-    const templates = await prisma.articleTemplate.findMany({ orderBy: { name: 'asc' } })
+    const templates = await prisma.articleTemplate.findMany({ where: demoWhere(session), orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] })
     return NextResponse.json(templates)
   } catch (err) {
     console.error('[GET /api/article-templates]', err)
@@ -51,6 +52,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const guard = demoGuard(session); if (guard) return guard
   try {
     const body = await req.json()
 
@@ -72,12 +74,27 @@ export async function POST(req: NextRequest) {
       category = body.category || null
     }
 
+    const deliveryDays = body.deliveryDays ? parseInt(body.deliveryDays) : null
     const template = await prisma.articleTemplate.create({
-      data: { name, description, unitPrice, unit, category },
+      data: { name, description, unitPrice, unit, category, deliveryDays },
     })
     return NextResponse.json(template)
   } catch (err) {
     console.error('[POST /api/article-templates]', err)
+    return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
+  }
+}
+
+export async function PUT(req: NextRequest) {
+  const session = await auth()
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const guard = demoGuard(session); if (guard) return guard
+  try {
+    const { order } = await req.json() as { order: string[] }
+    await Promise.all(order.map((id, i) => prisma.articleTemplate.update({ where: { id }, data: { sortOrder: i } })))
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    console.error('[PUT /api/article-templates]', err)
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
   }
 }

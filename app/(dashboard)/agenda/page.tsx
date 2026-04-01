@@ -1,8 +1,9 @@
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
-import { Calendar, MapPin, Clock, ExternalLink, RefreshCw, Plus, X, ChevronLeft, ChevronRight, Mail, Trash2, Users, Video } from 'lucide-react'
+import { Calendar, MapPin, Clock, ExternalLink, Plus, X, ChevronLeft, ChevronRight, Mail, Trash2, Users, Video, BarChart3, UserCheck, UserX, CheckCircle2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { usePolling } from '@/hooks/usePolling'
 
 interface CalendarEvent {
   id: string | null
@@ -32,6 +33,7 @@ interface CalendarData {
   calendarUsers: CalendarUser[]
   currentUserId: string
   viewingUserId: string
+  invalidTokenEmails?: string[]
 }
 
 type ViewMode = 'user' | 'shared'
@@ -133,9 +135,13 @@ export default function AgendaPage() {
       .finally(() => setLoading(false))
   }
 
-  function fetchSharedEvents() {
+  function fetchSharedEvents(ws?: Date) {
     setSharedLoading(true)
-    fetch('/api/calendar/events?shared=true')
+    const start = ws || weekStart
+    const end = new Date(start)
+    end.setDate(end.getDate() + 7)
+    const params = new URLSearchParams({ shared: 'true', timeMin: start.toISOString(), timeMax: end.toISOString() })
+    fetch(`/api/calendar/events?${params}`)
       .then(r => r.json())
       .then(d => { if (!d.error) setSharedData(d) })
       .catch(() => {})
@@ -144,11 +150,31 @@ export default function AgendaPage() {
 
   useEffect(() => { fetchEvents() }, [])
 
+  function refreshAgenda() {
+    const url = viewingUser ? `/api/calendar/events?userId=${viewingUser}` : '/api/calendar/events'
+    fetch(url)
+      .then(r => r.json())
+      .then(d => { if (!d.error) setData(d) })
+      .catch(() => {})
+    if (sharedData) {
+      const start = weekStart
+      const end = new Date(start)
+      end.setDate(end.getDate() + 7)
+      const params = new URLSearchParams({ shared: 'true', timeMin: start.toISOString(), timeMax: end.toISOString() })
+      fetch(`/api/calendar/events?${params}`)
+        .then(r => r.json())
+        .then(d => { if (!d.error) setSharedData(d) })
+        .catch(() => {})
+    }
+  }
+  usePolling(refreshAgenda)
+
   useEffect(() => {
-    if (viewMode === 'shared' && !sharedData) {
+    if (viewMode === 'shared') {
       fetchSharedEvents()
     }
-  }, [viewMode])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode, weekOffset])
 
   function handleSwitchUser(userId: string | null) {
     setViewingUser(userId)
@@ -365,16 +391,6 @@ export default function AgendaPage() {
               Ajouter un calendrier
             </button>
           )}
-          <button
-            onClick={() => {
-              if (viewMode === 'shared') fetchSharedEvents()
-              else fetchEvents(viewingUser)
-            }}
-            className="flex items-center gap-2 bg-[#111118] border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-colors"
-          >
-            <RefreshCw size={14} className={(loading || sharedLoading) ? 'animate-spin' : ''} />
-            Rafraichir
-          </button>
         </div>
       </div>
 
@@ -509,7 +525,7 @@ export default function AgendaPage() {
 
           {sharedLoading && (
             <div className="bg-[#111118] border border-slate-800 rounded-2xl p-12 text-center">
-              <RefreshCw size={20} className="text-slate-600 mx-auto animate-spin mb-2" />
+              <Clock size={20} className="text-slate-600 mx-auto animate-spin mb-2" />
               <p className="text-slate-500 text-sm">Chargement...</p>
             </div>
           )}
@@ -687,6 +703,26 @@ export default function AgendaPage() {
             {error && !loading && (
               <div className="bg-[#111118] border border-slate-800 rounded-2xl p-8 text-center">
                 <p className="text-slate-500">{error}</p>
+              </div>
+            )}
+
+            {!loading && data && (data.invalidTokenEmails?.length ?? 0) > 0 && (
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-amber-400 text-sm font-medium">Connexion Google Calendar expiree</p>
+                  <p className="text-amber-400/70 text-xs mt-0.5">
+                    {data.invalidTokenEmails!.join(', ')} — reconnectez pour synchroniser vos rendez-vous
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    const email = data.invalidTokenEmails![0]
+                    window.location.href = `/api/calendar/connect?email=${encodeURIComponent(email)}`
+                  }}
+                  className="shrink-0 bg-amber-500 hover:bg-amber-400 text-black px-4 py-2 rounded-xl text-xs font-medium transition-colors"
+                >
+                  Reconnecter
+                </button>
               </div>
             )}
 
@@ -881,7 +917,7 @@ export default function AgendaPage() {
             {/* Connected calendars */}
             <div className="bg-[#111118] border border-slate-800 rounded-2xl p-5">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-white text-sm font-semibold">Calendriers connectes</h3>
+                <h3 className="text-white text-sm font-semibold">Calendriers connectés</h3>
                 {!viewingUser && (
                   <button
                     onClick={() => setShowAddModal(true)}
@@ -892,7 +928,7 @@ export default function AgendaPage() {
                 )}
               </div>
               {allEmails.length === 0 ? (
-                <p className="text-slate-600 text-xs">Aucun calendrier connecte</p>
+                <p className="text-slate-600 text-xs">Aucun calendrier connecté</p>
               ) : (
                 <div className="space-y-2">
                   {allEmails.map(email => (
@@ -913,6 +949,79 @@ export default function AgendaPage() {
                 </div>
               )}
             </div>
+
+            {/* Statistiques */}
+            {data && data.events.length > 0 && (
+              <div className="bg-[#111118] border border-slate-800 rounded-2xl p-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <BarChart3 size={14} className="text-[#E14B89]" />
+                  <h3 className="text-white text-sm font-semibold">Statistiques</h3>
+                </div>
+                {(() => {
+                  const events = data.events
+                  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+                  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59)
+                  const monthEvents = events.filter(e => {
+                    const d = new Date(e.start)
+                    return d >= monthStart && d <= monthEnd
+                  })
+                  const pastEvents = events.filter(e => new Date(e.end) < now)
+                  const upcomingEvents = events.filter(e => new Date(e.start) >= now)
+                  const visioEvents = events.filter(e => e.meetingLink || e.meetingType)
+                  const physicalEvents = events.filter(e => e.location && !e.meetingLink)
+
+                  return (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="bg-slate-800/30 rounded-xl px-3 py-2.5 text-center">
+                          <p className="text-white font-bold text-lg">{monthEvents.length}</p>
+                          <p className="text-slate-500 text-[10px]">Ce mois</p>
+                        </div>
+                        <div className="bg-slate-800/30 rounded-xl px-3 py-2.5 text-center">
+                          <p className="text-[#E14B89] font-bold text-lg">{upcomingEvents.length}</p>
+                          <p className="text-slate-500 text-[10px]">À venir</p>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400 text-xs flex items-center gap-1.5"><Video size={11} /> Visio</span>
+                          <span className="text-white text-sm font-medium">{visioEvents.length}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400 text-xs flex items-center gap-1.5"><MapPin size={11} /> Physique</span>
+                          <span className="text-white text-sm font-medium">{physicalEvents.length}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400 text-xs flex items-center gap-1.5"><CheckCircle2 size={11} /> Passés</span>
+                          <span className="text-slate-400 text-sm font-medium">{pastEvents.length}</span>
+                        </div>
+                      </div>
+                      {monthEvents.length > 0 && (
+                        <div className="pt-2 border-t border-slate-800">
+                          <p className="text-slate-500 text-[10px] mb-1.5">Répartition ce mois</p>
+                          <div className="flex gap-1 h-1.5 rounded-full overflow-hidden">
+                            {visioEvents.filter(e => { const d = new Date(e.start); return d >= monthStart && d <= monthEnd }).length > 0 && (
+                              <div className="bg-blue-400 rounded-full" style={{ flex: visioEvents.filter(e => { const d = new Date(e.start); return d >= monthStart && d <= monthEnd }).length }} />
+                            )}
+                            {physicalEvents.filter(e => { const d = new Date(e.start); return d >= monthStart && d <= monthEnd }).length > 0 && (
+                              <div className="bg-emerald-400 rounded-full" style={{ flex: physicalEvents.filter(e => { const d = new Date(e.start); return d >= monthStart && d <= monthEnd }).length }} />
+                            )}
+                            {monthEvents.filter(e => !e.meetingLink && !e.meetingType && !e.location).length > 0 && (
+                              <div className="bg-slate-600 rounded-full" style={{ flex: monthEvents.filter(e => !e.meetingLink && !e.meetingType && !e.location).length }} />
+                            )}
+                          </div>
+                          <div className="flex items-center gap-3 mt-1.5">
+                            <span className="text-[9px] text-blue-400 flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-blue-400" />Visio</span>
+                            <span className="text-[9px] text-emerald-400 flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />Physique</span>
+                            <span className="text-[9px] text-slate-500 flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-slate-600" />Autre</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
+              </div>
+            )}
           </div>
         </div>
       )}

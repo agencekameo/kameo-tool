@@ -26,8 +26,10 @@ interface FormDataResponse {
     id: string
     name: string
     type: string
+    services?: string[]
     client: { name: string; company?: string }
   }
+  cdcData?: { fonctionnalites?: string[]; siteType?: string } | null
 }
 
 interface BriefData {
@@ -492,34 +494,7 @@ function FormulaireContent({ params }: { params: Promise<{ token: string }> }) {
     </div>
   )
 
-  // All forms completed
   const allDone = submitted.brief && submitted.design && submitted.docs
-  if (allDone && !sectionParam) return (
-    <div className="min-h-screen bg-[#0a0a12] flex items-center justify-center p-6">
-      <div className="bg-[#111118] border border-slate-800 rounded-2xl p-8 max-w-md text-center">
-        <div className="w-16 h-16 rounded-full bg-emerald-500/15 flex items-center justify-center mx-auto mb-4">
-          <CheckCircle2 size={32} className="text-emerald-400" />
-        </div>
-        <h1 className="text-white font-semibold text-xl mb-2">Merci !</h1>
-        <p className="text-slate-400 text-sm">
-          Tous les formulaires ont bien été envoyés. L&apos;équipe Kameo va les analyser et reviendra vers vous rapidement.
-        </p>
-      </div>
-    </div>
-  )
-  // Single-section done check
-  const sectionDone = (sectionParam === 'form' || sectionParam === 'brief' || sectionParam === 'design' || sectionParam === 'docs') ? (submitted.brief && submitted.design && submitted.docs) : false
-  if (sectionDone && sectionParam) return (
-    <div className="min-h-screen bg-[#0a0a12] flex items-center justify-center p-6">
-      <div className="bg-[#111118] border border-slate-800 rounded-2xl p-8 max-w-md text-center">
-        <div className="w-16 h-16 rounded-full bg-emerald-500/15 flex items-center justify-center mx-auto mb-4">
-          <CheckCircle2 size={32} className="text-emerald-400" />
-        </div>
-        <h1 className="text-white font-semibold text-xl mb-2">Merci !</h1>
-        <p className="text-slate-400 text-sm">Le formulaire a bien été complété.</p>
-      </div>
-    </div>
-  )
 
   const totalUploaded = Object.values(docs.categories).reduce((acc, files) => acc + files.length, 0)
 
@@ -541,6 +516,14 @@ function FormulaireContent({ params }: { params: Promise<{ token: string }> }) {
       </div>
 
       <div className="max-w-3xl mx-auto px-6 py-8">
+        {allDone && (
+          <div className="mb-6 bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-4 flex items-center gap-3">
+            <CheckCircle2 size={20} className="text-emerald-400 shrink-0" />
+            <p className="text-emerald-400 text-sm">
+              Tous les formulaires ont bien été envoyés. Vous pouvez modifier ou completer vos réponses si nécessaire.
+            </p>
+          </div>
+        )}
         {/* Welcome message */}
         <div className="mb-8">
           <h2 className="text-white text-2xl font-bold mb-2">
@@ -1013,7 +996,8 @@ function FormulaireContent({ params }: { params: Promise<{ token: string }> }) {
               </div>
             </div>
 
-            {/* Calendly */}
+            {/* Calendly — only if fonctionnalité Calendly is checked */}
+            {formData?.cdcData?.fonctionnalites?.includes('RDV Calendly') && (
             <div className="bg-[#111118] border border-slate-800 rounded-2xl p-6">
                 <h3 className="text-white font-semibold mb-1">Accès Calendly</h3>
                 <p className="text-slate-500 text-xs mb-4">Lien de votre page Calendly pour l&apos;intégration au site</p>
@@ -1024,8 +1008,10 @@ function FormulaireContent({ params }: { params: Promise<{ token: string }> }) {
                   className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
                 />
               </div>
+            )}
 
-            {/* Stripe */}
+            {/* Stripe — only if e-commerce or web app */}
+            {(formData?.cdcData?.siteType === 'ECOMMERCE' || formData?.project?.services?.includes('Web app')) && (
             <div className="bg-[#111118] border border-slate-800 rounded-2xl p-6">
                 <h3 className="text-white font-semibold mb-1">Accès Stripe</h3>
                 <p className="text-slate-500 text-xs mb-4">Clé API ou lien vers votre dashboard Stripe pour le paiement en ligne</p>
@@ -1036,6 +1022,7 @@ function FormulaireContent({ params }: { params: Promise<{ token: string }> }) {
                   className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
                 />
               </div>
+            )}
 
             {/* SMTP */}
             <div className="bg-[#111118] border border-slate-800 rounded-2xl p-6">

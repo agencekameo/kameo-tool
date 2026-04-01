@@ -1,6 +1,11 @@
 import { prisma } from '@/lib/db'
+import { rateLimit, csrfCheck } from '@/lib/security'
 import { NextRequest, NextResponse } from 'next/server'
 import nodemailer from 'nodemailer'
+
+function escapeHtml(str: string): string {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+}
 
 /**
  * Public endpoint — no auth required.
@@ -8,6 +13,16 @@ import nodemailer from 'nodemailer'
  */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params
+
+  // CSRF protection
+  if (!csrfCheck(req)) {
+    return NextResponse.json({ error: 'Requête non autorisée.' }, { status: 403 })
+  }
+
+  // Rate limit: max 5 signature attempts per token per 15 minutes
+  if (!rateLimit(`sign:${token}`, 5, 15 * 60 * 1000)) {
+    return NextResponse.json({ error: 'Trop de tentatives. Réessayez plus tard.' }, { status: 429 })
+  }
 
   try {
     const body = await req.json()
@@ -36,7 +51,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     // Find signature request
     const sigRequest = await prisma.signatureRequest.findUnique({
       where: { token },
-      include: { quote: true },
+      include: { quote: { include: { items: true } } },
     })
 
     if (!sigRequest) {
@@ -91,20 +106,28 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
           auth: { user: gmailUser, pass: gmailPass },
         })
         const signedDate = now.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+        const totalHT = sigRequest.quote.items.reduce((s, item) => s + item.quantity * item.unitPrice, 0)
+        const discount = sigRequest.quote.discount || 0
+        const totalAfterDiscount = totalHT - (totalHT * discount / 100)
+        const fmtPrice = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(totalAfterDiscount)
         await transporter.sendMail({
           from: `"Kameo Tool" <${gmailUser}>`,
           to: 'contact@agence-kameo.fr',
-          subject: `✅ Devis ${sigRequest.quote.number} signé par ${sigRequest.signerFirstName} ${sigRequest.signerLastName}`,
-          text: `Le devis ${sigRequest.quote.number} — ${sigRequest.quote.subject} a été signé.\n\nSignataire : ${sigRequest.signerFirstName} ${sigRequest.signerLastName} (${sigRequest.signerEmail})\nFait à : ${city.trim()}\nLe : ${date.trim()}\nDate de signature : ${signedDate}\nIP : ${signerIp}`,
+          subject: `✅ Devis ${sigRequest.quote.number} signé — ${fmtPrice} HT`,
+          text: `Le devis ${sigRequest.quote.number} — ${sigRequest.quote.subject} a été signé.\n\nMontant : ${fmtPrice} HT\nClient : ${sigRequest.quote.clientName}\nSignataire : ${sigRequest.signerFirstName} ${sigRequest.signerLastName} (${sigRequest.signerEmail})\nFait à : ${city.trim()}\nLe : ${date.trim()}\nDate de signature : ${signedDate}`,
           html: `<div style="font-family:Arial,sans-serif;max-width:500px;">
             <div style="height:4px;background:linear-gradient(135deg,#E14B89,#F8903C);border-radius:4px;margin-bottom:24px;"></div>
             <h2 style="color:#1a1a2e;margin:0 0 16px;">Devis signé ✅</h2>
-            <p style="color:#444;margin:0 0 8px;"><strong>Devis :</strong> ${sigRequest.quote.number} — ${sigRequest.quote.subject}</p>
-            <p style="color:#444;margin:0 0 8px;"><strong>Signataire :</strong> ${sigRequest.signerFirstName} ${sigRequest.signerLastName}</p>
-            <p style="color:#444;margin:0 0 8px;"><strong>Email :</strong> ${sigRequest.signerEmail}</p>
-            <p style="color:#444;margin:0 0 8px;"><strong>Fait à :</strong> ${city.trim()}</p>
-            <p style="color:#444;margin:0 0 8px;"><strong>Le :</strong> ${date.trim()}</p>
-            <p style="color:#888;font-size:12px;margin:16px 0 0;">Signé le ${signedDate} — IP : ${signerIp}</p>
+            <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:16px;margin:0 0 16px;">
+              <p style="color:#166534;font-size:24px;font-weight:700;margin:0;">${escapeHtml(fmtPrice)} HT</p>
+              <p style="color:#15803d;font-size:13px;margin:4px 0 0;">Devis ${escapeHtml(sigRequest.quote.number)}${discount > 0 ? ` (remise ${discount}%)` : ''}</p>
+            </div>
+            <p style="color:#444;margin:0 0 8px;"><strong>Client :</strong> ${escapeHtml(sigRequest.quote.clientName)}</p>
+            <p style="color:#444;margin:0 0 8px;"><strong>Objet :</strong> ${escapeHtml(sigRequest.quote.subject)}</p>
+            <p style="color:#444;margin:0 0 8px;"><strong>Signataire :</strong> ${escapeHtml(sigRequest.signerFirstName)} ${escapeHtml(sigRequest.signerLastName)}</p>
+            <p style="color:#444;margin:0 0 8px;"><strong>Email :</strong> ${escapeHtml(sigRequest.signerEmail)}</p>
+            <p style="color:#444;margin:0 0 8px;"><strong>Fait à :</strong> ${escapeHtml(city.trim())} — Le : ${escapeHtml(date.trim())}</p>
+            <p style="color:#888;font-size:12px;margin:16px 0 0;">Signé le ${escapeHtml(signedDate)}</p>
           </div>`,
         })
       }

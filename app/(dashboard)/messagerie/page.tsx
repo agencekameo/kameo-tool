@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useRef, useCallback } from 'react'
-import { Send, Plus, Users, MessageSquare, X } from 'lucide-react'
+import { Send, Plus, Users, MessageSquare, X, UserPlus } from 'lucide-react'
 import { useSession } from 'next-auth/react'
 
 interface Conversation {
@@ -70,6 +70,8 @@ export default function MessageriePage() {
   const [allUsers, setAllUsers] = useState<User[]>([])
   const [selectedParticipants, setSelectedParticipants] = useState<string[]>([])
   const [newConvName, setNewConvName] = useState('')
+  const [showParticipants, setShowParticipants] = useState(false)
+  const [showAddMember, setShowAddMember] = useState(false)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -105,6 +107,8 @@ export default function MessageriePage() {
 
   useEffect(() => {
     if (!selectedConvId) return
+    setShowParticipants(false)
+    setShowAddMember(false)
     setLoadingMessages(true)
     fetchMessages().finally(() => setLoadingMessages(false))
 
@@ -178,6 +182,22 @@ export default function MessageriePage() {
     } catch {
       // silent
     }
+  }
+
+  async function addMemberToConv(userId: string) {
+    if (!selectedConvId) return
+    try {
+      const res = await fetch(`/api/conversations/${selectedConvId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId }),
+      })
+      if (res.ok) {
+        const updated = await res.json()
+        setConversations(prev => prev.map(c => c.id === updated.id ? updated : c))
+        setShowAddMember(false)
+      }
+    } catch { /* silent */ }
   }
 
   function toggleParticipant(userId: string) {
@@ -265,23 +285,101 @@ export default function MessageriePage() {
         ) : (
           <>
             {/* Conversation header */}
-            <div className="px-6 py-4 border-b border-slate-800 flex items-center gap-3 flex-shrink-0">
-              <div className="w-9 h-9 rounded-full bg-[#E14B89]/20 flex items-center justify-center text-xs font-semibold text-[#E14B89] flex-shrink-0">
-                {selectedConv.isGroup
-                  ? <Users size={15} />
-                  : getInitials(getConversationName(selectedConv, currentUserId))
-                }
+            <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between flex-shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full bg-[#E14B89]/20 flex items-center justify-center text-xs font-semibold text-[#E14B89] flex-shrink-0">
+                  {selectedConv.isGroup
+                    ? <Users size={15} />
+                    : getInitials(getConversationName(selectedConv, currentUserId))
+                  }
+                </div>
+                <div>
+                  <p className="text-white font-medium text-sm">
+                    {getConversationName(selectedConv, currentUserId)}
+                  </p>
+                  <button
+                    onClick={() => setShowParticipants(v => !v)}
+                    className="text-slate-500 text-xs hover:text-slate-300 transition-colors"
+                  >
+                    {selectedConv.participants.length} participant{selectedConv.participants.length > 1 ? 's' : ''}
+                    {selectedConv.project && ` · ${selectedConv.project.name}`}
+                  </button>
+                </div>
               </div>
-              <div>
-                <p className="text-white font-medium text-sm">
-                  {getConversationName(selectedConv, currentUserId)}
-                </p>
-                <p className="text-slate-500 text-xs">
-                  {selectedConv.participants.length} participant{selectedConv.participants.length > 1 ? 's' : ''}
-                  {selectedConv.project && ` · ${selectedConv.project.name}`}
-                </p>
-              </div>
+              {selectedConv.isGroup && (
+                <button
+                  onClick={() => { setShowAddMember(true); if (allUsers.length === 0) fetch('/api/users').then(r => r.json()).then(d => setAllUsers(Array.isArray(d) ? d.filter((u: User) => u.id !== currentUserId) : [])).catch(() => {}) }}
+                  className="p-2 rounded-lg text-slate-500 hover:text-white hover:bg-slate-800/50 transition-colors"
+                  title="Ajouter un participant"
+                >
+                  <UserPlus size={16} />
+                </button>
+              )}
             </div>
+
+            {/* Participants panel */}
+            {showParticipants && (
+              <div className="px-6 py-3 border-b border-slate-800 bg-[#0d0d14]/50 flex-shrink-0">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-slate-400 text-xs font-medium">Participants ({selectedConv.participants.length})</span>
+                  <button onClick={() => setShowParticipants(false)} className="text-slate-600 hover:text-white transition-colors">
+                    <X size={12} />
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {selectedConv.participants.map(p => (
+                    <div key={p.user.id} className="flex items-center gap-2 bg-slate-800/50 rounded-lg px-3 py-1.5">
+                      {p.user.avatar ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={p.user.avatar} alt="" className="w-5 h-5 rounded-full object-cover" />
+                      ) : (
+                        <div className="w-5 h-5 rounded-full bg-slate-700 flex items-center justify-center text-[8px] font-bold text-white">
+                          {getInitials(p.user.name)}
+                        </div>
+                      )}
+                      <span className="text-slate-300 text-xs">{p.user.name}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Add member modal */}
+            {showAddMember && selectedConv.isGroup && (
+              <div className="px-6 py-3 border-b border-slate-800 bg-[#0d0d14]/50 flex-shrink-0">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-slate-400 text-xs font-medium">Ajouter un participant</span>
+                  <button onClick={() => setShowAddMember(false)} className="text-slate-600 hover:text-white transition-colors">
+                    <X size={12} />
+                  </button>
+                </div>
+                <div className="max-h-40 overflow-y-auto space-y-1">
+                  {allUsers
+                    .filter(u => !selectedConv.participants.some(p => p.user.id === u.id))
+                    .map(user => (
+                      <button
+                        key={user.id}
+                        onClick={() => addMemberToConv(user.id)}
+                        className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-800/50 transition-colors text-left"
+                      >
+                        {user.avatar ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={user.avatar} alt="" className="w-6 h-6 rounded-full object-cover" />
+                        ) : (
+                          <div className="w-6 h-6 rounded-full bg-slate-700 flex items-center justify-center text-[9px] font-bold text-white">
+                            {getInitials(user.name)}
+                          </div>
+                        )}
+                        <span className="text-slate-300 text-sm">{user.name}</span>
+                        <Plus size={12} className="ml-auto text-slate-600" />
+                      </button>
+                    ))}
+                  {allUsers.filter(u => !selectedConv.participants.some(p => p.user.id === u.id)).length === 0 && (
+                    <p className="text-slate-600 text-xs text-center py-2">Tous les utilisateurs sont déjà dans le groupe</p>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Messages */}
             <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">

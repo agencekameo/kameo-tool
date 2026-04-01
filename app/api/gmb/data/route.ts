@@ -40,13 +40,15 @@ export async function GET() {
       })),
       locations: allLocations,
     })
-  } catch (err) {
-    console.error('GMB data error:', err)
+  } catch (err: unknown) {
+    const e = err as { response?: { status?: number; data?: unknown }; message?: string }
+    console.error('GMB data error:', e.response?.status, JSON.stringify(e.response?.data), e.message)
     return NextResponse.json({
       connected: true,
       accounts: [],
       locations: [],
-      error: 'Erreur lors de la récupération des données',
+      error: `API Error: ${e.response?.status || 'unknown'} — ${e.message || 'unknown'}`,
+      debug: e.response?.data ?? null,
     })
   }
 }

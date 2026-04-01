@@ -28,8 +28,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(new URL('/agenda?calendar_error=missing_code', req.url))
   }
 
-  // Use session userId as fallback
-  if (!userId) userId = session.user?.id ?? null
+  // Always use session userId (never trust state userId — prevents spoofing)
+  userId = session.user?.id ?? null
 
   try {
     const oauth2Client = createOAuth2Client()

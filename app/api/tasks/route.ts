@@ -1,5 +1,6 @@
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { demoGuard, demoTaskWhere } from '@/lib/demo'
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function GET(req: NextRequest) {
@@ -9,7 +10,7 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url)
     const projectId = searchParams.get('projectId')
     const tasks = await prisma.task.findMany({
-      where: projectId ? { projectId } : {},
+      where: { ...(projectId ? { projectId } : {}), ...demoTaskWhere(session) },
       include: {
         assignee: { select: { id: true, name: true, avatar: true } },
         project: {
@@ -32,11 +33,23 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const guard = demoGuard(session); if (guard) return guard
   try {
     const body = await req.json()
-    const { projectId, ...rest } = body
+    const { projectId, title, description, status, priority, assigneeId, dueDate, recurring, recurrenceType, position } = body
     const task = await prisma.task.create({
-      data: { ...rest, projectId: projectId || null },
+      data: {
+        projectId: projectId || null,
+        title: title || 'Sans titre',
+        description: description || null,
+        status: status || 'TODO',
+        priority: priority || 'MEDIUM',
+        assigneeId: assigneeId || null,
+        dueDate: dueDate ? new Date(dueDate) : null,
+        recurring: recurring || false,
+        recurrenceType: recurrenceType || null,
+        position: typeof position === 'number' ? position : 0,
+      },
       include: {
         assignee: { select: { id: true, name: true, avatar: true } },
         project: {

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { Plus, Pencil, Trash2, HardDrive, CheckCircle, XCircle, AlertTriangle, Loader2 } from 'lucide-react'
 import { formatDate } from '@/lib/utils'
+import { usePolling } from '@/hooks/usePolling'
 
 interface Backup {
   id: string
@@ -44,6 +45,14 @@ export default function BackupsPage() {
       fetch('/api/clients').then(r => r.json()),
     ]).then(([b, c]) => { setBackups(b); setClients(c) }).finally(() => setLoading(false))
   }, [])
+
+  function refreshData() {
+    Promise.all([
+      fetch('/api/backups').then(r => r.json()),
+      fetch('/api/clients').then(r => r.json()),
+    ]).then(([b, c]) => { setBackups(b); setClients(c) })
+  }
+  usePolling(refreshData)
 
   function openModal(item?: Backup) {
     if (item) {

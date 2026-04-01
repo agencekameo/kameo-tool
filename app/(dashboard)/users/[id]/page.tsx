@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useParams } from 'next/navigation'
+import { usePolling } from '@/hooks/usePolling'
 import Link from 'next/link'
 import { ArrowLeft, Mail, Calendar, FolderKanban, FileText, Euro, Clock } from 'lucide-react'
 import { ROLE_LABELS, ROLE_COLORS, ROLE_AVATAR_COLORS, PROJECT_STATUS_LABELS, PROJECT_STATUS_COLORS, formatCurrency, formatDate } from '@/lib/utils'
@@ -63,6 +64,12 @@ export default function UserDetailPage() {
   useEffect(() => {
     fetch(`/api/users/${id}`).then(r => r.json()).then(setUser).finally(() => setLoading(false))
   }, [id])
+
+  const refreshUser = useCallback(() => {
+    fetch(`/api/users/${id}`).then(r => r.json()).then(setUser)
+  }, [id])
+
+  usePolling(refreshUser)
 
   if (loading) return <div className="p-8 text-slate-500">Chargement...</div>
   if (!user) return <div className="p-8 text-slate-500">Utilisateur introuvable</div>

@@ -5,10 +5,13 @@ import { Plus, Search, Globe, Mail, Phone, ChevronRight, Upload, CheckCircle2, X
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { formatPhone } from '@/lib/utils'
+import { usePolling } from '@/hooks/usePolling'
 
 interface Client {
   id: string
   name: string
+  firstName?: string
+  lastName?: string
   email?: string
   phone?: string
   company?: string
@@ -57,10 +60,15 @@ export default function ClientsPage() {
 
   const [editModal, setEditModal] = useState<Client | null>(null)
   const [editForm, setEditForm] = useState({
-    name: '', email: '', phone: '', company: '', website: '', country: 'France',
+    firstName: '', lastName: '', email: '', phone: '', company: '', website: '', country: 'France',
     maintenancePlan: 'NONE', maintenancePrice: '',
   })
   const [updating, setUpdating] = useState(false)
+
+  function pollClients() {
+    fetch('/api/clients').then(r => r.json()).then(setClients)
+  }
+  usePolling(pollClients)
 
   useEffect(() => {
     fetch('/api/clients').then(r => r.json()).then(setClients).finally(() => setLoading(false))
@@ -112,6 +120,8 @@ export default function ClientsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: `${form.firstName.trim()} ${form.lastName.trim()}`.trim() || form.company.trim(),
+          firstName: form.firstName.trim() || null,
+          lastName: form.lastName.trim() || null,
           company: form.company || null,
           siret: form.siret || null,
           email: form.email || null,
@@ -234,8 +244,10 @@ export default function ClientsPage() {
 
   function openEditModal(client: Client) {
     setEditModal(client)
+    const nameParts = client.name?.split(' ') || []
     setEditForm({
-      name: client.name,
+      firstName: client.firstName ?? nameParts[0] ?? '',
+      lastName: client.lastName ?? nameParts.slice(1).join(' ') ?? '',
       email: client.email ?? '',
       phone: client.phone ?? '',
       company: client.company ?? '',
@@ -256,6 +268,7 @@ export default function ClientsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...editForm,
+          name: `${editForm.firstName.trim()} ${editForm.lastName.trim()}`.trim() || editForm.company.trim(),
           maintenancePrice: editForm.maintenancePrice ? parseFloat(editForm.maintenancePrice) : null,
         }),
       })
@@ -270,8 +283,8 @@ export default function ClientsPage() {
   const inputClass = "w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
 
   return (
-    <div className="p-8">
-      <div className="flex items-center justify-between mb-8">
+    <div className="p-4 sm:p-8">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-3">
         <div>
           <h1 className="text-2xl font-semibold text-white">Clients</h1>
           <p className="text-slate-400 text-sm mt-1">{clients.length} client{clients.length > 1 ? 's' : ''}</p>
@@ -308,12 +321,12 @@ export default function ClientsPage() {
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="Rechercher un client..."
-          className="w-full max-w-sm bg-[#111118] border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-white text-sm placeholder:text-slate-600 focus:outline-none focus:border-[#E14B89] transition-colors"
+          className="w-full sm:max-w-sm bg-[#111118] border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-white text-sm placeholder:text-slate-600 focus:outline-none focus:border-[#E14B89] transition-colors"
         />
       </div>
 
       {loading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 animate-pulse">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 animate-pulse">
           {[1,2,3,4,5,6].map(i => (
             <div key={i} className="bg-[#111118] border border-slate-800 rounded-2xl p-5">
               <div className="flex items-start gap-3 mb-4">
@@ -331,7 +344,7 @@ export default function ClientsPage() {
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map(client => (
             <div key={client.id} className="relative group">
               <Link
@@ -347,7 +360,7 @@ export default function ClientsPage() {
                   )}
                 </div>
                 <h3 className="text-white font-medium">{client.company || client.name}</h3>
-                {client.company && <p className="text-slate-400 text-sm mt-0.5">{client.name}</p>}
+                {client.company && <p className="text-slate-400 text-sm mt-0.5">{client.firstName || client.lastName ? `${client.firstName || ''} ${client.lastName || ''}`.trim() : client.name}</p>}
                 <div className="mt-3 space-y-1.5">
                   {client.email && (
                     <div className="flex items-center gap-2 text-slate-500 text-xs">
@@ -474,9 +487,15 @@ export default function ClientsPage() {
             <form onSubmit={handleUpdate} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-slate-400 text-xs mb-1.5">Nom *</label>
-                  <input required value={editForm.name} onChange={e => setEditForm({ ...editForm, name: e.target.value })} className={inputClass} />
+                  <label className="block text-slate-400 text-xs mb-1.5">Prénom</label>
+                  <input value={editForm.firstName} onChange={e => setEditForm({ ...editForm, firstName: e.target.value })} className={inputClass} />
                 </div>
+                <div>
+                  <label className="block text-slate-400 text-xs mb-1.5">Nom</label>
+                  <input value={editForm.lastName} onChange={e => setEditForm({ ...editForm, lastName: e.target.value })} className={inputClass} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-slate-400 text-xs mb-1.5">Entreprise</label>
                   <input value={editForm.company} onChange={e => setEditForm({ ...editForm, company: e.target.value })} className={inputClass} />
