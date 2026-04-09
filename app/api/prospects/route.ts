@@ -12,7 +12,11 @@ export async function GET(req: NextRequest) {
 
   const manualOnly = !userId && searchParams.get('manualOnly') !== 'false'
   const prospects = await prisma.prospect.findMany({
-    where: { ...(userId ? { assignedTo: userId } : {}), ...(manualOnly ? { leadSearchId: null, source: { not: null } } : {}), ...demoProspectWhere(session) },
+    where: {
+      ...(userId ? { assignedTo: userId } : {}),
+      ...(manualOnly ? { leadSearchId: null, NOT: { company: { startsWith: '·' } } } : {}),
+      ...demoProspectWhere(session),
+    },
     include: { assignee: { select: { id: true, name: true } } },
     orderBy: { createdAt: 'desc' },
   })
