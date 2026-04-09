@@ -4,13 +4,10 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus, Trash2, Pencil, Euro, Phone, Mail, User, FolderPlus, CheckCircle2, X, Globe, FileText, Send, Loader2 } from 'lucide-react'
 import { formatCurrency, formatPhone } from '@/lib/utils'
-import { usePolling } from '@/hooks/usePolling'
 
 interface Prospect {
   id: string
   name: string
-  firstName?: string
-  lastName?: string
   company?: string
   email?: string
   phone?: string
@@ -52,7 +49,7 @@ const COLUMNS = [
 ]
 
 const emptyForm = {
-  firstName: '', lastName: '', company: '', email: '', phone: '', notes: '', status: 'A_CONTACTER',
+  name: '', company: '', email: '', phone: '', notes: '', status: 'A_CONTACTER',
   budget: '', source: '', assignedTo: '',
 }
 
@@ -81,27 +78,12 @@ export default function CommercialPage() {
     }).finally(() => setLoading(false))
   }, [])
 
-  function refreshData() {
-    fetch('/api/prospects').then(r => r.json()).then(p => {
-      const commercialIds = new Set(users.filter(user => user.role === 'COMMERCIAL').map(user => user.id))
-      setProspects(p.filter((prospect: Prospect) => !prospect.assignedTo || !commercialIds.has(prospect.assignedTo)))
-    })
-  }
-  usePolling(refreshData)
-
   function openModal(item?: Prospect, defaultStatus?: string) {
     if (item) {
       setEditItem(item)
-      const nameParts = item.name?.split(' ') || []
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { assignee, budget, assignedTo, name, firstName, lastName, ...rest } = item
-      setForm({
-        ...rest,
-        firstName: firstName ?? nameParts[0] ?? '',
-        lastName: lastName ?? nameParts.slice(1).join(' ') ?? '',
-        budget: budget?.toString() ?? '',
-        assignedTo: assignedTo ?? '',
-      })
+      const { assignee, budget, assignedTo, ...rest } = item
+      setForm({ ...rest, budget: budget?.toString() ?? '', assignedTo: assignedTo ?? '' })
     } else {
       setEditItem(null)
       setForm({ ...emptyForm, status: defaultStatus ?? 'A_CONTACTER' })
@@ -111,10 +93,8 @@ export default function CommercialPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    const computedName = `${(form.firstName || '').trim()} ${(form.lastName || '').trim()}`.trim()
     const payload = {
       ...form,
-      name: computedName || form.company || '',
       budget: form.budget ? parseFloat(form.budget) : null,
       company: form.company || null,
       email: form.email || null,
@@ -234,7 +214,7 @@ export default function CommercialPage() {
                     <div key={p.id} draggable onDragStart={() => setDragId(p.id)}
                       className="bg-[#111118] border border-slate-800 rounded-xl p-3 cursor-grab active:cursor-grabbing hover:border-slate-700 transition-colors group">
                       <div className="flex items-start justify-between gap-2 mb-2">
-                        <p className="text-white text-sm font-medium leading-tight">{p.firstName || p.lastName ? `${p.firstName || ''} ${p.lastName || ''}`.trim() : p.name}</p>
+                        <p className="text-white text-sm font-medium leading-tight">{p.name}</p>
                         <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
                           <button onClick={() => openModal(p)} className="p-1 text-slate-500 hover:text-white transition-colors">
                             <Pencil size={12} />
@@ -498,17 +478,10 @@ export default function CommercialPage() {
           <div className="bg-[#111118] border border-slate-800 rounded-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
             <h2 className="text-white font-semibold text-lg mb-5">{editItem ? 'Modifier le prospect' : 'Nouveau prospect'}</h2>
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-400 text-xs mb-1.5">Prénom *</label>
-                  <input required value={form.firstName} onChange={e => setForm({ ...form, firstName: e.target.value })}
-                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
-                </div>
-                <div>
-                  <label className="block text-slate-400 text-xs mb-1.5">Nom *</label>
-                  <input required value={form.lastName} onChange={e => setForm({ ...form, lastName: e.target.value })}
-                    className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
-                </div>
+              <div>
+                <label className="block text-slate-400 text-xs mb-1.5">Nom *</label>
+                <input required value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors" />
               </div>
               <div>
                 <label className="block text-slate-400 text-xs mb-1.5">Entreprise</label>
