@@ -10,8 +10,9 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const userId = searchParams.get('userId')
 
+  const excludeLeads = searchParams.get('excludeLeads') !== 'false'
   const prospects = await prisma.prospect.findMany({
-    where: { ...(userId ? { assignedTo: userId } : {}), ...demoProspectWhere(session) },
+    where: { ...(userId ? { assignedTo: userId } : {}), ...(excludeLeads ? { leadSearchId: null } : {}), ...demoProspectWhere(session) },
     include: { assignee: { select: { id: true, name: true } } },
     orderBy: { createdAt: 'desc' },
   })
