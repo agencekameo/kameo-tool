@@ -134,6 +134,7 @@ export async function POST(req: NextRequest) {
   const websiteFilter = filters?.website || 'with' // 'all' | 'with' | 'without'
   const addressFilter = filters?.address || 'all'
   const typeFilter = filters?.type || 'company' // 'all' | 'company' | 'freelance'
+  const phoneFilter = filters?.phone || 'all' // 'all' | 'mobile' | 'landline'
   const minRating = Number(filters?.minRating) || 0
   const minReviews = Number(filters?.minReviews) || 0
   if (!keyword || !location) return new Response(JSON.stringify({ error: 'Keyword et location requis' }), { status: 400 })
@@ -230,6 +231,13 @@ export async function POST(req: NextRequest) {
           if (websiteFilter === 'with' && !r.url) return false
           if (websiteFilter === 'without' && r.url) return false
           if (!r.phone) return false // telephone toujours obligatoire
+          if (phoneFilter !== 'all') {
+            const cleanPhone = (r.phone || '').replace(/\s/g, '').replace(/^\+33/, '0')
+            const isMobile = /^0[67]/.test(cleanPhone)
+            const isLandline = /^0[1-5]|^09/.test(cleanPhone)
+            if (phoneFilter === 'mobile' && !isMobile) return false
+            if (phoneFilter === 'landline' && !isLandline) return false
+          }
           if (addressFilter === 'with' && !r.address) return false
           if (addressFilter === 'without' && r.address) return false
           const rating = r.rating?.value ?? 0

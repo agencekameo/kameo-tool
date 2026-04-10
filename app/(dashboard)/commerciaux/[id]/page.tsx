@@ -449,12 +449,14 @@ ${buildSignatureBlock(senderId)}
   const [leadSearches, setLeadSearches] = useState<LeadSearchItem[]>([])
   const [activeLeadSearchId, setActiveLeadSearchId] = useState<string | null>(null)
   const [showLeadScrapeModal, setShowLeadScrapeModal] = useState(false)
+  const [leadScrapeName, setLeadScrapeName] = useState('')
   const [leadScrapeKeyword, setLeadScrapeKeyword] = useState('')
   const [leadScrapeLocations, setLeadScrapeLocations] = useState<string[]>(['Paris'])
   const [leadScraping, setLeadScraping] = useState(false)
   const [leadScrapeProgress, setLeadScrapeProgress] = useState(0)
   const [leadScrapeMessage, setLeadScrapeMessage] = useState('')
   const [leadScrapeMode, setLeadScrapeMode] = useState<'scrape' | 'excel'>('scrape')
+  const [leadFilters, setLeadFilters] = useState({ website: 'with' as string, address: 'all' as string, type: 'company' as string, phone: 'mobile' as string })
 
   // Plaquette
   const [plaqLang, setPlaqLang] = useState<'fr' | 'en' | 'es'>('fr')
@@ -1570,7 +1572,7 @@ ${buildSignatureBlock(senderId)}
                         setLeadScrapeProgress(0)
                         const res = await fetch('/api/leads/search', {
                           method: 'POST', headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ keyword: leadScrapeKeyword, location: loc, userId: id }),
+                          body: JSON.stringify({ keyword: leadScrapeKeyword, location: loc, userId: id, filters: leadFilters, listName: leadScrapeName.trim() || undefined }),
                         })
                         if (!res.ok) continue
                         const reader = res.body?.getReader()
@@ -1623,11 +1625,18 @@ ${buildSignatureBlock(senderId)}
                       loadLeads()
                       setShowLeadScrapeModal(false)
                       setLeadScrapeKeyword('')
+                      setLeadScrapeName('')
                       if (lastSearchId) setActiveLeadSearchId(lastSearchId)
                     } catch { alert('Erreur lors du scraping') } finally {
                       setLeadScraping(false); setLeadScrapeProgress(0); setLeadScrapeMessage('')
                     }
                   }} className="space-y-4">
+                    <div>
+                      <label className="block text-slate-400 text-xs mb-1.5">Nom de la liste</label>
+                      <input value={leadScrapeName} onChange={e => setLeadScrapeName(e.target.value)}
+                        placeholder="ex: Restaurants Lyon avril 2026"
+                        className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89]" />
+                    </div>
                     <div>
                       <label className="block text-slate-400 text-xs mb-1.5">Secteur d&apos;activité *</label>
                       <input value={leadScrapeKeyword} onChange={e => setLeadScrapeKeyword(e.target.value)}
@@ -1646,6 +1655,47 @@ ${buildSignatureBlock(senderId)}
                             {l}
                           </button>
                         ))}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-slate-400 text-xs mb-1.5">Filtres</label>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <div className="flex items-center gap-2 bg-[#1a1a24] border border-slate-800 rounded-lg px-3 py-2">
+                          <span className="text-[10px] text-slate-500 whitespace-nowrap">Site web</span>
+                          <select value={leadFilters.website} onChange={e => setLeadFilters(f => ({ ...f, website: e.target.value }))}
+                            className="flex-1 bg-transparent text-white text-xs focus:outline-none min-w-0">
+                            <option value="all">Tous</option>
+                            <option value="with">Avec</option>
+                            <option value="without">Sans</option>
+                          </select>
+                        </div>
+                        <div className="flex items-center gap-2 bg-[#1a1a24] border border-slate-800 rounded-lg px-3 py-2">
+                          <span className="text-[10px] text-slate-500 whitespace-nowrap">Adresse</span>
+                          <select value={leadFilters.address} onChange={e => setLeadFilters(f => ({ ...f, address: e.target.value }))}
+                            className="flex-1 bg-transparent text-white text-xs focus:outline-none min-w-0">
+                            <option value="all">Tous</option>
+                            <option value="with">Avec</option>
+                            <option value="without">Sans</option>
+                          </select>
+                        </div>
+                        <div className="flex items-center gap-2 bg-[#1a1a24] border border-slate-800 rounded-lg px-3 py-2">
+                          <span className="text-[10px] text-slate-500 whitespace-nowrap">Type</span>
+                          <select value={leadFilters.type} onChange={e => setLeadFilters(f => ({ ...f, type: e.target.value }))}
+                            className="flex-1 bg-transparent text-white text-xs focus:outline-none min-w-0">
+                            <option value="all">Tous</option>
+                            <option value="company">Sociétés</option>
+                            <option value="freelance">Indépendants</option>
+                          </select>
+                        </div>
+                        <div className="flex items-center gap-2 bg-[#1a1a24] border border-slate-800 rounded-lg px-3 py-2">
+                          <span className="text-[10px] text-slate-500 whitespace-nowrap">Téléphone</span>
+                          <select value={leadFilters.phone} onChange={e => setLeadFilters(f => ({ ...f, phone: e.target.value }))}
+                            className="flex-1 bg-transparent text-white text-xs focus:outline-none min-w-0">
+                            <option value="all">Tous</option>
+                            <option value="mobile">Portable (06/07)</option>
+                            <option value="landline">Fixe (01-05/09)</option>
+                          </select>
+                        </div>
                       </div>
                     </div>
                     {leadScraping && (
