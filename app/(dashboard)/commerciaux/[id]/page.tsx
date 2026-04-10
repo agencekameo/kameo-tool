@@ -1650,8 +1650,8 @@ ${buildSignatureBlock(senderId)}
                               setLeadScrapeProgress(100)
                               await loadLeads()
                             } else if (batchData.status === 'scraping') {
-                              const pct = batchData.total > 0 ? Math.round((batchData.scraped / batchData.total) * 100) : 50
-                              setLeadScrapeProgress(70 + Math.round(pct * 0.3))
+                              const pct = batchData.total > 0 ? Math.min(Math.round((batchData.scraped / batchData.total) * 100), 99) : 50
+                              setLeadScrapeProgress(Math.min(70 + Math.round(pct * 0.3), 99))
                               setLeadScrapeMessage(`Emails : ${batchData.scraped}/${batchData.total} traités (${batchData.batchFound} trouvés)${locLabel}`)
                               await loadLeads()
                             } else {

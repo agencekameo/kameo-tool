@@ -57,30 +57,31 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Update progress
-  const newScrapedCount = search.scrapedCount + prospects.length
+  // Update progress — recount actual totals to avoid drift
   const remaining = await prisma.prospect.count({ where: { leadSearchId: searchId, email: null, website: { not: null } } })
+  const totalWithSite = await prisma.prospect.count({ where: { leadSearchId: searchId, website: { not: null } } })
+  const scraped = totalWithSite - remaining
+  const withEmail = await prisma.prospect.count({ where: { leadSearchId: searchId, email: { not: null } } })
 
   if (remaining === 0) {
-    const withEmail = await prisma.prospect.count({ where: { leadSearchId: searchId, email: { not: null } } })
     const total = await prisma.prospect.count({ where: { leadSearchId: searchId } })
     await prisma.leadSearch.update({
       where: { id: searchId },
-      data: { scrapingStatus: 'DONE', withEmail, resultCount: total, scrapedCount: newScrapedCount },
+      data: { scrapingStatus: 'DONE', withEmail, resultCount: total, scrapedCount: totalWithSite, totalToScrape: totalWithSite },
     })
     return NextResponse.json({ status: 'done', withEmail, total, remaining: 0, batchFound: found })
   }
 
   await prisma.leadSearch.update({
     where: { id: searchId },
-    data: { scrapedCount: newScrapedCount },
+    data: { scrapedCount: scraped, totalToScrape: totalWithSite },
   })
 
   return NextResponse.json({
     status: 'scraping',
     batchFound: found,
-    scraped: newScrapedCount,
+    scraped,
     remaining,
-    total: search.totalToScrape,
+    total: totalWithSite,
   })
 }
