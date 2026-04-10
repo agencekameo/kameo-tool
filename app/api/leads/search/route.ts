@@ -3,19 +3,14 @@ import { prisma } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 
-export const maxDuration = 10
+export const maxDuration = 60
 
-function getDataForSeoAuth() {
-  const login = process.env.DATAFORSEO_LOGIN
-  const password = process.env.DATAFORSEO_PASSWORD
-  if (!login || !password) throw new Error('DataForSEO credentials missing')
-  return Buffer.from(`${login}:${password}`).toString('base64')
-}
+const OUTSCRAPER_API = 'https://api.app.outscraper.com/maps/search-v3'
 
-const LOCATION_CODES: Record<string, number> = {
-  'Paris': 1006094, 'Lyon': 1006298, 'Marseille': 1006426, 'Toulouse': 1006707,
-  'Bordeaux': 1006094, 'Lille': 1006282, 'Nantes': 1006464, 'Strasbourg': 1006680,
-  'Nice': 1006484, 'Rennes': 1006570, 'Montpellier': 1006449, 'France': 2250,
+function getOutscraperKey() {
+  const key = process.env.OUTSCRAPER_API_KEY
+  if (!key) throw new Error('OUTSCRAPER_API_KEY missing')
+  return key
 }
 
 // Step 1: Generate keywords via Anthropic
@@ -58,35 +53,49 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ keywords })
   }
 
-  // ═══ STEP 2: Search one keyword on DataForSEO ═══
+  // ═══ STEP 2: Search one keyword on Outscraper (Google Maps) ═══
   if (step === 'search') {
     const { keyword: kw, location } = body
-    const locationCode = LOCATION_CODES[location] || 2250
-    let authToken: string
-    try { authToken = getDataForSeoAuth() } catch {
-      return NextResponse.json({ error: 'Configuration DataForSEO manquante' }, { status: 500 })
+    let apiKey: string
+    try { apiKey = getOutscraperKey() } catch {
+      return NextResponse.json({ error: 'OUTSCRAPER_API_KEY non configurée' }, { status: 500 })
     }
-    const res = await fetch('https://api.dataforseo.com/v3/serp/google/maps/live/advanced', {
-      method: 'POST',
-      headers: { 'Authorization': `Basic ${authToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify([{ keyword: kw, location_code: locationCode, language_code: 'fr', device: 'desktop', os: 'windows', depth: 700 }]),
+
+    const query = `${kw} ${location}`
+    const params = new URLSearchParams({
+      query,
+      limit: '500',
+      language: 'fr',
+      region: 'FR',
+      async: 'false',
     })
-    const data = await res.json()
-    if (data.status_code === 20000 && data.tasks?.[0]?.status_code === 20000) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const items: any[] = data.tasks[0].result?.[0]?.items || []
-      const mapItems = items.filter((i: { type?: string }) => i.type === 'maps_search')
-      const results = mapItems.length > 0 ? mapItems : items
-      // Only keep essential fields to reduce payload
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const slim = results.map((r: any) => ({
-        title: r.title, phone: r.phone, url: r.url, address: r.address,
-        is_closed: r.is_closed, permanently_closed: r.permanently_closed,
-        category: r.category, rating: r.rating?.value, reviews: r.rating?.votes_count ?? r.reviews_count ?? 0,
-      }))
-      return NextResponse.json({ results: slim })
+
+    try {
+      const res = await fetch(`${OUTSCRAPER_API}?${params}`, {
+        headers: { 'X-API-KEY': apiKey },
+      })
+      const data = await res.json()
+
+      if (data.data && Array.isArray(data.data) && data.data[0]) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const results = data.data[0].map((r: any) => ({
+          title: r.name,
+          phone: r.phone,
+          url: r.website || r.site,
+          address: r.full_address || r.address,
+          is_closed: r.business_status !== 'OPERATIONAL',
+          permanently_closed: r.business_status === 'CLOSED_PERMANENTLY',
+          category: r.category || r.type,
+          rating: r.rating,
+          reviews: r.reviews || 0,
+        }))
+        return NextResponse.json({ results })
+      }
+
+      return NextResponse.json({ results: [], error: data.error || data.status || 'Aucun résultat' })
+    } catch (err) {
+      return NextResponse.json({ results: [], error: `Outscraper: ${err instanceof Error ? err.message : 'erreur'}` })
     }
-    return NextResponse.json({ results: [], error: `DataForSEO: ${data.tasks?.[0]?.status_message || data.status_code}` })
   }
 
   // ═══ STEP 3: Classify with AI ═══
