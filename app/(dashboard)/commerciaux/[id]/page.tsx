@@ -445,7 +445,7 @@ ${buildSignatureBlock(senderId)}
   ]
 
   // Lead search (scraping)
-  interface LeadSearchItem { id: string; keyword: string; location: string; resultCount: number; withEmail: number; createdAt: string }
+  interface LeadSearchItem { id: string; name?: string | null; keyword: string; location: string; resultCount: number; withEmail: number; createdAt: string }
   const [leadSearches, setLeadSearches] = useState<LeadSearchItem[]>([])
   const [activeLeadSearchId, setActiveLeadSearchId] = useState<string | null>(null)
   const [showLeadScrapeModal, setShowLeadScrapeModal] = useState(false)
@@ -1127,7 +1127,7 @@ ${buildSignatureBlock(senderId)}
                       <span className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${selectedLists.has(search.id) ? 'bg-[#E14B89] border-[#E14B89]' : 'border-slate-600'}`}>
                         {selectedLists.has(search.id) && <Check size={10} className="text-white" />}
                       </span>
-                      <span className="truncate">{search.keyword} · {search.location}</span>
+                      <span className="truncate">{search.name || `${search.keyword} · ${search.location}`}</span>
                       <span className="text-slate-600 ml-auto flex-shrink-0">{search.resultCount}</span>
                     </button>
                   ))}
