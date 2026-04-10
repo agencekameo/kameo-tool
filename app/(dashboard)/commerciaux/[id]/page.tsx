@@ -1598,7 +1598,7 @@ ${buildSignatureBlock(senderId)}
                               try {
                                 const data = JSON.parse(line.slice(6))
                                 if (data.progress !== undefined) setLeadScrapeProgress(data.progress)
-                                if (data.message) setLeadScrapeMessage(data.message)
+                                if (data.message) setLeadScrapeMessage(data.step === 'error' ? `❌ ${data.message}` : data.message)
                                 if (data.searchId) lastSearchId = data.searchId
                                 if (data.needsScraping) needsScraping = true
                               } catch { /* */ }
@@ -1629,13 +1629,16 @@ ${buildSignatureBlock(senderId)}
                           }
                         }
                       }
-                      loadLeads()
-                      setShowLeadScrapeModal(false)
-                      setLeadScrapeKeyword('')
-                      setLeadScrapeName('')
-                      if (lastSearchId) setActiveLeadSearchId(lastSearchId)
-                    } catch (err) { alert('Erreur lors du scraping: ' + (err instanceof Error ? err.message : String(err))) } finally {
-                      setLeadScraping(false); setLeadScrapeProgress(0); setLeadScrapeMessage('')
+                      await loadLeads()
+                      if (lastSearchId) {
+                        setActiveLeadSearchId(lastSearchId)
+                        setShowLeadScrapeModal(false)
+                        setLeadScrapeKeyword('')
+                        setLeadScrapeName('')
+                      }
+                      // If no search was created, keep modal open so user sees the message
+                    } catch (err) { setLeadScrapeMessage(`❌ Erreur: ${err instanceof Error ? err.message : String(err)}`) } finally {
+                      setLeadScraping(false)
                     }
                   }} className="space-y-4">
                     <div>
