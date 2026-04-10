@@ -16,9 +16,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { id } = await params
   const data = await req.json()
+  // Only update assignedTo if explicitly provided, to avoid nullifying it on status changes
+  const updateData = { ...data }
+  if (data.assignedTo !== undefined) {
+    updateData.assignedTo = data.assignedTo || null
+  } else {
+    delete updateData.assignedTo
+  }
   const prospect = await prisma.prospect.update({
     where: { id },
-    data: { ...data, assignedTo: data.assignedTo || null },
+    data: updateData,
     include: { assignee: { select: { id: true, name: true } } },
   })
   return NextResponse.json(prospect)
