@@ -40,6 +40,7 @@ Réponds UNIQUEMENT en JSON array de strings. Ex: ["agence web","studio web","ag
 }
 
 export async function POST(req: NextRequest) {
+  try {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -219,4 +220,8 @@ ${JSON.stringify(batch)}` }],
   }
 
   return NextResponse.json({ error: 'Step requis (keywords, search, classify, save)' }, { status: 400 })
+  } catch (err) {
+    console.error('[leads/search] Error:', err)
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Erreur interne' }, { status: 500 })
+  }
 }

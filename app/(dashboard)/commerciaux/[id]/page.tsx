@@ -1565,7 +1565,11 @@ ${buildSignatureBlock(senderId)}
                     setLeadScraping(true)
                     setLeadScrapeProgress(2)
                     setLeadScrapeMessage('Génération des mots-clés IA...')
-                    const api = (body: Record<string, unknown>) => fetch('/api/leads/search', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json())
+                    const api = async (body: Record<string, unknown>) => {
+                      const r = await fetch('/api/leads/search', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+                      if (!r.ok) { const text = await r.text(); throw new Error(text.slice(0, 200) || `Erreur serveur (${r.status})`) }
+                      return r.json()
+                    }
                     let lastSearchId: string | null = null
                     try {
                       for (let li = 0; li < leadScrapeLocations.length; li++) {
@@ -1643,6 +1647,7 @@ ${buildSignatureBlock(senderId)}
                               method: 'POST', headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({ searchId: saveRes.searchId }),
                             })
+                            if (!batchRes.ok) { const text = await batchRes.text(); throw new Error(text.slice(0, 200) || `Erreur scraping (${batchRes.status})`) }
                             const batchData = await batchRes.json()
                             if (batchData.status === 'done') {
                               scraping = false
