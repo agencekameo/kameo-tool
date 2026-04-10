@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
 
     if (prospects.length === 0) {
       // All done
-      const withEmail = await prisma.prospect.count({ where: { leadSearchId: searchId, email: { not: null } } })
+      const withEmail = await prisma.prospect.count({ where: { leadSearchId: searchId, AND: [{ email: { not: null } }, { email: { not: '' } }] } })
       const total = await prisma.prospect.count({ where: { leadSearchId: searchId } })
       await prisma.leadSearch.update({
         where: { id: searchId },
@@ -58,6 +58,9 @@ export async function POST(req: NextRequest) {
         if (r.email) {
           await prisma.prospect.update({ where: { id: r.id }, data: { email: r.email } })
           found++
+        } else {
+          // Mark as scraped (empty string) so it won't be picked up again
+          await prisma.prospect.update({ where: { id: r.id }, data: { email: '' } })
         }
       }
     }
@@ -66,7 +69,7 @@ export async function POST(req: NextRequest) {
     const remaining = await prisma.prospect.count({ where: { leadSearchId: searchId, email: null, website: { not: null } } })
     const totalWithSite = await prisma.prospect.count({ where: { leadSearchId: searchId, website: { not: null } } })
     const scraped = totalWithSite - remaining
-    const withEmail = await prisma.prospect.count({ where: { leadSearchId: searchId, email: { not: null } } })
+    const withEmail = await prisma.prospect.count({ where: { leadSearchId: searchId, AND: [{ email: { not: null } }, { email: { not: '' } }] } })
 
     if (remaining === 0) {
       const total = await prisma.prospect.count({ where: { leadSearchId: searchId } })

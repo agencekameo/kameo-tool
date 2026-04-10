@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
     where: { userId },
     include: {
       _count: { select: { prospects: true } },
-      prospects: { select: { email: true }, where: { email: { not: null } } },
+      prospects: { select: { email: true }, where: { AND: [{ email: { not: null } }, { email: { not: '' } }] } },
     },
     orderBy: { createdAt: 'desc' },
   })
