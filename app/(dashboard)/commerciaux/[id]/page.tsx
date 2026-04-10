@@ -1563,66 +1563,93 @@ ${buildSignatureBlock(senderId)}
                     e.preventDefault()
                     if (!leadScrapeKeyword.trim() || leadScrapeLocations.length === 0 || leadScraping) return
                     setLeadScraping(true)
-                    setLeadScrapeProgress(1)
-                    setLeadScrapeMessage('Lancement du scraping...')
+                    setLeadScrapeProgress(2)
+                    setLeadScrapeMessage('Génération des mots-clés IA...')
+                    const api = (body: Record<string, unknown>) => fetch('/api/leads/search', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json())
                     let lastSearchId: string | null = null
                     try {
                       for (let li = 0; li < leadScrapeLocations.length; li++) {
                         const loc = leadScrapeLocations[li]
-                        setLeadScrapeMessage(`${loc} : Envoi de la requête... (${li + 1}/${leadScrapeLocations.length})`)
-                        setLeadScrapeProgress(2)
-                        const res = await fetch('/api/leads/search', {
-                          method: 'POST', headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ keyword: leadScrapeKeyword, location: loc, userId: id, filters: leadFilters, listName: leadScrapeName.trim() || undefined }),
+                        const locLabel = leadScrapeLocations.length > 1 ? ` (${loc} ${li + 1}/${leadScrapeLocations.length})` : ''
+
+                        // Step 1: Keywords
+                        setLeadScrapeMessage(`Génération des mots-clés IA...${locLabel}`)
+                        setLeadScrapeProgress(5)
+                        const kwRes = await api({ step: 'keywords', keyword: leadScrapeKeyword, typeFilter: leadFilters.type })
+                        const keywords: string[] = kwRes.keywords || [leadScrapeKeyword]
+                        setLeadScrapeMessage(`${keywords.length} mots-clés : ${keywords.join(', ')}${locLabel}`)
+                        setLeadScrapeProgress(10)
+
+                        // Step 2: Search each keyword on DataForSEO
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        let allResults: any[] = []
+                        for (let ki = 0; ki < keywords.length; ki++) {
+                          const kw = keywords[ki]
+                          setLeadScrapeMessage(`Recherche "${kw}" (${ki + 1}/${keywords.length})...${locLabel}`)
+                          setLeadScrapeProgress(10 + Math.round(((ki + 1) / keywords.length) * 30))
+                          const searchRes = await api({ step: 'search', keyword: kw, location: loc })
+                          if (searchRes.results) allResults.push(...searchRes.results)
+                        }
+                        // Deduplicate
+                        const seen = new Set<string>()
+                        allResults = allResults.filter(r => {
+                          if (!r.title) return false
+                          const key = r.title.toLowerCase().trim()
+                          if (seen.has(key)) return false
+                          seen.add(key)
+                          return true
                         })
-                        if (!res.ok) {
-                          const errText = await res.text().catch(() => res.statusText)
-                          setLeadScrapeMessage(`Erreur ${res.status}: ${errText}`)
-                          setLeadScrapeProgress(0)
-                          setLeadScraping(false)
-                          return
+                        setLeadScrapeMessage(`${allResults.length} entreprises trouvées${locLabel}`)
+                        setLeadScrapeProgress(45)
+
+                        if (allResults.length === 0) {
+                          setLeadScrapeMessage(`❌ Aucun résultat trouvé${locLabel}`)
+                          continue
                         }
-                        const reader = res.body?.getReader()
-                        const decoder = new TextDecoder()
-                        let needsScraping = false
-                        if (reader) {
-                          let buffer = ''
-                          while (true) {
-                            const { done, value } = await reader.read()
-                            if (done) break
-                            buffer += decoder.decode(value, { stream: true })
-                            const lines = buffer.split('\n\n')
-                            buffer = lines.pop() || ''
-                            for (const line of lines) {
-                              if (!line.startsWith('data: ')) continue
-                              try {
-                                const data = JSON.parse(line.slice(6))
-                                if (data.progress !== undefined) setLeadScrapeProgress(data.progress)
-                                if (data.message) setLeadScrapeMessage(data.step === 'error' ? `❌ ${data.message}` : data.message)
-                                if (data.searchId) lastSearchId = data.searchId
-                                if (data.needsScraping) needsScraping = true
-                              } catch { /* */ }
-                            }
-                          }
+
+                        // Step 3: AI Classification
+                        if (leadFilters.type !== 'all') {
+                          setLeadScrapeMessage(`Classification IA en cours...${locLabel}`)
+                          setLeadScrapeProgress(50)
+                          const classifRes = await api({ step: 'classify', results: allResults, typeFilter: leadFilters.type })
+                          const keepIds: number[] = classifRes.keepIds || []
+                          allResults = allResults.filter((_, i) => keepIds.includes(i))
+                          setLeadScrapeMessage(`${allResults.length} résultats après classification IA${locLabel}`)
+                          setLeadScrapeProgress(60)
                         }
-                        // Batch scrape emails (like partners)
-                        if (needsScraping && lastSearchId) {
-                          setLeadScrapeMessage('Scraping des emails...')
+
+                        // Step 4: Save
+                        setLeadScrapeMessage(`Enregistrement de ${allResults.length} leads...${locLabel}`)
+                        setLeadScrapeProgress(65)
+                        const saveRes = await api({
+                          step: 'save', results: allResults, keyword: leadScrapeKeyword, location: loc,
+                          userId: id, listName: leadScrapeName.trim() || undefined, filters: leadFilters,
+                        })
+                        if (saveRes.searchId) lastSearchId = saveRes.searchId
+                        setLeadScrapeMessage(`${saveRes.total || 0} leads enregistrés (${saveRes.duplicates || 0} doublons, ${saveRes.filtered || 0} filtrés)${locLabel}`)
+                        setLeadScrapeProgress(70)
+
+                        // Step 5: Scrape emails
+                        if (saveRes.needsScraping && saveRes.searchId) {
+                          setLeadScrapeMessage(`Scraping des emails...${locLabel}`)
+                          await loadLeads()
                           let scraping = true
                           while (scraping) {
                             const batchRes = await fetch('/api/leads/scrape-batch', {
                               method: 'POST', headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ searchId: lastSearchId }),
+                              body: JSON.stringify({ searchId: saveRes.searchId }),
                             })
                             const batchData = await batchRes.json()
                             if (batchData.status === 'done') {
                               scraping = false
-                              setLeadScrapeMessage(`Terminé ! ${batchData.withEmail || 0} emails trouvés`)
+                              setLeadScrapeMessage(`Terminé ! ${batchData.withEmail || 0} emails trouvés${locLabel}`)
                               setLeadScrapeProgress(100)
+                              await loadLeads()
                             } else if (batchData.status === 'scraping') {
                               const pct = batchData.total > 0 ? Math.round((batchData.scraped / batchData.total) * 100) : 50
-                              setLeadScrapeProgress(pct)
-                              setLeadScrapeMessage(`Emails : ${batchData.scraped}/${batchData.total} traités (${batchData.batchFound} trouvés)`)
+                              setLeadScrapeProgress(70 + Math.round(pct * 0.3))
+                              setLeadScrapeMessage(`Emails : ${batchData.scraped}/${batchData.total} traités (${batchData.batchFound} trouvés)${locLabel}`)
+                              await loadLeads()
                             } else {
                               scraping = false
                             }
@@ -1636,7 +1663,6 @@ ${buildSignatureBlock(senderId)}
                         setLeadScrapeKeyword('')
                         setLeadScrapeName('')
                       }
-                      // If no search was created, keep modal open so user sees the message
                     } catch (err) { setLeadScrapeMessage(`❌ Erreur: ${err instanceof Error ? err.message : String(err)}`) } finally {
                       setLeadScraping(false)
                     }
