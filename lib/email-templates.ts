@@ -114,7 +114,7 @@ export function buildSignatureEmailHtml(params: SignatureEmailParams): string {
             <td style="padding:24px 40px 32px 40px;text-align:center;">
               <p style="font-size:12px;color:#aaa;margin:0;line-height:1.6;">
                 Agence Kameo — 9 rue des colonnes, Paris 75002<br>
-                contact@agencekameo.fr — 06 76 23 00 37<br>
+                contact@agencekameo.fr — 06 62 37 99 85<br>
                 SIRET : 980 573 984 00013
               </p>
             </td>
@@ -152,7 +152,7 @@ Ce lien est valable jusqu'au ${expiresAt}.
 
 ---
 Agence Kameo — 9 rue des colonnes, Paris 75002
-contact@agencekameo.fr — 06 76 23 00 37
+contact@agencekameo.fr — 06 62 37 99 85
 SIRET : 980 573 984 00013`
 }
 
@@ -215,7 +215,7 @@ export function buildContractSignatureEmailHtml(params: ContractSignatureEmailPa
         <tr><td style="padding:24px 40px 32px 40px;text-align:center;">
           <p style="font-size:12px;color:#aaa;margin:0;line-height:1.6;">
             Agence Kameo — 9 rue des colonnes, Paris 75002<br>
-            contact@agencekameo.fr — 06 76 23 00 37<br>
+            contact@agencekameo.fr — 06 62 37 99 85<br>
             SIRET : 980 573 984 00013
           </p>
         </td></tr>
@@ -282,7 +282,7 @@ export function buildInvoiceEmailHtml(params: InvoiceEmailParams): string {
         <tr><td style="padding:24px 40px 32px 40px;text-align:center;">
           <p style="font-size:12px;color:#aaa;margin:0;line-height:1.6;">
             Agence Kameo — 9 rue des colonnes, Paris 75002<br>
-            contact@agencekameo.fr — 06 76 23 00 37<br>
+            contact@agencekameo.fr — 06 62 37 99 85<br>
             SIRET : 980 573 984 00013 — TVA : FR54980573984
           </p>
         </td></tr>

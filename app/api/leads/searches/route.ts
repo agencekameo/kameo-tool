@@ -19,11 +19,15 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json(searches.map(s => ({
     id: s.id,
+    name: s.name || null,
     keyword: s.keyword,
     location: s.location,
     resultCount: s._count.prospects,
     withEmail: s.prospects.length,
     createdAt: s.createdAt,
+    scrapingStatus: s.scrapingStatus,
+    scrapedCount: s.scrapedCount,
+    totalToScrape: s.totalToScrape,
   })))
 }
 

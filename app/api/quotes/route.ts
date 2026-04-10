@@ -27,6 +27,8 @@ export async function GET() {
         items: { orderBy: { position: 'asc' } },
         client: { select: { id: true, name: true } },
         createdBy: { select: { id: true, name: true } },
+        _count: { select: { signatureRequests: true } },
+        signatureRequests: { where: { scheduledSent: false, scheduledAt: { not: null } }, select: { id: true, scheduledAt: true, signerEmail: true } },
       },
       orderBy: { createdAt: 'desc' },
     })
@@ -59,6 +61,7 @@ export async function POST(req: NextRequest) {
         notes: body.notes || null,
         discount: Math.max(0, Number(body.discount) || 0),
         discountType: body.discountType === 'FIXED' ? 'FIXED' : 'PERCENT',
+        paymentTerms: body.paymentTerms || null,
         deliveryDays: body.deliveryDays ? parseInt(body.deliveryDays) : null,
         createdById: session.user.id,
         items: {

@@ -29,7 +29,7 @@ interface Absence {
   id: string
   date: string
   endDate?: string
-  type: 'CONGE' | 'RTT' | 'MALADIE' | 'FORMATION' | 'AUTRE'
+  type: 'CONGES_PAYES' | 'RTT' | 'MALADIE' | 'FORMATION' | 'AUTRE'
   duration: number
   notes?: string
   user: { id: string; name: string }
@@ -42,12 +42,12 @@ interface User {
 }
 
 const ABSENCE_TYPE_LABELS: Record<string, string> = {
-  CONGE: 'Vacances',
+  CONGES_PAYES: 'Vacances',
   MALADIE: 'Maladie',
 }
 
 const ABSENCE_TYPE_COLORS: Record<string, string> = {
-  CONGE: 'bg-blue-500/20 text-blue-400',
+  CONGES_PAYES: 'bg-blue-500/20 text-blue-400',
   MALADIE: 'bg-red-500/20 text-red-400',
 }
 
@@ -116,7 +116,7 @@ export default function AyshaPage() {
   const [absenceForm, setAbsenceForm] = useState({
     date: '',
     endDate: '',
-    type: 'CONGE',
+    type: 'CONGES_PAYES',
   })
 
   const isAdmin = (session?.user as { role?: string })?.role === 'ADMIN'
@@ -168,31 +168,29 @@ export default function AyshaPage() {
 
   async function handleCreateAbsence(e: React.FormEvent) {
     e.preventDefault()
-    // Auto-find Aysha (DESIGNER user)
-    const ayshaUser = users.find(u => u.role === 'DESIGNER')
-    // Calculate duration from dates
-    let duration = 1
-    if (absenceForm.endDate && absenceForm.date) {
-      const start = new Date(absenceForm.date)
-      const end = new Date(absenceForm.endDate)
-      const diffMs = end.getTime() - start.getTime()
-      duration = Math.max(1, Math.round(diffMs / (1000 * 60 * 60 * 24)) + 1)
-    }
-    const res = await fetch('/api/absences', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        userId: ayshaUser?.id,
-        date: absenceForm.date,
-        endDate: absenceForm.endDate || null,
-        type: absenceForm.type,
-        duration,
-      }),
-    })
-    const created = await res.json()
-    setAbsences(prev => [created, ...prev])
-    setShowAbsenceModal(false)
-    setAbsenceForm({ date: '', endDate: '', type: 'CONGE' })
+    try {
+      let duration = 1
+      if (absenceForm.endDate && absenceForm.date) {
+        const start = new Date(absenceForm.date)
+        const end = new Date(absenceForm.endDate)
+        duration = Math.max(1, Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1)
+      }
+      const res = await fetch('/api/absences', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date: absenceForm.date,
+          endDate: absenceForm.endDate || null,
+          type: absenceForm.type,
+          duration,
+        }),
+      })
+      if (!res.ok) { alert('Erreur: ' + (await res.text())); return }
+      const created = await res.json()
+      setAbsences(prev => [created, ...prev])
+      setShowAbsenceModal(false)
+      setAbsenceForm({ date: '', endDate: '', type: 'CONGES_PAYES' })
+    } catch (err) { alert('Erreur: ' + err) }
   }
 
   const activeTasks = tasks
@@ -725,8 +723,12 @@ export default function AyshaPage() {
                 <label className="block text-slate-400 text-xs mb-1.5">Type *</label>
                 <select required value={absenceForm.type} onChange={e => setAbsenceForm({ ...absenceForm, type: e.target.value })}
                   className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors">
-                  <option value="CONGE">Vacances</option>
+                  <option value="CONGES_PAYES">Vacances</option>
                   <option value="MALADIE">Maladie</option>
+                  <option value="RTT">RTT</option>
+                  <option value="SANS_SOLDE">Sans solde</option>
+                  <option value="TELETRAVAIL">Télétravail</option>
+                  <option value="AUTRE">Autre</option>
                 </select>
               </div>
               <div className="flex gap-3 pt-2">

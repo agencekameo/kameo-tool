@@ -13,6 +13,7 @@ const MailsTab = dynamic(() => import('./mails-tab'), { loading: () => <Loading 
 const NotificationsTab = dynamic(() => import('./notifications-tab'), { loading: () => <Loading /> })
 const SignaturesTab = dynamic(() => import('./signatures-tab'), { loading: () => <Loading /> })
 
+
 function Loading() {
   return <div className="text-slate-500 text-sm p-8">Chargement...</div>
 }

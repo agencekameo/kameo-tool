@@ -219,7 +219,7 @@ export default function SignerPage({ params }: { params: Promise<{ token: string
               <div className="text-xs text-gray-500 leading-relaxed space-y-0.5">
                 <div>9 rue des colonnes, 75002</div>
                 <div>Paris</div>
-                <div>06 76 23 00 37</div>
+                <div>06 62 37 99 85</div>
                 <div>contact@agencekameo.fr</div>
                 <div className="pt-1.5">SIRET : 980 573 984 00013</div>
               </div>

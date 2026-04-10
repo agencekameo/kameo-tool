@@ -101,17 +101,23 @@ async function scrapeEmail(url: string): Promise<string | null> {
   } catch { return null }
 }
 
-async function generateRelatedKeywords(keyword: string): Promise<string[]> {
+async function generateRelatedKeywords(keyword: string, onlyFreelance = false): Promise<string[]> {
   try {
     const anthropic = new Anthropic()
-    const res = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 200,
-      messages: [{ role: 'user', content: `Génère 5 à 8 variantes de mots-clés Google Maps pour le terme "${keyword}".
+    const prompt = onlyFreelance
+      ? `Génère 5 à 8 variantes de mots-clés Google Maps pour le terme "${keyword}".
+Ce sont des termes pour trouver des FREELANCES/INDÉPENDANTS/CONSULTANTS.
+Inclus le terme original. Privilégie les termes contenant "freelance", "indépendant", "consultant".
+Réponds UNIQUEMENT en JSON array de strings.`
+      : `Génère 5 à 8 variantes de mots-clés Google Maps pour le terme "${keyword}".
 Ce sont des termes qu'un utilisateur taperait dans Google Maps pour trouver des AGENCES/ENTREPRISES (pas des freelances ou indépendants).
 Inclus le terme original. Privilégie les termes contenant "agence", "cabinet", "société", "studio", "groupe".
 Exclure tout terme lié aux freelances, indépendants, auto-entrepreneurs, consultants solo.
-Réponds UNIQUEMENT en JSON array de strings. Ex: ["agence web","studio web","agence digitale"]` }],
+Réponds UNIQUEMENT en JSON array de strings. Ex: ["agence web","studio web","agence digitale"]`
+    const res = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 200,
+      messages: [{ role: 'user', content: prompt }],
     })
     const text = res.content[0].type === 'text' ? res.content[0].text : ''
     const match = text.match(/\[[\s\S]*\]/)
@@ -124,7 +130,12 @@ export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 })
 
-  const { keyword, location, userId } = await req.json()
+  const { keyword, location, userId, filters, listName } = await req.json()
+  const websiteFilter = filters?.website || 'with' // 'all' | 'with' | 'without'
+  const addressFilter = filters?.address || 'all'
+  const typeFilter = filters?.type || 'company' // 'all' | 'company' | 'freelance'
+  const minRating = Number(filters?.minRating) || 0
+  const minReviews = Number(filters?.minReviews) || 0
   if (!keyword || !location) return new Response(JSON.stringify({ error: 'Keyword et location requis' }), { status: 400 })
 
   const assignTo = userId || session.user.id
@@ -143,7 +154,7 @@ export async function POST(req: NextRequest) {
 
       try {
         send({ step: 'keywords', message: 'Génération des mots-clés...', progress: 2 })
-        const keywords = await generateRelatedKeywords(keyword)
+        const keywords = await generateRelatedKeywords(keyword, typeFilter === 'freelance')
         send({ step: 'keywords', message: `${keywords.length} mots-clés : ${keywords.join(', ')}`, progress: 5 })
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -215,21 +226,25 @@ export async function POST(req: NextRequest) {
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const heuristicFiltered = uniqueResults.filter((r: any) => {
-          // Exclure les entreprises marquées fermées
           if (r.is_closed || r.permanently_closed) return false
-          // Exclure les résultats sans site web (souvent freelances/non-actifs)
-          if (!r.url) return false
-          // Exclure les résultats sans numéro de téléphone
-          if (!r.phone) return false
+          if (websiteFilter === 'with' && !r.url) return false
+          if (websiteFilter === 'without' && r.url) return false
+          if (!r.phone) return false // telephone toujours obligatoire
+          if (addressFilter === 'with' && !r.address) return false
+          if (addressFilter === 'without' && r.address) return false
+          const rating = r.rating?.value ?? 0
+          const reviews = r.rating?.votes_count ?? r.reviews_count ?? 0
+          if (minRating > 0 && rating < minRating) return false
+          if (minReviews > 0 && reviews < minReviews) return false
           return true
         })
 
         const heuristicRemoved = uniqueResults.length - heuristicFiltered.length
-        send({ step: 'filter', message: `${heuristicRemoved} retirés (sans téléphone, site web ou fermés). Classification IA en cours...`, progress: 25 })
+        send({ step: 'filter', message: `${heuristicRemoved} retires (filtres). ${typeFilter !== 'all' ? 'Classification IA en cours...' : ''}`, progress: 25 })
 
         // ═══ CLASSIFICATION IA (agence vs freelance) ═══
         let filteredResults = heuristicFiltered
-        if (heuristicFiltered.length > 0) {
+        if (heuristicFiltered.length > 0 && typeFilter !== 'all') {
           try {
             const anthropic = new Anthropic()
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -242,22 +257,24 @@ export async function POST(req: NextRequest) {
               address: r.address || '',
             }))
 
+            const targetType = typeFilter === 'freelance' ? 'FREELANCE' : 'AGENCE'
             const classifRes = await anthropic.messages.create({
               model: 'claude-sonnet-4-20250514',
               max_tokens: 1000,
               messages: [{ role: 'user', content: `Analyse cette liste d'entreprises trouvées sur Google Maps.
-Pour chaque entrée, détermine si c'est une AGENCE/ENTREPRISE (à garder) ou un FREELANCE/INDÉPENDANT (à exclure).
+Pour chaque entrée, détermine si c'est une AGENCE/ENTREPRISE ou un FREELANCE/INDÉPENDANT.
 
-Critères pour EXCLURE (freelance/indépendant) :
+Critères FREELANCE/INDÉPENDANT :
 - Le nom contient un prénom + nom de personne sans structure (ex: "Jean Dupont", "Marie Martin Développeur")
 - Le nom contient "freelance", "indépendant", "auto-entrepreneur", "consultant" seul
 - Très peu d'avis (0-1) ET le nom ressemble à un nom de personne
 
-Critères pour GARDER (agence/entreprise) :
+Critères AGENCE/ENTREPRISE :
 - Le nom contient "agence", "cabinet", "studio", "groupe", "société", "SARL", "SAS", "EURL"
 - Nom de marque/entreprise clairement identifiable
 - Nombre d'avis significatif (3+)
 
+Je veux UNIQUEMENT les ${targetType === 'FREELANCE' ? 'FREELANCES/INDÉPENDANTS' : 'AGENCES/ENTREPRISES'}.
 Réponds UNIQUEMENT en JSON array des IDs à GARDER. Ex: [0,1,3,5]
 
 Liste :
@@ -271,14 +288,13 @@ ${JSON.stringify(batch)}` }],
               filteredResults = heuristicFiltered.filter((_: unknown, i: number) => keepIds.includes(i))
             }
           } catch {
-            // En cas d'erreur IA, on garde tous les résultats filtrés par heuristique
             filteredResults = heuristicFiltered
           }
         }
 
         const aiRemoved = heuristicFiltered.length - filteredResults.length
         const totalRemoved = heuristicRemoved + aiRemoved
-        send({ step: 'filter', message: `${totalRemoved} filtrés au total (${heuristicRemoved} heuristique + ${aiRemoved} IA). ${filteredResults.length} agences conservées.`, progress: 30 })
+        send({ step: 'filter', message: `${totalRemoved} filtres au total. ${filteredResults.length} resultats conserves.`, progress: 30 })
 
         if (filteredResults.length === 0) {
           send({ step: 'done', message: 'Aucune agence trouvée après filtrage', searchId: null, total: 0, withEmail: 0 })
@@ -291,7 +307,7 @@ ${JSON.stringify(batch)}` }],
         const withoutWebsite = filteredResults.filter((r: { url?: string }) => !r.url)
 
         const search = await prisma.leadSearch.create({
-          data: { keyword, location, userId: assignTo, resultCount: filteredResults.length, withEmail: 0, totalToScrape: withWebsite.length, scrapedCount: 0, scrapingStatus: withWebsite.length > 0 ? 'SCRAPING' : 'DONE' },
+          data: { name: listName || null, keyword, location, userId: assignTo, resultCount: filteredResults.length, withEmail: 0, totalToScrape: withWebsite.length, scrapedCount: 0, scrapingStatus: withWebsite.length > 0 ? 'SCRAPING' : 'DONE' },
         })
 
         send({ step: 'saving', message: `Enregistrement de ${filteredResults.length} agences...`, progress: 35 })

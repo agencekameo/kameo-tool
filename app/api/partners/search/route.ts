@@ -41,7 +41,12 @@ export async function POST(req: NextRequest) {
   if (!session) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 })
   if ((session.user as { role?: string }).role !== 'ADMIN') return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403 })
 
-  const { keyword, location } = await req.json()
+  const { keyword, location, listName, filters } = await req.json()
+  const websiteFilter = filters?.website || 'with'
+  const addressFilter = filters?.address || 'all'
+  const typeFilter = filters?.type || 'company'
+  const minRating = Number(filters?.minRating) || 0
+  const minReviews = Number(filters?.minReviews) || 0
   if (!keyword || !location) return new Response(JSON.stringify({ error: 'Keyword et location requis' }), { status: 400 })
 
   const locationCode = LOCATION_CODES[location] || 2250
@@ -133,11 +138,35 @@ export async function POST(req: NextRequest) {
           return
         }
 
+        // ── Step 2b: Apply filters ──
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const filtered = uniqueResults.filter((r: any) => {
+          if (!r.phone) return false // telephone toujours obligatoire
+          if (websiteFilter === 'with' && !r.url) return false
+          if (websiteFilter === 'without' && r.url) return false
+          if (addressFilter === 'with' && !r.address) return false
+          if (addressFilter === 'without' && r.address) return false
+          const rating = r.rating?.value ?? 0
+          const reviews = r.rating?.votes_count ?? r.reviews_count ?? 0
+          if (minRating > 0 && rating < minRating) return false
+          if (minReviews > 0 && reviews < minReviews) return false
+          return true
+        })
+
+        send({ step: 'filter', message: `${uniqueResults.length - filtered.length} filtres. ${filtered.length} resultats.`, progress: 25 })
+
+        if (filtered.length === 0) {
+          send({ step: 'done', message: 'Aucun resultat apres filtrage', searchId: null, total: 0, withEmail: 0 })
+          controller.close()
+          return
+        }
+
         // ── Step 3: Save to DB — email scraping is done separately via /api/partners/scrape-batch ──
-        const withWebsite = uniqueResults.filter((r: { url?: string }) => r.url)
+        const withWebsite = filtered.filter((r: { url?: string }) => r.url)
 
         const search = await prisma.partnerSearch.create({
           data: {
+            name: listName || null,
             keyword,
             location,
             resultCount: withWebsite.length,

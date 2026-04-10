@@ -19,27 +19,30 @@ export async function POST(req: NextRequest) {
   if (!search) return NextResponse.json({ error: 'Recherche introuvable' }, { status: 404 })
   if (search.scrapingStatus === 'DONE') return NextResponse.json({ status: 'already_done' })
 
-  // Get next batch of partners without email
+  // Get remaining partners without email
+  const remaining = await prisma.partner.count({ where: { searchId, email: null, website: { not: null } } })
+  const total = search.totalToScrape
+
+  if (remaining === 0) {
+    await prisma.partner.deleteMany({ where: { searchId, email: null } })
+    const finalCount = await prisma.partner.count({ where: { searchId } })
+    await prisma.partnerSearch.update({
+      where: { id: searchId },
+      data: { scrapingStatus: 'DONE', resultCount: finalCount, scrapedCount: total },
+    })
+    return NextResponse.json({ status: 'done', emailsFound: finalCount, remaining: 0, total })
+  }
+
+  // Get next batch
   const partners = await prisma.partner.findMany({
     where: { searchId, email: null, website: { not: null } },
     select: { id: true, website: true },
     take: BATCH_SIZE,
   })
 
-  if (partners.length === 0) {
-    // No more to scrape — mark as done, delete those without email
-    await prisma.partner.deleteMany({ where: { searchId, email: null } })
-    const finalCount = await prisma.partner.count({ where: { searchId } })
-    await prisma.partnerSearch.update({
-      where: { id: searchId },
-      data: { scrapingStatus: 'DONE', resultCount: finalCount, scrapedCount: search.totalToScrape },
-    })
-    return NextResponse.json({ status: 'done', emailsFound: finalCount, remaining: 0 })
-  }
-
-  // Scrape in parallel sub-batches of 10
+  // Scrape in parallel sub-batches of 15
   let found = 0
-  const subBatchSize = 10
+  const subBatchSize = 15
 
   for (let i = 0; i < partners.length; i += subBatchSize) {
     const subBatch = partners.slice(i, i + subBatchSize)
@@ -58,31 +61,30 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Update progress
-  const newScrapedCount = search.scrapedCount + partners.length
-  const remaining = await prisma.partner.count({ where: { searchId, email: null, website: { not: null } } })
+  // Calculate real progress from DB
+  const newRemaining = await prisma.partner.count({ where: { searchId, email: null, website: { not: null } } })
+  const scraped = total - newRemaining
 
-  if (remaining === 0) {
-    // All done — cleanup partners without email
+  if (newRemaining === 0) {
     await prisma.partner.deleteMany({ where: { searchId, email: null } })
     const finalCount = await prisma.partner.count({ where: { searchId } })
     await prisma.partnerSearch.update({
       where: { id: searchId },
-      data: { scrapingStatus: 'DONE', resultCount: finalCount, scrapedCount: newScrapedCount },
+      data: { scrapingStatus: 'DONE', resultCount: finalCount, scrapedCount: total },
     })
-    return NextResponse.json({ status: 'done', emailsFound: finalCount, remaining: 0, batchFound: found })
+    return NextResponse.json({ status: 'done', emailsFound: finalCount, remaining: 0, batchFound: found, total })
   }
 
   await prisma.partnerSearch.update({
     where: { id: searchId },
-    data: { scrapedCount: newScrapedCount },
+    data: { scrapedCount: scraped },
   })
 
   return NextResponse.json({
     status: 'scraping',
     batchFound: found,
-    scraped: newScrapedCount,
-    remaining,
-    total: search.totalToScrape,
+    scraped,
+    remaining: newRemaining,
+    total,
   })
 }

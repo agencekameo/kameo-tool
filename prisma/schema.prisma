@@ -384,6 +384,8 @@ model Audit {
   keywords           String?
   details            Json?
   improvements       Json?
+  cost               Float?
+  costDetails        Json?
   createdAt          DateTime @default(now())
 
   project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
@@ -586,6 +588,7 @@ model Prospect {
 
 model LeadSearch {
   id              String   @id @default(cuid())
+  name            String?
   keyword         String
   location        String
   userId          String
@@ -700,6 +703,7 @@ model Quote {
   notes         String?
   discount      Float       @default(0)
   discountType  String      @default("PERCENT")
+  paymentTerms  String?
   deliveryDays  Int?
   createdById   String
   createdAt     DateTime    @default(now())
@@ -844,12 +848,27 @@ model Redaction {
   projectId   String
   analysis    String   @db.Text
   content     String?  @db.Text
+  cost        Float?
+  costDetails Json?
   createdById String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   createdBy User    @relation("RedactionCreator", fields: [createdById], references: [id])
+}
+
+model ApiCostLog {
+  id        String   @id @default(cuid())
+  service   String   // anthropic, dataforseo, gmail
+  action    String   // chat, audit, redaction, scraping, email
+  cost      Float
+  details   Json?
+  userId    String?
+  createdAt DateTime @default(now())
+
+  @@index([service])
+  @@index([createdAt])
 }
 
 model GoogleCalendarToken {
@@ -879,6 +898,8 @@ model SignatureRequest {
   sentAt          DateTime  @default(now())
   expiresAt       DateTime
   usedAt          DateTime?
+  scheduledAt     DateTime?
+  scheduledSent   Boolean   @default(false)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -1029,6 +1050,7 @@ enum PartnerStatus {
 
 model PartnerSearch {
   id             String   @id @default(cuid())
+  name           String?
   keyword        String
   location       String
   resultCount    Int      @default(0)

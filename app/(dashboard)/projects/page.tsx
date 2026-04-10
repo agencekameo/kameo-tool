@@ -1043,7 +1043,7 @@ export default function ProjectsPage() {
 </td></tr>
 <tr><td style="padding:0 40px;"><div style="border-top:1px solid #eee;"></div></td></tr>
 <tr><td style="padding:24px 40px 32px;text-align:center;">
-<p style="font-size:12px;color:#aaa;margin:0;line-height:1.6;">Agence Kameo — 9 rue des colonnes, Paris 75002<br>contact@agencekameo.fr — 06 76 23 00 37</p>
+<p style="font-size:12px;color:#aaa;margin:0;line-height:1.6;">Agence Kameo — 9 rue des colonnes, Paris 75002<br>contact@agencekameo.fr — 06 62 37 99 85</p>
 </td></tr>
 </table>
 </td></tr></table>

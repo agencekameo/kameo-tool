@@ -20,6 +20,7 @@ interface PdfQuote {
   notes?: string | null
   discount: number
   discountType?: string
+  paymentTerms?: string | null
   items: PdfQuoteItem[]
 }
 
@@ -90,24 +91,28 @@ export async function generateQuotePdf(quote: PdfQuote): Promise<{ buffer: Buffe
   const tagW = font.widthOfTextAtSize(tagline, 12)
   coverPage.drawText(tagline, { x: cx - tagW / 2, y: pageHeight - 150, size: 12, font, color: gray })
 
-  // Badges
-  const badge1 = '+ de 50 entreprises accompagnées.'
-  const badge2 = '4.5 * sur Trustpilot'
-  const b1W = font.widthOfTextAtSize(badge1, 10)
-  const b2W = font.widthOfTextAtSize(badge2, 10)
+  // Badges — colored number + gray description
+  const b1a = '+ de 50 ', b1b = 'entreprises accompagnees.'
+  const b2a = '4.5 * ', b2b = 'sur Trustpilot'
+  const b1aW = fontBold.widthOfTextAtSize(b1a, 10)
+  const b1bW = font.widthOfTextAtSize(b1b, 10)
+  const b1W = b1aW + b1bW
+  const b2aW = fontBold.widthOfTextAtSize(b2a, 10)
+  const b2bW = font.widthOfTextAtSize(b2b, 10)
+  const b2W = b2aW + b2bW
   const badgeY = pageHeight - 220
   const badgeGap = 20
-  const totalBadgeW = b1W + b2W + badgeGap + 48 // 24 padding each
+  const totalBadgeW = b1W + b2W + badgeGap + 48
   const b1X = cx - totalBadgeW / 2
 
-  // Badge 1 border
-  coverPage.drawRectangle({ x: b1X, y: badgeY - 10, width: b1W + 24, height: 28, borderColor: rgb(0.8, 0.8, 0.8), borderWidth: 1, color: rgb(1, 1, 1) })
-  coverPage.drawText(badge1, { x: b1X + 12, y: badgeY - 1, size: 10, font, color: gray })
+  coverPage.drawRectangle({ x: b1X, y: badgeY - 10, width: b1W + 24, height: 28, borderColor: rgb(0.85, 0.85, 0.85), borderWidth: 1, color: rgb(1, 1, 1) })
+  coverPage.drawText(b1a, { x: b1X + 12, y: badgeY - 1, size: 10, font: fontBold, color: pink })
+  coverPage.drawText(b1b, { x: b1X + 12 + b1aW, y: badgeY - 1, size: 10, font, color: gray })
 
-  // Badge 2 border
   const b2X = b1X + b1W + 24 + badgeGap
-  coverPage.drawRectangle({ x: b2X, y: badgeY - 10, width: b2W + 24, height: 28, borderColor: rgb(0.8, 0.8, 0.8), borderWidth: 1, color: rgb(1, 1, 1) })
-  coverPage.drawText(badge2, { x: b2X + 12, y: badgeY - 1, size: 10, font, color: gray })
+  coverPage.drawRectangle({ x: b2X, y: badgeY - 10, width: b2W + 24, height: 28, borderColor: rgb(0.85, 0.85, 0.85), borderWidth: 1, color: rgb(1, 1, 1) })
+  coverPage.drawText(b2a, { x: b2X + 12, y: badgeY - 1, size: 10, font: fontBold, color: pink })
+  coverPage.drawText(b2b, { x: b2X + 12 + b2aW, y: badgeY - 1, size: 10, font, color: gray })
 
   // Big title: "Conception d'un site internet à votre image."
   const line1 = 'Conception d\'un site'
@@ -123,7 +128,7 @@ export async function generateQuotePdf(quote: PdfQuote): Promise<{ buffer: Buffe
   const line2TotalW = l2aW + l2bW
   const line2X = cx - line2TotalW / 2
   coverPage.drawText(line2a, { x: line2X, y: titleY - 42, size: titleSize, font: fontBold, color: black })
-  coverPage.drawText(line2b, { x: line2X + l2aW, y: titleY - 42, size: titleSize, font: fontBold, color: orange })
+  coverPage.drawText(line2b, { x: line2X + l2aW, y: titleY - 42, size: titleSize, font: fontBold, color: pink })
 
   // "Proposition exclusive pour [Client]."
   const clientDisplayName = sanitize((quote.clientName || '').split('\n')[0])
@@ -138,29 +143,23 @@ export async function generateQuotePdf(quote: PdfQuote): Promise<{ buffer: Buffe
   coverPage.drawText(propA, { x: propX, y: propY, size: 14, font, color: gray })
   coverPage.drawText(propB, { x: propX + propAW, y: propY, size: 14, font: fontBold, color: black })
 
-  // Client logo — white card with logo
-  const logoBoxW = 200
-  const logoBoxH = 130
-  const logoBoxX = cx - logoBoxW / 2
+  // Client logo — simple, no border, no background artifacts
+  const logoBoxW = 180
+  const logoBoxH = 120
   const logoBoxY = propY - 50 - logoBoxH
 
   try {
-    // Try clientLogo URL first, then Clearbit fallback
     const clientDomain = getClientDomain(quote.clientWebsite)
     const logoUrl = (quote as { clientLogo?: string }).clientLogo || (clientDomain ? `https://logo.clearbit.com/${clientDomain}` : null)
     if (logoUrl) {
       const logoBytes = await fetchClientLogo(logoUrl.includes('clearbit') ? logoUrl.replace('https://logo.clearbit.com/', '') : '')
         .catch(() => null)
-      // If clientLogo is a direct URL (not clearbit), fetch it directly
       const finalBytes = logoUrl.includes('clearbit') ? logoBytes : await fetch(logoUrl, { signal: AbortSignal.timeout(3000) }).then(r => r.ok ? r.arrayBuffer().then(b => new Uint8Array(b)) : null).catch(() => null)
       if (finalBytes && finalBytes.length > 100) {
-        // White card background
-        coverPage.drawRectangle({ x: logoBoxX, y: logoBoxY, width: logoBoxW, height: logoBoxH, color: rgb(1, 1, 1), borderColor: rgb(0.9, 0.9, 0.9), borderWidth: 1 })
         const logoImage = await doc.embedPng(finalBytes).catch(() => doc.embedJpg(finalBytes))
         const logoDims = logoImage.scale(1)
-        const pad = 24
-        const maxLogoH = logoBoxH - pad * 2
-        const maxLogoW = logoBoxW - pad * 2
+        const maxLogoH = logoBoxH
+        const maxLogoW = logoBoxW
         const scale = Math.min(maxLogoW / logoDims.width, maxLogoH / logoDims.height, 1)
         const lw = logoDims.width * scale
         const lh = logoDims.height * scale
@@ -172,7 +171,7 @@ export async function generateQuotePdf(quote: PdfQuote): Promise<{ buffer: Buffe
         })
       }
     }
-  } catch { /* logo fetch/embed failed — skip silently */ }
+  } catch (err) { console.error('[quote-pdf] logo error:', err) }
 
   // ─── QUOTE PAGE ────────────────────────────────────────────────────
   let page = doc.addPage([pageWidth, pageHeight])
@@ -227,7 +226,7 @@ export async function generateQuotePdf(quote: PdfQuote): Promise<{ buffer: Buffe
   y -= 16
   drawText('9 rue des colonnes, Paris 75002', margin, y, 9, font, lightGray)
   y -= 13
-  drawText('Tel : 06 76 23 00 37 - contact@agencekameo.fr', margin, y, 9, font, lightGray)
+  drawText('Tel : 06 62 37 99 85 - contact@agencekameo.fr', margin, y, 9, font, lightGray)
   y -= 13
   drawText('SIRET : 980 573 984 00013 | APE : 62.01Z', margin, y, 7, font, lightGray)
   y -= 10
@@ -264,23 +263,32 @@ export async function generateQuotePdf(quote: PdfQuote): Promise<{ buffer: Buffe
   y = Math.min(y, clientY) - 10
 
   // ─── Separator line ────────────────────────────────────────────────
-  page.drawRectangle({ x: margin, y, width: contentWidth, height: 2, color: rgb(248 / 255, 144 / 255, 60 / 255) })
+  // Gradient separator (pink → orange simulated with segments)
+  const gradSteps = 20
+  const stepW = contentWidth / gradSteps
+  for (let gs = 0; gs < gradSteps; gs++) {
+    const t = gs / (gradSteps - 1)
+    const r = (225 + (248 - 225) * t) / 255
+    const g = (75 + (144 - 75) * t) / 255
+    const b = (137 + (60 - 137) * t) / 255
+    page.drawRectangle({ x: margin + gs * stepW, y, width: stepW + 0.5, height: 2, color: rgb(r, g, b) })
+  }
   y -= 20
 
   // ─── Items table ───────────────────────────────────────────────────
   // Table header (4 columns: Contenu, Unité, Qté, Total HT)
   const colX = [margin, margin + contentWidth * 0.58, margin + contentWidth * 0.72, margin + contentWidth * 0.84]
-  const headerH = 22
+  const tableHeaderH = 22
 
-  page.drawRectangle({ x: margin, y: y - headerH, width: contentWidth, height: headerH, color: pink })
+  page.drawRectangle({ x: margin, y: y - tableHeaderH, width: contentWidth, height: tableHeaderH, color: pink })
 
-  const headerY = y - headerH + 7
+  const headerY = y - tableHeaderH + 7
   drawText('Contenu', colX[0] + 8, headerY, 9, fontBold, rgb(1, 1, 1))
   drawText('Prix unit.', colX[1] + 4, headerY, 9, fontBold, rgb(1, 1, 1))
   drawText('Qté', colX[2] + 4, headerY, 9, fontBold, rgb(1, 1, 1))
   drawText('Total HT', colX[3] + 4, headerY, 9, fontBold, rgb(1, 1, 1))
 
-  y -= headerH + 4
+  y -= tableHeaderH + 4
 
   // Helper to wrap text within a max width (auto-sanitizes)
   function wrapText(text: string, maxWidth: number, size: number, f = font): string[] {
@@ -343,47 +351,82 @@ export async function generateQuotePdf(quote: PdfQuote): Promise<{ buffer: Buffe
     }, 0)
     const rowH = Math.max(20, totalDescH + 8)
 
-    ensureSpace(rowH + 4)
+    // For very long items, draw line by line with pagination
+    if (rowH > pageHeight - margin * 2 - 60) {
+      ensureSpace(60)
+      // Draw price info at top of first chunk
+      const rowTopY = y - 14
+      const unitPriceText = fmt(item.unitPrice)
+      const unitPriceW = font.widthOfTextAtSize(unitPriceText, 8)
+      drawText(unitPriceText, colX[1] + 50 - unitPriceW, rowTopY, 8, font, black)
+      const qtyText = String(item.quantity)
+      const qtyW = font.widthOfTextAtSize(qtyText, 8)
+      drawText(qtyText, colX[2] + 30 - qtyW, rowTopY, 8, font, black)
+      const totalItemText = fmt(item.quantity * item.unitPrice)
+      const totalItemW = font.widthOfTextAtSize(totalItemText, 8)
+      drawText(totalItemText, colX[3] + 55 - totalItemW, rowTopY, 8, fontBold, black)
 
-    if (i % 2 === 1) {
-      page.drawRectangle({ x: margin, y: y - rowH, width: contentWidth, height: rowH, color: rgb(0.97, 0.97, 0.97) })
-    }
-
-    // Draw description lines (preserving formatting, bold for title/categories)
-    let descY = y - 12
-    for (let li = 0; li < allDescLines.length; li++) {
-      const line = allDescLines[li]
-      if (line.sectionGap) {
-        descY -= gapHeight
-      } else {
-        const isTitle = li === 0 && line.bold
-        const fontSize = isTitle ? 9 : 8
-        if (line.text) drawText(line.text, colX[0] + 8, descY, fontSize, line.bold ? fontBold : font, black)
-        descY -= isTitle ? titleLineHeight : lineHeight
+      // Draw lines one by one, paginating as needed
+      for (let li = 0; li < allDescLines.length; li++) {
+        const line = allDescLines[li]
+        const needed = line.sectionGap ? gapHeight : (li === 0 && line.bold) ? titleLineHeight : lineHeight
+        if (y - needed < margin + 40) {
+          page = doc.addPage([pageWidth, pageHeight])
+          y = pageHeight - margin
+        }
+        if (line.sectionGap) {
+          y -= gapHeight
+        } else {
+          const isTitle = li === 0 && line.bold
+          const fontSize = isTitle ? 9 : 8
+          if (line.text) drawText(line.text, colX[0] + 8, y - 12, fontSize, line.bold ? fontBold : font, black)
+          y -= isTitle ? titleLineHeight : lineHeight
+        }
       }
+      y -= 8
+    } else {
+      ensureSpace(rowH + 4)
+
+      if (i % 2 === 1) {
+        page.drawRectangle({ x: margin, y: y - rowH, width: contentWidth, height: rowH, color: rgb(0.97, 0.97, 0.97) })
+      }
+
+      // Draw description lines
+      let descY = y - 12
+      for (let li = 0; li < allDescLines.length; li++) {
+        const line = allDescLines[li]
+        if (line.sectionGap) {
+          descY -= gapHeight
+        } else {
+          const isTitle = li === 0 && line.bold
+          const fontSize = isTitle ? 9 : 8
+          if (line.text) drawText(line.text, colX[0] + 8, descY, fontSize, line.bold ? fontBold : font, black)
+          descY -= isTitle ? titleLineHeight : lineHeight
+        }
+      }
+
+      // Prix unit., Qty, Total aligned to top of row
+      const rowTopY = y - 14
+      const unitPriceText = fmt(item.unitPrice)
+      const unitPriceW = font.widthOfTextAtSize(unitPriceText, 8)
+      drawText(unitPriceText, colX[1] + 50 - unitPriceW, rowTopY, 8, font, black)
+
+      const qtyText = String(item.quantity)
+      const qtyW = font.widthOfTextAtSize(qtyText, 8)
+      drawText(qtyText, colX[2] + 30 - qtyW, rowTopY, 8, font, black)
+
+      const totalItemText = fmt(item.quantity * item.unitPrice)
+      const totalItemW = font.widthOfTextAtSize(totalItemText, 8)
+      drawText(totalItemText, colX[3] + 55 - totalItemW, rowTopY, 8, fontBold, black)
+
+      y -= rowH
     }
-
-    // Prix unit., Qty, Total aligned to top of row
-    const rowTopY = y - 14
-    const unitPriceText = fmt(item.unitPrice)
-    const unitPriceW = font.widthOfTextAtSize(unitPriceText, 8)
-    drawText(unitPriceText, colX[1] + 50 - unitPriceW, rowTopY, 8, font, black)
-
-    const qtyText = String(item.quantity)
-    const qtyW = font.widthOfTextAtSize(qtyText, 8)
-    drawText(qtyText, colX[2] + 30 - qtyW, rowTopY, 8, font, black)
-
-    const totalItemText = fmt(item.quantity * item.unitPrice)
-    const totalItemW = font.widthOfTextAtSize(totalItemText, 8)
-    drawText(totalItemText, colX[3] + 55 - totalItemW, rowTopY, 8, fontBold, black)
-
-    y -= rowH
   }
 
   y -= 10
 
-  // ─── Totals ────────────────────────────────────────────────────────
-  ensureSpace(120)
+  // ─── Totals + Echeancier + Signature — tout sur la meme page ─────
+  ensureSpace(420)
 
   const totalHT = quote.items.reduce((s, i) => s + i.quantity * i.unitPrice, 0)
   const isFixed = quote.discountType === 'FIXED'
@@ -427,16 +470,47 @@ export async function generateQuotePdf(quote: PdfQuote): Promise<{ buffer: Buffe
     drawText(delaiLabel, pageWidth - margin - delaiW, y, 8, fontBold, pink)
   }
   y -= 14
-  drawText('50% à la commande', totalsX, y, 8, font, lightGray)
-  const a1 = fmt(totalTTC * 0.50)
-  const a1W = font.widthOfTextAtSize(a1, 8)
-  drawText(a1, pageWidth - margin - a1W, y, 8, font, gray)
-  y -= 12
-  drawText('50% à la livraison', totalsX, y, 8, font, lightGray)
-  const a2 = fmt(totalTTC * 0.50)
-  const a2W = font.widthOfTextAtSize(a2, 8)
-  drawText(a2, pageWidth - margin - a2W, y, 8, font, gray)
-  y -= 25
+
+  const terms = quote.paymentTerms || '50_50'
+  if (terms === '100_COMMANDE') {
+    drawText('100% a la commande', totalsX, y, 8, font, lightGray)
+    const a1 = fmt(totalTTC)
+    const a1W = font.widthOfTextAtSize(a1, 8)
+    drawText(a1, pageWidth - margin - a1W, y, 8, font, gray)
+    y -= 12
+  } else if (terms === '100_LIVRAISON') {
+    drawText('100% a la livraison', totalsX, y, 8, font, lightGray)
+    const a1 = fmt(totalTTC)
+    const a1W = font.widthOfTextAtSize(a1, 8)
+    drawText(a1, pageWidth - margin - a1W, y, 8, font, gray)
+    y -= 12
+  } else if (terms === '30_70') {
+    drawText('30% a la commande', totalsX, y, 8, font, lightGray)
+    const a1 = fmt(totalTTC * 0.30); const a1W = font.widthOfTextAtSize(a1, 8)
+    drawText(a1, pageWidth - margin - a1W, y, 8, font, gray); y -= 12
+    drawText('70% a la livraison', totalsX, y, 8, font, lightGray)
+    const a2 = fmt(totalTTC * 0.70); const a2W = font.widthOfTextAtSize(a2, 8)
+    drawText(a2, pageWidth - margin - a2W, y, 8, font, gray); y -= 12
+  } else if (terms === '30_30_40') {
+    drawText('30% a la commande', totalsX, y, 8, font, lightGray)
+    const a1 = fmt(totalTTC * 0.30); const a1W = font.widthOfTextAtSize(a1, 8)
+    drawText(a1, pageWidth - margin - a1W, y, 8, font, gray); y -= 12
+    drawText('30% a mi-parcours', totalsX, y, 8, font, lightGray)
+    const a2 = fmt(totalTTC * 0.30); const a2W = font.widthOfTextAtSize(a2, 8)
+    drawText(a2, pageWidth - margin - a2W, y, 8, font, gray); y -= 12
+    drawText('40% a la livraison', totalsX, y, 8, font, lightGray)
+    const a3 = fmt(totalTTC * 0.40); const a3W = font.widthOfTextAtSize(a3, 8)
+    drawText(a3, pageWidth - margin - a3W, y, 8, font, gray); y -= 12
+  } else {
+    // Default 50/50
+    drawText('50% a la commande', totalsX, y, 8, font, lightGray)
+    const a1 = fmt(totalTTC * 0.50); const a1W = font.widthOfTextAtSize(a1, 8)
+    drawText(a1, pageWidth - margin - a1W, y, 8, font, gray); y -= 12
+    drawText('50% a la livraison', totalsX, y, 8, font, lightGray)
+    const a2 = fmt(totalTTC * 0.50); const a2W = font.widthOfTextAtSize(a2, 8)
+    drawText(a2, pageWidth - margin - a2W, y, 8, font, gray); y -= 12
+  }
+  y -= 13
 
   // ─── Notes ─────────────────────────────────────────────────────────
   if (quote.notes) {
@@ -454,27 +528,25 @@ export async function generateQuotePdf(quote: PdfQuote): Promise<{ buffer: Buffe
   }
 
   // ─── Payment + Signature section ───────────────────────────────────
-  ensureSpace(160)
+  ensureSpace(200)
   page.drawRectangle({ x: margin, y, width: contentWidth, height: 0.5, color: rgb(0.85, 0.85, 0.85) })
   y -= 20
 
-  // Payment (left)
-  drawText('RÈGLEMENT', margin, y, 8, fontBold, lightGray)
-  y -= 16
-  drawText('Mode : Virement Bancaire', margin, y, 8, font, gray)
-  y -= 12
-  drawText('Banque : Crédit Agricole', margin, y, 8, font, gray)
+  // Payment info (left)
+  drawText(sanitize('RÈGLEMENT'), margin, y, 8, fontBold, lightGray)
   y -= 14
-  drawText('IBAN : FR76 1310 6005 0030 0406 5882 074', margin, y, 7, font, gray)
+  drawText('Mode : Virement Bancaire', margin, y, 8, font, gray)
   y -= 11
+  drawText(sanitize('Banque : Crédit Agricole'), margin, y, 8, font, gray)
+  y -= 12
+  drawText('IBAN : FR76 1310 6005 0030 0406 5882 074', margin, y, 7, font, gray)
+  y -= 10
   drawText('BIC : AGRIFRPP831', margin, y, 7, font, gray)
-  y -= 16
-  drawText('Conditions : 50% à la commande · 50% à la livraison', margin, y, 7, fontBold, gray)
-  y -= 25
+  y -= 20
 
   // Signature (right column)
   const sigX = pageWidth / 2 + 20
-  const sigY = y + 94 // align with payment
+  const sigY = y
   drawText('BON POUR ACCORD ET SIGNATURE', sigX, sigY, 8, fontBold, lightGray)
   drawText('Fait à :', sigX, sigY - 22, 8, font, lightGray)
   page.drawLine({ start: { x: sigX, y: sigY - 35 }, end: { x: pageWidth - margin, y: sigY - 35 }, thickness: 0.5, color: rgb(0.8, 0.8, 0.8) })

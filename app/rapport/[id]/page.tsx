@@ -339,10 +339,13 @@ export default function RapportPage() {
             </FadeIn>
 
             <div className="space-y-3 relative">
-              {(audit.improvements as Improvement[]).map((item, i) => (
+              {(audit.improvements as Improvement[]).map((item, i) => {
+                const showAll = (audit.details as Record<string, unknown>)?.showAllImprovements === true
+                const isBlurred = !showAll && i >= 5
+                return (
                 <FadeIn key={i} delay={i * 0.08}>
-                  <div className={`flex items-center gap-4 p-4 rounded-xl border ${URGENCY_STYLES[item.urgency]} bg-white/[0.01] ${i >= 5 ? 'select-none' : ''}`}
-                    style={i >= 5 ? { filter: `blur(${Math.min(3 + (i - 5) * 0.8, 6)}px)`, pointerEvents: 'none' } : undefined}>
+                  <div className={`flex items-center gap-4 p-4 rounded-xl border ${URGENCY_STYLES[item.urgency]} bg-white/[0.01] ${isBlurred ? 'select-none' : ''}`}
+                    style={isBlurred ? { filter: `blur(${Math.min(3 + (i - 5) * 0.8, 6)}px)`, pointerEvents: 'none' } : undefined}>
                     <span className="text-2xl font-bold text-white/10 w-8 text-center flex-shrink-0">{i + 1}</span>
                     <span className="text-white text-sm flex-1 font-medium">{item.problem}</span>
                     <span className={`text-xs px-3 py-1 rounded-full flex-shrink-0 ${CATEGORY_STYLES[item.category] ?? 'bg-slate-500/10 text-slate-400'}`}>
@@ -353,10 +356,11 @@ export default function RapportPage() {
                     </span>
                   </div>
                 </FadeIn>
-              ))}
+                )
+              })}
 
-              {/* Overlay CTA over blurred items */}
-              {(audit.improvements?.length ?? 0) > 5 && (
+              {/* Overlay CTA over blurred items — only if blur is active */}
+              {(audit.improvements?.length ?? 0) > 5 && (audit.details as Record<string, unknown>)?.showAllImprovements !== true && (
                 <div className="absolute bottom-0 left-0 right-0 flex flex-col items-center justify-end pb-6 pt-28"
                   style={{ background: 'linear-gradient(to bottom, transparent, rgba(8,8,15,0.8) 35%, rgba(8,8,15,0.97))' }}>
                   <p className="text-white font-semibold text-lg mb-2">+{(audit.improvements?.length ?? 0) - 5} axes d&apos;amélioration identifiés</p>
@@ -398,7 +402,8 @@ export default function RapportPage() {
         </FadeIn>
       </section>
 
-      {/* ── CTA Section ───────────────────────────────────────────────────────── */}
+      {/* ── CTA Section — hidden when blur disabled ────────────────────────── */}
+      {(audit.details as Record<string, unknown>)?.showAllImprovements !== true && (
       <section className="py-28 px-6 relative overflow-hidden">
         <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse at 50% 50%, rgba(225,75,137,0.08) 0%, rgba(248,144,60,0.04) 35%, transparent 60%)' }} />
 
@@ -432,15 +437,16 @@ export default function RapportPage() {
           </div>
         </FadeIn>
       </section>
+      )}
 
       {/* ── Footer ────────────────────────────────────────────────────────────── */}
       <footer className="py-10 px-6 border-t border-white/[0.04]">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <Image src="/kameo-logo.svg" alt="Kameo" width={100} height={30} className="opacity-60" />
           <div className="flex items-center gap-6 text-sm text-slate-500">
-            <a href="https://agencekameo.com" target="_blank" rel="noopener noreferrer"
+            <a href="https://agence-kameo.fr" target="_blank" rel="noopener noreferrer"
               className="hover:text-white transition-colors flex items-center gap-1">
-              agencekameo.com <ExternalLink size={12} />
+              agence-kameo.fr <ExternalLink size={12} />
             </a>
             <a href="https://calendly.com/contact-agence-kameo/30min" target="_blank" rel="noopener noreferrer"
               className="hover:text-orange-400 transition-colors">

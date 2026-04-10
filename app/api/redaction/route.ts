@@ -3,7 +3,7 @@ import { prisma } from '@/lib/db'
 import Anthropic from '@anthropic-ai/sdk'
 import { NextRequest, NextResponse } from 'next/server'
 
-export const maxDuration = 120
+export const maxDuration = 180
 
 const anthropic = new Anthropic()
 
@@ -27,7 +27,7 @@ export async function PUT(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { projectId, analysis, content } = await req.json()
+  const { projectId, analysis, content, cost, costDetails } = await req.json()
   if (!projectId || !analysis) return NextResponse.json({ error: 'Données manquantes' }, { status: 400 })
 
   const redaction = await prisma.redaction.create({
@@ -35,6 +35,8 @@ export async function PUT(req: NextRequest) {
       projectId,
       analysis,
       content: content || null,
+      cost: cost != null ? Number(cost) : null,
+      costDetails: costDetails || null,
       createdById: session.user.id,
     },
   })
@@ -81,7 +83,7 @@ export async function POST(req: NextRequest) {
 
   try {
     if (step === 'analyse') {
-      // 1. Extract seed keywords
+      // 1. Extract seed keywords (now includes LSI + PAA questions)
       const seedKeywords = await extractSeedKeywords(projectContext)
       // 2. Fetch DataForSEO: volumes + suggestions + SERP + backlinks (all in parallel)
       const seoData = await fetchAllSEOData(seedKeywords, existingUrl)
@@ -90,11 +92,13 @@ export async function POST(req: NextRequest) {
       if (isRefonte && existingUrl) {
         scrapedContent = await scrapeMultiPage(existingUrl)
       }
-      // 4. Build enriched context
-      const enrichedContext = projectContext + '\n\n' + formatSEOData(seoData) + (scrapedContent ? '\n\n' + scrapedContent : '')
+      // 4. Competitor analysis from SERP data
+      const competitorData = await analyzeTopCompetitors(seoData.serp, existingUrl)
+      // 5. Build enriched context
+      const enrichedContext = projectContext + '\n\n' + formatSEOData(seoData, competitorData) + (scrapedContent ? '\n\n' + scrapedContent : '')
       return streamResponse(enrichedContext, 'analyse')
     } else if (step === 'redaction') {
-      // Use Opus for premium quality redaction + multi-pass
+      // Use Opus for premium quality redaction + multi-pass + quality audit
       return streamRedactionWithReview(projectContext, bodyAnalysis || '')
     } else {
       const analysis = await generateText(projectContext, 'analyse')
@@ -210,6 +214,31 @@ RÈGLES CRITIQUES :
 - Analyser leur positionnement probable (pas de données réelles, mais raisonnement logique)
 - Identifier les angles différenciants exploitables
 
+7. ANALYSE SERP ENRICHIE
+- Analyser les featured snippets détectés dans les données SERP : quel format (paragraphe, liste, tableau) ? Quelle opportunité de les capturer ?
+- Exploiter les questions PAA (People Also Ask) comme H2/H3 potentiels et sujets de FAQ
+- Utiliser les recherches associées pour enrichir le champ lexical
+
+8. SCORING DE DIFFICULTÉ PAR MOT-CLÉ
+- Pour chaque mot-clé principal, évaluer la difficulté sur 10 basée sur : volume, CPC (indicateur de valeur commerciale), autorité des sites en top 3
+- Classer en : Facile (1-3), Moyen (4-6), Difficile (7-8), Très difficile (9-10)
+
+9. ESTIMATION DU TRAFIC POTENTIEL
+- Pour les 5 mots-clés principaux, estimer le trafic mensuel si le site atteint le top 3 (CTR position 1 ≈ 28%, position 2 ≈ 15%, position 3 ≈ 11%)
+- Donner un total de trafic organique potentiel mensuel
+
+10. PRIORITISATION DES PAGES
+- Classer chaque page par ROI potentiel = (volume recherche × intention transactionnelle × faisabilité)
+- Format tableau : Page | Priorité | Mot-clé | Volume | Difficulté | ROI estimé
+
+11. DÉTECTION DE CANNIBALISATION
+- Vérifier si plusieurs pages risquent de cibler le même mot-clé
+- Si oui, recommander des angles différenciants
+
+12. ANALYSE DES CONCURRENTS RÉELS
+- Des données de scraping des concurrents sont fournies. Analyser : nombre de mots, structure, headings
+- Identifier ce que les concurrents font bien et ce que le client peut faire mieux
+
 IMPORTANT :
 - Raisonne comme un vrai expert SEO humain, pas comme une IA
 - Adapte chaque analyse au secteur et à la cible du client
@@ -222,48 +251,87 @@ Tu dois rédiger le contenu complet de chaque page du site, en te basant sur l'a
 
 RÈGLES CRITIQUES :
 
-1. CTA DIFFÉRENCIÉS PAR PERSONA
-- Chaque page doit avoir un CTA adapté au persona cible de cette page
-- Un responsable technique ne réagit pas comme un directeur général
-- Varier : "Planifier un appel découverte", "Télécharger notre guide technique", "Voir nos réalisations", "Obtenir une étude de faisabilité"
-- JAMAIS "Demander un devis" sur toutes les pages — c'est paresseux et inefficace
+1. FORMULES DE COPYWRITING
+- Page d'accueil : AIDA (Attention → Intérêt → Désir → Action)
+- Pages services : PAS (Problème → Agitation → Solution)
+- Page à propos : Storytelling (Origine → Défi → Mission → Vision)
+- Blog : PASO (Problème → Agitation → Solution → Outcome)
+- Chaque page doit suivre sa formule de copywriting appropriée
 
-2. SEO LOCAL
-- Intégrer naturellement les références géographiques dans le contenu si pertinent
-- Mentions de zones d'intervention, villes, départements dans les textes
+2. HOOKS D'OUVERTURE (CRITIQUE)
+- Chaque page DOIT commencer par un hook qui retient en 3 secondes
+- Techniques : statistique choc, question provocante, scénario "imaginez si...", affirmation contre-intuitive
+- Le hook est AVANT le H1 (c'est le texte d'accroche au-dessus du H1)
+- Exemples : "93% des expériences en ligne commencent par un moteur de recherche.", "Et si votre site web travaillait pour vous pendant que vous dormez ?"
 
-3. DONNÉES STRUCTURÉES
-- Pour chaque page, indiquer en commentaire les schemas à implémenter (FAQPage, Service, etc.)
+3. CTA DIFFÉRENCIÉS PAR PERSONA (JAMAIS "Demander un devis" partout)
+- Varier selon la page et le persona : "Planifier un appel découverte", "Télécharger notre guide", "Voir nos réalisations", "Simuler votre projet"
+- Proposer 2 variantes de CTA par page pour A/B testing
+- Inclure un CTA secondaire (moins engageant) pour les visiteurs pas encore prêts
 
-4. AUTHENTICITÉ
-- Ton humain, fluide, naturel — jamais robotique ni IA
-- Style expert + pédagogue : montrer qu'on maîtrise le sujet
-- Utiliser le vocabulaire technique du secteur (ça rassure et ça ranke)
-- Éléments de réassurance concrets : chiffres, certifications, noms de technologies, cadre réglementaire
+4. OBJECTIONS ET RÉPONSES
+- Chaque page service doit inclure un bloc "Questions fréquentes" (3-5 FAQ)
+- Les FAQ doivent répondre aux vraies objections du persona (prix, délais, qualité, confiance)
+- Utiliser les questions PAA de l'analyse SEO si disponibles
+- Format Schema FAQ (mentionner en commentaire)
 
-5. H1 = PROMESSE FORTE (CRITIQUE)
+5. H1 = PROMESSE FORTE (bénéfice + mot-clé)
 - Le H1 de la page d'accueil et des pages services/produits DOIT être une promesse forte, orientée bénéfice client
 - PAS de H1 descriptif générique ("Nos services", "Bienvenue")
 - Le H1 doit répondre à : "Pourquoi ce client devrait choisir CE prestataire ?"
 - Exemples de bons H1 : "Inspections techniques par drone : précision millimétrique, coûts divisés par 3", "Votre site e-commerce qui convertit dès le premier mois"
 - Le H1 doit contenir le mot-clé principal ET une proposition de valeur
 
-6. STRUCTURE DE PAGE OBLIGATOIRE (dans cet ordre)
+6. STRUCTURE DE PAGE OBLIGATOIRE
+- **Hook** : Accroche émotionnelle ou factuelle (2 lignes max)
 - **H1** : Promesse forte (bénéfice + mot-clé)
-- **Bandeau social proof** (juste après le H1) : adapter au client — exemples :
-  - "X clients accompagnés" / "X projets réalisés" / "X avis 5 étoiles"
-  - "X commandes livrées" / "Certifié [norme]" / "Depuis [année]"
-  - Utiliser les vrais chiffres du brief si disponibles, sinon proposer des placeholders [À compléter]
-- **Points forts / Valeur ajoutée** (juste après le social proof) : 3 à 5 points clés en format visuel (icônes + titre + description courte), qui différencient le client de ses concurrents. S'appuyer sur l'USP, la différenciation, et les valeurs du brief.
-- Puis le reste du contenu : Problème → Solution → Détails → Preuve → CTA
+- **Bandeau social proof** : chiffres clés du client
+- **Points forts** : 3-5 avantages différenciants (icônes + titre + description)
+- **Contenu principal** : selon la formule copywriting de la page
+- **FAQ** : 3-5 questions/réponses (pages services)
+- **CTA final** : bloc de conversion avec CTA principal + CTA secondaire
 
-7. STRUCTURE ORIENTÉE CONVERSION
-- Paragraphes courts (3-4 lignes max)
-- Listes à puces pour les bénéfices et fonctionnalités
-- Sous-titres H2/H3 qui répondent à des questions réelles
-- Chaque section doit faire avancer le visiteur vers l'action
+7. SEO AVANCÉ
+- Densité mot-clé principal : 1-2% (naturel, pas forcé)
+- Mentions des mots-clés secondaires et LSI dans le corps du texte
+- Chaque H2 doit répondre à une intention de recherche identifiable
+- Maillage interne explicite : pour chaque page, indiquer [Lien vers : page-x] aux endroits pertinents
 
-8. CAS REFONTE
+8. NOMBRE DE MOTS PAR TYPE DE PAGE
+- Page d'accueil : 800-1200 mots
+- Page service/produit : 800-1500 mots
+- Page à propos : 600-800 mots
+- Page contact : 200-400 mots
+- Article de blog : 1500-2500 mots
+- Page FAQ : 800-1200 mots
+
+9. AUTHENTICITÉ & TONALITÉ (CRITIQUE — ANTI-IA)
+- Ton humain, fluide, naturel — JAMAIS robotique, JAMAIS détectable comme IA
+- INTERDICTIONS ABSOLUES : pas de "dans un monde où...", "il est essentiel de...", "n'hésitez pas à...", "force est de constater", "il convient de", "en effet", "ainsi", "par ailleurs". Ces tournures crient "texte IA".
+- Écrire comme un humain expert qui parle à un autre humain : phrases directes, concrètes, parfois courtes, parfois longues. Varier le rythme.
+- Utiliser des exemples concrets et spécifiques au secteur du client (pas des généralités)
+- Vocabulaire technique du secteur (ça rassure les pros et ça ranke)
+- Éléments de réassurance CONCRETS : vrais chiffres, vraies certifications, vrais noms de technologies — pas de "des années d'expérience" mais "12 ans d'expérience" (ou [X années] si pas dans le brief)
+- Adapter le ton par page : services = expert direct, à propos = humain/storytelling, blog = pédagogue passionné
+
+10. VALEUR AJOUTÉE (CRITIQUE)
+- Le contenu DOIT apporter de la valeur au lecteur, pas juste remplir des mots pour le SEO
+- Chaque paragraphe doit contenir une information UTILE, un conseil ACTIONNABLE, ou un argument de vente CONCRET
+- INTERDICTION du remplissage : si une phrase n'apporte rien de concret, la supprimer
+- Chaque page doit répondre à une vraie question du visiteur et le faire avancer dans sa décision
+- Penser : "est-ce qu'un humain lirait ce paragraphe jusqu'au bout ?" Si non, le réécrire
+- Intégrer des insights métier que seul un expert du secteur connaîtrait (pas des évidences)
+
+11. MICRO-COPY
+- Proposer les textes des boutons CTA (pas juste "En savoir plus")
+- Proposer les alt text pour les images recommandées
+- Proposer les textes de formulaire (labels, placeholder, message de confirmation)
+
+12. META DESCRIPTIONS OPTIMISÉES
+- Chaque meta description DOIT contenir : le mot-clé principal, un bénéfice client, un CTA implicite
+- Maximum 155 caractères, style engageant
+
+12. CAS REFONTE
 - Si c'est une refonte : réécrire entièrement, ne jamais copier l'existant
 - Moderniser le discours, améliorer le SEO, renforcer la conversion
 
@@ -272,11 +340,14 @@ FORMAT pour chaque page (en Markdown) :
 - **Meta title** (< 60 caractères, optimisé CTR + SEO)
 - **Meta description** (< 155 caractères, engageante, avec CTA implicite)
 - **Schema markup recommandé** (en commentaire)
+- **Hook** : accroche percutante (2 lignes max, AVANT le H1)
 - **H1** = promesse forte (bénéfice + mot-clé)
 - **Social proof** : bandeau chiffres clés juste après H1
 - **Points forts** : 3-5 avantages différenciants
 - **Contenu complet** avec H2/H3, texte, listes, CTA contextuel
-- Chaque page : minimum 400 mots`
+- **FAQ** : 3-5 questions/réponses (pages services)
+- **CTA principal** + **CTA secondaire**
+- **Alt text** pour chaque image suggérée`
 }
 
 function getUserPrompt(context: string, type: 'analyse' | 'redaction', analysis?: string): string {
@@ -335,7 +406,21 @@ Pour chaque page, recommander les schemas pertinents :
 ## 7. Stratégie de contenu (Blog / Actualités)
 - 5 à 10 sujets d'articles concrets à publier
 - Fréquence de publication recommandée
-- Objectif de chaque article (trafic, autorité, conversion)`
+- Objectif de chaque article (trafic, autorité, conversion)
+
+## 8. Analyse SERP & Opportunités
+- Featured snippets détectés et stratégie pour les capturer (format : paragraphe, liste, tableau)
+- Questions PAA exploitables comme H2/H3 ou sujets FAQ
+- Recherches associées à intégrer dans le contenu et le champ lexical
+
+## 9. Tableau de priorités
+Pour chaque page, en format tableau :
+| Page | Mot-clé principal | Volume | Difficulté /10 | Trafic estimé (top 3) | Priorité |
+
+## 10. Analyse concurrentielle
+- Forces et faiblesses des 3 premiers concurrents identifiés (basé sur les données de scraping fournies)
+- Opportunités de différenciation concrètes
+- Gaps de contenu à exploiter`
   }
 
   return `Voici le contexte du projet et l'analyse SEO. Rédige le contenu complet de chaque page.
@@ -352,11 +437,19 @@ RAPPELS CRITIQUES :
 - CTA différenciés par persona (JAMAIS "demander un devis" partout)
 - Vocabulaire technique du secteur du client
 - Références géographiques si pertinent (SEO local)
-- Structure : Accroche → Problème → Solution → Preuve → CTA
+- Formule de copywriting adaptée par page : AIDA (accueil), PAS (services), Storytelling (à propos)
 - Schema markup recommandé en commentaire pour chaque page
-- Minimum 400 mots par page
 - Tu DOIS rédiger TOUTES les pages listées dans l'arborescence du projet, sans exception
 - Chaque page doit être séparée par un "---" et commencer par un titre H1 clair
+
+RAPPELS SUPPLÉMENTAIRES :
+- Chaque page service : inclure un bloc FAQ (3-5 questions avec réponses, format compatible Schema FAQ)
+- Maillage interne : indiquer explicitement [Lien vers : nom-de-la-page] dans le texte là où un lien interne est pertinent
+- Alt text : pour chaque image suggérée, proposer un alt text optimisé SEO
+- 2 variantes de CTA par page (principal + secondaire)
+- Hook d'ouverture obligatoire avant le H1
+- Minimum 800 mots par page service (pas 400)
+- Micro-copy : proposer textes de boutons, labels de formulaire, placeholders
 
 IMPORTANT : Rédige le contenu complet de CHAQUE page identifiée dans l'arborescence. Tu ne dois oublier AUCUNE page. Si l'arborescence mentionne Accueil, À propos, Services, Contact — tu dois rédiger les 4 pages.
 
@@ -371,19 +464,36 @@ Pour chaque page, utilise ce format :
 **Meta Description** : Description (< 155 car.)
 **Schema Markup** : Types recommandés
 
-[Contenu complet avec H2, H3, texte, listes, CTA contextuel]`
+**Hook** : [Accroche percutante avant le H1]
+
+[Contenu complet avec H1, H2, H3, texte, listes, FAQ, CTA principal + CTA secondaire, alt text images]`
 }
 
 // ─── Streaming helpers ───────────────────────────────────────────────────────
+
+// Pricing per 1M tokens (USD, May 2025)
+const PRICING: Record<string, { input: number; output: number }> = {
+  'claude-sonnet-4-20250514': { input: 3, output: 15 },
+  'claude-opus-4-20250514': { input: 15, output: 75 },
+  'claude-haiku-4-5-20251001': { input: 0.80, output: 4 },
+}
+// DataForSEO cost per API call type (approximate)
+const DATAFORSEO_COSTS = { keywords: 0.05, suggestions: 0.05, serp: 0.10, backlinks: 0.20 }
+
+function calcTokenCost(model: string, inputTokens: number, outputTokens: number): number {
+  const p = PRICING[model as keyof typeof PRICING] || PRICING['claude-sonnet-4-20250514']
+  return (inputTokens * p.input + outputTokens * p.output) / 1_000_000
+}
 
 function streamResponse(context: string, type: 'analyse' | 'redaction', analysis?: string) {
   const encoder = new TextEncoder()
   const stream = new ReadableStream({
     async start(controller) {
       try {
+        const model = 'claude-sonnet-4-20250514'
         const messageStream = anthropic.messages.stream({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: type === 'analyse' ? 12000 : 16000,
+          model,
+          max_tokens: type === 'analyse' ? 8000 : 12000,
           system: getSystemPrompt(type),
           messages: [{ role: 'user', content: getUserPrompt(context, type, analysis) }],
         })
@@ -392,7 +502,20 @@ function streamResponse(context: string, type: 'analyse' | 'redaction', analysis
             controller.enqueue(encoder.encode(JSON.stringify({ text: event.delta.text }) + '\n'))
           }
         }
-        controller.enqueue(encoder.encode(JSON.stringify({ done: true }) + '\n'))
+        // Get real token usage
+        const final = await messageStream.finalMessage()
+        const usage = final.usage
+        const aiCost = calcTokenCost(model, usage?.input_tokens || 0, usage?.output_tokens || 0)
+        // DataForSEO costs for analyse step (keywords + suggestions + serp + backlinks)
+        const dfCost = type === 'analyse' ? (DATAFORSEO_COSTS.keywords + DATAFORSEO_COSTS.suggestions + DATAFORSEO_COSTS.serp + DATAFORSEO_COSTS.backlinks) : 0
+        // Seed keywords extraction cost (separate Sonnet call)
+        const seedCost = type === 'analyse' ? 0.02 : 0
+        const totalCost = Math.round((aiCost + dfCost + seedCost) * 1000) / 1000
+
+        controller.enqueue(encoder.encode(JSON.stringify({
+          done: true,
+          cost: { total: totalCost, ai: Math.round(aiCost * 1000) / 1000, dataForSeo: dfCost, inputTokens: usage?.input_tokens || 0, outputTokens: usage?.output_tokens || 0, model }
+        }) + '\n'))
         controller.close()
       } catch (err) {
         console.error('[stream error]', err)
@@ -406,19 +529,23 @@ function streamResponse(context: string, type: 'analyse' | 'redaction', analysis
   })
 }
 
-// ─── [AMÉLIORATION 6] Opus for redaction + [7] Multi-pass review ─────────────
+// ─── Opus for redaction + Multi-pass review + Quality audit ─────────────────
 
 function streamRedactionWithReview(context: string, analysis: string) {
   const encoder = new TextEncoder()
   const stream = new ReadableStream({
     async start(controller) {
       try {
+        const costs: { model: string; input: number; output: number; cost: number }[] = []
+
         // Pass 1: Draft with Opus (premium quality)
         controller.enqueue(encoder.encode(JSON.stringify({ phase: 'draft' }) + '\n'))
         let draft = ''
+        const opusModel = 'claude-opus-4-20250514'
+        const draftModel = opusModel
         const draftStream = anthropic.messages.stream({
-          model: 'claude-opus-4-20250514',
-          max_tokens: 16000,
+          model: draftModel,
+          max_tokens: 12000,
           system: getSystemPrompt('redaction'),
           messages: [{ role: 'user', content: getUserPrompt(context, 'redaction', analysis) }],
         })
@@ -429,28 +556,40 @@ function streamRedactionWithReview(context: string, analysis: string) {
           }
         }
 
-        // Pass 2: Review & improve with Opus
+        // Track draft cost and send immediately
+        const draftFinal = await draftStream.finalMessage()
+        const draftUsage = draftFinal.usage
+        const draftCost = calcTokenCost(draftModel, draftUsage?.input_tokens || 0, draftUsage?.output_tokens || 0)
+        costs.push({ model: draftModel, input: draftUsage?.input_tokens || 0, output: draftUsage?.output_tokens || 0, cost: draftCost })
+        controller.enqueue(encoder.encode(JSON.stringify({ passCost: { pass: 'draft', cost: draftCost, inputTokens: draftUsage?.input_tokens || 0, outputTokens: draftUsage?.output_tokens || 0 } }) + '\n'))
+
+        // Pass 2: Strict review & improve with Opus
         controller.enqueue(encoder.encode(JSON.stringify({ phase: 'review' }) + '\n'))
+        let reviewedContent = ''
         const reviewStream = anthropic.messages.stream({
-          model: 'claude-opus-4-20250514',
-          max_tokens: 16000,
-          system: `Tu es un relecteur SEO senior et copywriter expert. Tu relis un contenu rédigé par un autre rédacteur et tu l'améliores.
+          model: opusModel,
+          max_tokens: 12000,
+          system: `Tu es un directeur éditorial senior, expert SEO et copywriting. Tu relis un contenu et tu l'améliores DRASTIQUEMENT.
 
-RÈGLES DE RELECTURE :
-- Renforcer les H1 si la promesse n'est pas assez forte
-- Vérifier que chaque CTA est différencié par persona (pas de "Demander un devis" partout)
-- Ajouter du social proof manquant
-- Renforcer les arguments de vente faibles
-- Corriger les répétitions et les formulations génériques
-- S'assurer que le vocabulaire technique du secteur est utilisé
-- Vérifier la densité de mots-clés (ni trop ni trop peu)
-- Améliorer les transitions entre sections
-- Renforcer les éléments de réassurance
+CHECKLIST DE RELECTURE OBLIGATOIRE :
+1. HOOKS — Chaque page commence-t-elle par un hook percutant ? Si non, en ajouter un.
+2. H1 — Le H1 contient-il le mot-clé ET une promesse de valeur ? Si c'est générique ("Nos services"), le réécrire.
+3. CTA — Les CTA sont-ils TOUS différents ? Si "Demander un devis" apparaît plus d'une fois, remplacer par des CTA contextuels.
+4. FAQ — Chaque page service a-t-elle un bloc FAQ ? Si non, en ajouter 3-5 questions.
+5. MAILLAGE — Y a-t-il des [Lien vers : page-x] dans le contenu ? Si non, en ajouter 2-3 par page.
+6. LONGUEUR — Chaque page service fait-elle 800+ mots ? Si non, développer.
+7. SOCIAL PROOF — Y a-t-il des éléments de réassurance concrets (chiffres, certifications) ? Si non, ajouter des placeholders [À compléter].
+8. FORMULE — La page suit-elle sa formule copywriting (AIDA pour accueil, PAS pour services) ? Réorganiser si besoin.
+9. DENSITÉ MOT-CLÉ — Le mot-clé principal apparaît-il 3-5 fois de manière naturelle dans le texte ?
+10. MICRO-COPY — Les alt text d'images et textes de boutons sont-ils proposés ?
+11. TON HUMAIN — Traquer et supprimer TOUTES les tournures IA : "dans un monde où", "il est essentiel", "n'hésitez pas", "force est de constater", "il convient de", "par ailleurs", "en effet", "ainsi". Réécrire de manière directe et naturelle.
+12. VALEUR AJOUTÉE — Chaque paragraphe apporte-t-il une info concrète, un conseil actionnable, ou un argument de vente ? Si c'est du remplissage, réécrire ou supprimer.
 
+Si un point est manquant, AJOUTE-LE. Ne te contente pas de commenter, CORRIGE directement.
 FORMAT : Renvoie le contenu complet AMÉLIORÉ (pas juste les corrections). Garde le même format Markdown.`,
           messages: [{
             role: 'user',
-            content: `Voici le contenu à relire et améliorer :\n\n${draft}\n\n---\nRenvoie la version améliorée complète.`,
+            content: `Voici le contenu à relire et améliorer :\n\n${draft}\n\n---\nApplique la checklist complète et renvoie la version améliorée.`,
           }],
         })
 
@@ -458,11 +597,57 @@ FORMAT : Renvoie le contenu complet AMÉLIORÉ (pas juste les corrections). Gard
         controller.enqueue(encoder.encode(JSON.stringify({ clear: true }) + '\n'))
         for await (const event of reviewStream) {
           if (event.type === 'content_block_delta' && 'delta' in event && event.delta.type === 'text_delta') {
+            reviewedContent += event.delta.text
             controller.enqueue(encoder.encode(JSON.stringify({ text: event.delta.text }) + '\n'))
           }
         }
 
-        controller.enqueue(encoder.encode(JSON.stringify({ done: true }) + '\n'))
+        // Track review cost and send immediately
+        const reviewFinal = await reviewStream.finalMessage()
+        const reviewUsage = reviewFinal.usage
+        const reviewCost = calcTokenCost(opusModel, reviewUsage?.input_tokens || 0, reviewUsage?.output_tokens || 0)
+        costs.push({ model: opusModel, input: reviewUsage?.input_tokens || 0, output: reviewUsage?.output_tokens || 0, cost: reviewCost })
+        controller.enqueue(encoder.encode(JSON.stringify({ passCost: { pass: 'review', cost: reviewCost, inputTokens: reviewUsage?.input_tokens || 0, outputTokens: reviewUsage?.output_tokens || 0 } }) + '\n'))
+
+        // Pass 3: Quality audit with Haiku (fast, very cheap)
+        const auditModel = 'claude-haiku-4-5-20251001'
+        controller.enqueue(encoder.encode(JSON.stringify({ phase: 'audit' }) + '\n'))
+        const auditResponse = await anthropic.messages.create({
+          model: auditModel,
+          max_tokens: 1000,
+          system: `Tu es un auditeur qualité SEO et copywriting. Tu évalues un contenu web final et tu donnes un score.
+Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks, sans explication.
+Format exact :
+{"qualityAudit":{"seo":X,"marketing":X,"readability":X,"overall":X,"issues":["issue1","issue2"]}}
+Chaque score est sur 10. Issues = maximum 5 points d'amélioration restants.
+Critères SEO : densité mots-clés, meta tags, structure Hn, maillage interne, schema markup.
+Critères Marketing : hooks, CTA différenciés, social proof, formules copywriting, FAQ.
+Critères Readability : ton naturel, paragraphes courts, vocabulaire technique, fluidité.`,
+          messages: [{
+            role: 'user',
+            content: `Évalue ce contenu :\n\n${reviewedContent.substring(0, 12000)}`,
+          }],
+        })
+        const auditText = (auditResponse.content[0] as { text: string }).text.trim()
+        try {
+          const auditJson = JSON.parse(auditText)
+          controller.enqueue(encoder.encode(JSON.stringify({ audit: auditJson }) + '\n'))
+        } catch {
+          controller.enqueue(encoder.encode(JSON.stringify({ audit: { qualityAudit: { seo: 0, marketing: 0, readability: 0, overall: 0, issues: ['Audit parse error'] } } }) + '\n'))
+        }
+
+        // Track audit cost
+        const auditUsage = auditResponse.usage
+        costs.push({ model: auditModel, input: auditUsage?.input_tokens || 0, output: auditUsage?.output_tokens || 0, cost: calcTokenCost(auditModel, auditUsage?.input_tokens || 0, auditUsage?.output_tokens || 0) })
+
+        const totalCost = Math.round(costs.reduce((s, c) => s + c.cost, 0) * 1000) / 1000
+        const totalInput = costs.reduce((s, c) => s + c.input, 0)
+        const totalOutput = costs.reduce((s, c) => s + c.output, 0)
+
+        controller.enqueue(encoder.encode(JSON.stringify({
+          done: true,
+          cost: { total: totalCost, passes: costs, inputTokens: totalInput, outputTokens: totalOutput }
+        }) + '\n'))
         controller.close()
       } catch (err) {
         console.error('[stream redaction+review]', err)
@@ -479,8 +664,8 @@ FORMAT : Renvoie le contenu complet AMÉLIORÉ (pas juste les corrections). Gard
 // Non-streaming version
 async function generateText(context: string, type: 'analyse' | 'redaction', analysis?: string): Promise<string> {
   const response = await anthropic.messages.create({
-    model: type === 'redaction' ? 'claude-opus-4-20250514' : 'claude-sonnet-4-20250514',
-    max_tokens: type === 'analyse' ? 12000 : 16000,
+    model: 'claude-sonnet-4-20250514',
+    max_tokens: type === 'analyse' ? 8000 : 12000,
     system: getSystemPrompt(type),
     messages: [{ role: 'user', content: getUserPrompt(context, type, analysis) }],
   })
@@ -495,11 +680,15 @@ interface KeywordData {
   competition: string | null
   competition_index: number | null
   cpc: number | null
+  monthly_searches?: { year: number; month: number; search_volume: number }[] | null
 }
 
 interface SERPResult {
   keyword: string
   items: { rank: number; domain: string; title: string; url: string }[]
+  featured_snippet: { title: string; description: string; url: string } | null
+  people_also_ask: string[]
+  related_searches: string[]
 }
 
 interface BacklinkSummary {
@@ -507,6 +696,16 @@ interface BacklinkSummary {
   backlinks: number
   referring_domains: number
   rank: number
+}
+
+interface CompetitorAnalysis {
+  domain: string
+  url: string
+  word_count: number
+  h1: string
+  meta_title: string
+  h2_count: number
+  internal_link_count: number
 }
 
 interface FullSEOData {
@@ -517,19 +716,21 @@ interface FullSEOData {
   clusters: Record<string, string[]>
 }
 
-// Extract seed keywords with clustering intent
+// Extract seed keywords with clustering intent + LSI + PAA questions
 async function extractSeedKeywords(context: string): Promise<string[]> {
   try {
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 600,
-      system: `Expert SEO. Extrais 20 mots-clés de recherche Google pertinents pour ce projet.
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 800,
+      system: `Expert SEO. Extrais des mots-clés de recherche Google pertinents pour ce projet.
 Inclus :
 - 5 mots-clés principaux (courte traîne, fort volume)
 - 5 mots-clés géolocalisés (si ville/région mentionnée)
 - 5 mots-clés longue traîne (questions, "comment", "meilleur")
 - 5 mots-clés concurrentiels (ce que les concurrents ciblent probablement)
-Réponds UNIQUEMENT en JSON array de strings.`,
+- 5 mots-clés LSI (sémantiquement liés, synonymes, termes du même champ lexical)
+- 3 questions PAA (People Also Ask) pertinentes en français ("comment...", "pourquoi...", "quel est...")
+Réponds UNIQUEMENT en JSON array de strings (28 éléments max).`,
       messages: [{ role: 'user', content: context }],
     })
     const text = (response.content[0] as { text: string }).text.trim()
@@ -540,12 +741,12 @@ Réponds UNIQUEMENT en JSON array de strings.`,
   }
 }
 
-// [AMÉLIORATION 3] Keyword clustering
+// Keyword clustering
 async function clusterKeywords(keywords: KeywordData[]): Promise<Record<string, string[]>> {
   try {
     const kwList = keywords.filter(k => k.search_volume).map(k => k.keyword).join(', ')
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 800,
       system: 'Expert SEO. Regroupe ces mots-clés par intention de recherche et thématique. Réponds UNIQUEMENT en JSON: {"cluster_name": ["keyword1", "keyword2"]}. Maximum 8 clusters.',
       messages: [{ role: 'user', content: kwList }],
@@ -555,7 +756,79 @@ async function clusterKeywords(keywords: KeywordData[]): Promise<Record<string, 
   } catch { return {} }
 }
 
-// [AMÉLIORATION 1+4] Fetch ALL SEO data: volumes + suggestions + SERP + backlinks
+// Analyze top 3 competitor pages from SERP results
+async function analyzeTopCompetitors(serpResults: SERPResult[], existingUrl: string): Promise<CompetitorAnalysis[]> {
+  try {
+    // Collect unique competitor domains (excluding client's domain)
+    const clientDomain = existingUrl ? existingUrl.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0] : ''
+    const seenDomains = new Set<string>()
+    const competitorUrls: { domain: string; url: string }[] = []
+
+    for (const serp of serpResults) {
+      for (const item of serp.items) {
+        const domain = item.domain.replace(/^www\./, '')
+        if (domain !== clientDomain && !seenDomains.has(domain) && competitorUrls.length < 3) {
+          seenDomains.add(domain)
+          competitorUrls.push({ domain, url: item.url })
+        }
+      }
+    }
+
+    if (competitorUrls.length === 0) return []
+
+    const results: CompetitorAnalysis[] = []
+    const fetches = competitorUrls.map(async ({ domain, url }) => {
+      try {
+        const res = await fetch(url, {
+          headers: { 'User-Agent': 'Mozilla/5.0 (compatible; KameoBot/1.0)' },
+          signal: AbortSignal.timeout(5000),
+        })
+        if (!res.ok) return null
+        const html = await res.text()
+
+        // Extract metrics
+        const textContent = html
+          .replace(/<script[\s\S]*?<\/script>/gi, '')
+          .replace(/<style[\s\S]*?<\/style>/gi, '')
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+        const word_count = textContent.split(/\s+/).length
+
+        const h1Match = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)
+        const h1 = h1Match ? h1Match[1].replace(/<[^>]+>/g, '').trim() : ''
+
+        const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)
+        const meta_title = titleMatch ? titleMatch[1].replace(/<[^>]+>/g, '').trim() : ''
+
+        const h2Matches = html.match(/<h2[^>]*>/gi)
+        const h2_count = h2Matches ? h2Matches.length : 0
+
+        const internalLinkRegex = new RegExp(`href=["'](\/[^"']*|https?:\/\/(www\\.)?${domain.replace('.', '\\.')}[^"']*)`, 'gi')
+        const internalLinks = html.match(internalLinkRegex)
+        const internal_link_count = internalLinks ? internalLinks.length : 0
+
+        return { domain, url, word_count, h1, meta_title, h2_count, internal_link_count } as CompetitorAnalysis
+      } catch {
+        return null
+      }
+    })
+
+    const fetchResults = await Promise.allSettled(fetches)
+    for (const r of fetchResults) {
+      if (r.status === 'fulfilled' && r.value) {
+        results.push(r.value)
+      }
+    }
+
+    return results
+  } catch (err) {
+    console.error('[analyzeTopCompetitors]', err)
+    return []
+  }
+}
+
+// Fetch ALL SEO data: volumes + suggestions + SERP + backlinks
 async function fetchAllSEOData(keywords: string[], existingUrl: string): Promise<FullSEOData> {
   const login = process.env.DATAFORSEO_LOGIN
   const password = process.env.DATAFORSEO_PASSWORD
@@ -616,13 +889,16 @@ async function fetchAllSEOData(keywords: string[], existingUrl: string): Promise
       .sort((a: KeywordData, b: KeywordData) => (b.search_volume || 0) - (a.search_volume || 0))
       .slice(0, 40)
 
-    // Parse SERP results
+    // Parse SERP results (enriched with featured snippets, PAA, related searches)
     const serp: SERPResult[] = []
     for (let i = 0; i < 3; i++) {
       const serpData = await getResult(2 + i)
       if (serpData?.tasks?.[0]?.result?.[0]) {
         const result = serpData.tasks[0].result[0]
-        const items = (result.items || [])
+        const allItems = result.items || []
+
+        // Organic results
+        const organicItems = allItems
           .filter((item: Record<string, unknown>) => item.type === 'organic')
           .slice(0, 10)
           .map((item: Record<string, unknown>) => ({
@@ -631,7 +907,45 @@ async function fetchAllSEOData(keywords: string[], existingUrl: string): Promise
             title: item.title,
             url: item.url,
           }))
-        serp.push({ keyword: topKeywords[i], items })
+
+        // Featured snippet
+        let featured_snippet: SERPResult['featured_snippet'] = null
+        const fsItem = allItems.find((item: Record<string, unknown>) => item.type === 'featured_snippet')
+        if (fsItem) {
+          featured_snippet = {
+            title: (fsItem as Record<string, unknown>).title as string || '',
+            description: (fsItem as Record<string, unknown>).description as string || '',
+            url: (fsItem as Record<string, unknown>).url as string || '',
+          }
+        }
+
+        // People Also Ask
+        const people_also_ask: string[] = []
+        const paaItems = allItems.filter((item: Record<string, unknown>) => item.type === 'people_also_ask')
+        for (const paa of paaItems) {
+          const paaData = paa as Record<string, unknown>
+          if (paaData.title) people_also_ask.push(paaData.title as string)
+          if (Array.isArray(paaData.items)) {
+            for (const subItem of paaData.items as Record<string, unknown>[]) {
+              if (subItem.title) people_also_ask.push(subItem.title as string)
+            }
+          }
+        }
+
+        // Related searches
+        const related_searches: string[] = []
+        const relatedItems = allItems.filter((item: Record<string, unknown>) => item.type === 'related_searches')
+        for (const rel of relatedItems) {
+          const relData = rel as Record<string, unknown>
+          if (relData.title) related_searches.push(relData.title as string)
+          if (Array.isArray(relData.items)) {
+            for (const subItem of relData.items as Record<string, unknown>[]) {
+              if (subItem.title) related_searches.push(subItem.title as string)
+            }
+          }
+        }
+
+        serp.push({ keyword: topKeywords[i], items: organicItems, featured_snippet, people_also_ask, related_searches })
       }
     }
 
@@ -661,8 +975,34 @@ async function fetchAllSEOData(keywords: string[], existingUrl: string): Promise
   }
 }
 
+// Format monthly search trends from keyword data
+function formatMonthlyTrends(volumes: KeywordData[]): string {
+  const monthNames = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc']
+  const parts: string[] = []
+
+  const kwWithTrends = volumes.filter(k => k.monthly_searches && k.monthly_searches.length > 0)
+  if (kwWithTrends.length === 0) return ''
+
+  parts.push('\n### Tendances saisonnières (recherches mensuelles)')
+  for (const kw of kwWithTrends.slice(0, 5)) {
+    if (!kw.monthly_searches || kw.monthly_searches.length === 0) continue
+    const sorted = [...kw.monthly_searches].sort((a, b) => b.search_volume - a.search_volume)
+    const peak = sorted[0]
+    const low = sorted[sorted.length - 1]
+    const peakMonth = monthNames[(peak.month - 1) % 12]
+    const lowMonth = monthNames[(low.month - 1) % 12]
+
+    parts.push(`\n**"${kw.keyword}"** :`)
+    parts.push(`- Pic : ${peakMonth} ${peak.year} (${peak.search_volume} rech.)`)
+    parts.push(`- Creux : ${lowMonth} ${low.year} (${low.search_volume} rech.)`)
+    parts.push(`- Tendance : ${kw.monthly_searches.map(m => `${monthNames[(m.month - 1) % 12]}:${m.search_volume}`).join(' → ')}`)
+  }
+
+  return parts.join('\n')
+}
+
 // Format all SEO data for Claude context
-function formatSEOData(data: FullSEOData): string {
+function formatSEOData(data: FullSEOData, competitors: CompetitorAnalysis[]): string {
   const parts: string[] = ['## DONNÉES SEO RÉELLES (DataForSEO — France)']
   parts.push('Ces données sont RÉELLES. Utilise-les dans ton analyse.\n')
 
@@ -686,13 +1026,41 @@ function formatSEOData(data: FullSEOData): string {
     }
   }
 
-  // SERP Analysis
+  // Monthly trends
+  const trendsSection = formatMonthlyTrends(data.volumes)
+  if (trendsSection) parts.push(trendsSection)
+
+  // SERP Analysis (enriched)
   if (data.serp.length > 0) {
     parts.push('\n### Analyse SERP — Qui ranke sur les mots-clés cibles')
     for (const s of data.serp) {
       parts.push(`\n**"${s.keyword}"** — Top ${s.items.length} résultats :`)
       for (const item of s.items) {
         parts.push(`${item.rank}. ${item.domain} — "${item.title}"`)
+      }
+
+      // Featured snippet
+      if (s.featured_snippet) {
+        parts.push(`\n🎯 **Featured Snippet détecté** :`)
+        parts.push(`- URL : ${s.featured_snippet.url}`)
+        parts.push(`- Titre : ${s.featured_snippet.title}`)
+        parts.push(`- Extrait : ${s.featured_snippet.description.substring(0, 200)}`)
+      }
+
+      // People Also Ask
+      if (s.people_also_ask.length > 0) {
+        parts.push(`\n❓ **Questions PAA (People Also Ask)** :`)
+        for (const q of s.people_also_ask) {
+          parts.push(`- ${q}`)
+        }
+      }
+
+      // Related searches
+      if (s.related_searches.length > 0) {
+        parts.push(`\n🔗 **Recherches associées** :`)
+        for (const r of s.related_searches) {
+          parts.push(`- ${r}`)
+        }
       }
     }
   }
@@ -713,11 +1081,29 @@ function formatSEOData(data: FullSEOData): string {
     }
   }
 
+  // Competitor analysis
+  if (competitors.length > 0) {
+    parts.push('\n### Analyse des concurrents (scraping réel)')
+    parts.push('| Domaine | Mots | H1 | Meta Title | H2 | Liens internes |')
+    parts.push('|---------|------|----|------------|-----|---------------|')
+    for (const c of competitors) {
+      parts.push(`| ${c.domain} | ${c.word_count} | ${c.h1.substring(0, 50)} | ${c.meta_title.substring(0, 50)} | ${c.h2_count} | ${c.internal_link_count} |`)
+    }
+    for (const c of competitors) {
+      parts.push(`\n**${c.domain}** (${c.url}) :`)
+      parts.push(`- Nombre de mots : ${c.word_count}`)
+      parts.push(`- H1 : "${c.h1}"`)
+      parts.push(`- Meta Title : "${c.meta_title}"`)
+      parts.push(`- Nombre de H2 : ${c.h2_count}`)
+      parts.push(`- Liens internes : ${c.internal_link_count}`)
+    }
+  }
+
   parts.push('\n⚠️ Source : DataForSEO / Google — ' + new Date().toLocaleDateString('fr-FR'))
   return parts.join('\n')
 }
 
-// ─── [AMÉLIORATION 2] Multi-page scraping for refonte ───────────────────────
+// ─── Multi-page scraping for refonte ───────────────────────────────────────
 
 async function scrapeMultiPage(baseUrl: string): Promise<string> {
   try {

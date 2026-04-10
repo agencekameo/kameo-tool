@@ -99,7 +99,7 @@ function partnerEmailHtml(companyName: string, type: 'initial' | 'relance1' | 'r
 <p style="margin:3px 0 0;font-size:12px;color:#888;">Agence Kameo</p>
 
 <p style="margin:14px 0 0;font-size:12px;">
-<a href="tel:+33676230037" style="color:#666;text-decoration:none;">06 76 23 00 37</a>
+<a href="tel:+33662379985" style="color:#666;text-decoration:none;">06 62 37 99 85</a>
 </p>
 <p style="margin:3px 0 0;font-size:12px;">
 <a href="mailto:contact@agence-kameo.fr" style="color:#666;text-decoration:none;">contact@agence-kameo.fr</a>
@@ -114,7 +114,7 @@ function partnerEmailHtml(companyName: string, type: 'initial' | 'relance1' | 'r
 </td></tr>
 <tr><td style="padding:0 40px;"><div style="border-top:1px solid #eee;"></div></td></tr>
 <tr><td style="padding:24px 40px 32px;text-align:center;">
-<p style="font-size:12px;color:#aaa;margin:0;line-height:1.6;">Agence Kameo | 9 rue des colonnes, Paris 75002<br>contact@agence-kameo.fr | 06 76 23 00 37</p>
+<p style="font-size:12px;color:#aaa;margin:0;line-height:1.6;">Agence Kameo | 9 rue des colonnes, Paris 75002<br>contact@agence-kameo.fr | 06 62 37 99 85</p>
 ${unsubUrl ? `<p style="font-size:11px;color:#ccc;margin:8px 0 0;"><a href="${unsubUrl}" style="color:#ccc;text-decoration:underline;">Se désinscrire</a></p>` : ''}
 </td></tr>
 </table>

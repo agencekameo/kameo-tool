@@ -36,6 +36,7 @@ interface Partner {
 
 interface PartnerSearch {
   id: string
+  name?: string | null
   keyword: string
   location: string
   resultCount: number
@@ -83,11 +84,13 @@ export default function PartenairesPage() {
 
   // Scraping form
   const [showScrape, setShowScrape] = useState(false)
+  const [scrapeName, setScrapeName] = useState('')
   const [scrapeKeyword, setScrapeKeyword] = useState('')
   const [scrapeLocations, setScrapeLocations] = useState<string[]>(['Paris'])
   const [scraping, setScraping] = useState(false)
   const [scrapeCurrentCity, setScrapeCurrentCity] = useState('')
   const [scrapeAbort, setScrapeAbort] = useState<AbortController | null>(null)
+  const [scrapeFilters, setScrapeFilters] = useState({ website: 'with' as string, address: 'all' as string, type: 'company' as string, minRating: 0, minReviews: 0 })
 
   // Email
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -195,7 +198,7 @@ export default function PartenairesPage() {
         const res = await fetch('/api/partners/search', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ keyword: scrapeKeyword, location: loc }),
+          body: JSON.stringify({ keyword: scrapeKeyword, location: loc, listName: scrapeName.trim() || undefined, filters: scrapeFilters }),
           signal: abort.signal,
         })
 
@@ -261,6 +264,8 @@ export default function PartenairesPage() {
         fetchData()
 
         if (data.status !== 'scraping') break
+        // Small delay to avoid overwhelming the server
+        await new Promise(r => setTimeout(r, 500))
       }
     } catch {
       fetchData()
@@ -497,7 +502,7 @@ export default function PartenairesPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-white">Partenaires</h1>
+          <h1 className="text-2xl font-semibold text-white">Mailings</h1>
           {!activeSearchId && <p className="text-slate-400 text-sm mt-1">{partners.length} prospects · {signedPartners.length} signés</p>}
         </div>
         <button onClick={() => setShowScrape(true)}
@@ -565,7 +570,7 @@ export default function PartenairesPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {searches.map(s => {
                 const isScraping = s.scrapingStatus === 'SCRAPING'
-                const scrapePercent = s.totalToScrape > 0 ? Math.round((s.scrapedCount / s.totalToScrape) * 100) : 0
+                const scrapePercent = s.totalToScrape > 0 ? Math.min(99, Math.round((s.scrapedCount / s.totalToScrape) * 100)) : 0
                 const searchPartners = partners.filter(p => p.search?.keyword === s.keyword && p.search?.location === s.location)
                 const withEmail = searchPartners.filter(p => p.email).length
                 const mailsSent = searchPartners.filter(p => p.mailSentAt).length
@@ -595,7 +600,7 @@ export default function PartenairesPage() {
                           <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
                             <div className="h-full rounded-full transition-all duration-1000" style={{ width: `${scrapePercent}%`, background: 'linear-gradient(135deg, #E14B89 0%, #F8903C 100%)' }} />
                           </div>
-                          <p className="text-slate-600 text-[10px] mt-1">{s.scrapedCount}/{s.totalToScrape} analysés · {withEmail} emails trouvés</p>
+                          <p className="text-slate-600 text-[10px] mt-1">{Math.min(s.scrapedCount, s.totalToScrape)}/{s.totalToScrape} analyses · {withEmail} emails trouves</p>
                         </div>
                       </div>
                     ) : (
@@ -656,7 +661,7 @@ export default function PartenairesPage() {
             const withEmailCount = filtered.filter(p => p.email).length
             return s ? (
               <div className="bg-[#111118] border border-slate-800 rounded-xl p-4 mb-4">
-                <h3 className="text-white font-semibold">{s.keyword} | {s.location}</h3>
+                <h3 className="text-white font-semibold">{s.name || `${s.keyword} | ${s.location}`}</h3>
                 <p className="text-slate-500 text-xs">{filtered.length} résultats · {withEmailCount} avec email · {formatDate(s.createdAt)}</p>
               </div>
             ) : null
@@ -1227,7 +1232,7 @@ export default function PartenairesPage() {
                             <p className="text-gray-500 text-[11px] mt-1">Directeur commercial</p>
                             <p className="text-gray-500 text-[11px] mt-1">Agence Kameo</p>
                             <div className="mt-3.5">
-                              <p className="text-gray-500 text-[11px]">06 76 23 00 37</p>
+                              <p className="text-gray-500 text-[11px]">06 62 37 99 85</p>
                               <p className="text-gray-500 text-[11px] mt-1">contact@agence-kameo.fr</p>
                               <a href="https://www.agence-kameo.fr" target="_blank" rel="noopener" className="text-[11px] mt-1 block bg-gradient-to-r from-[#E14B89] to-[#F8903C] bg-clip-text text-transparent font-medium">www.agence-kameo.fr</a>
                             </div>
@@ -1268,10 +1273,16 @@ export default function PartenairesPage() {
             <h2 className="text-white font-semibold text-lg mb-4">Recherche Google Maps</h2>
             <form onSubmit={handleScrape} className="space-y-4">
               <div>
-                <label className="block text-slate-400 text-xs mb-1.5">Secteur d&apos;activité / Mot-clé *</label>
-                <input value={scrapeKeyword} onChange={e => setScrapeKeyword(e.target.value)} placeholder="Ex: agence immobilière, architecte, comptable..."
+                <label className="block text-slate-400 text-xs mb-1.5">Nom de la liste</label>
+                <input value={scrapeName} onChange={e => setScrapeName(e.target.value)} placeholder="Ex: Comptables IDF mars 2026"
                   disabled={scraping}
                   className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] disabled:opacity-50 disabled:cursor-not-allowed" autoFocus />
+              </div>
+              <div>
+                <label className="block text-slate-400 text-xs mb-1.5">Secteur d&apos;activite / Mot-cle *</label>
+                <input value={scrapeKeyword} onChange={e => setScrapeKeyword(e.target.value)} placeholder="Ex: agence immobiliere, architecte, comptable..."
+                  disabled={scraping}
+                  className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] disabled:opacity-50 disabled:cursor-not-allowed" />
               </div>
               <div>
                 <label className="block text-slate-400 text-xs mb-1.5">Villes / Zones * <span className="text-slate-600">({scrapeLocations.length} sélectionnée{scrapeLocations.length > 1 ? 's' : ''})</span></label>
@@ -1297,6 +1308,40 @@ export default function PartenairesPage() {
                   </div>
                 )}
               </div>
+              {!scraping && (
+                <div>
+                  <label className="block text-slate-400 text-xs mb-1.5">Filtres</label>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {[
+                      { key: 'website', label: 'Site web', options: [['all','Tous'],['with','Avec'],['without','Sans']] },
+                      { key: 'address', label: 'Adresse', options: [['all','Tous'],['with','Avec'],['without','Sans']] },
+                      { key: 'type', label: 'Type', options: [['all','Tous'],['company','Societes'],['freelance','Independants']] },
+                    ].map(f => (
+                      <div key={f.key} className="flex items-center gap-2 bg-[#1a1a24] border border-slate-800 rounded-lg px-3 py-2">
+                        <span className="text-[10px] text-slate-500 whitespace-nowrap">{f.label}</span>
+                        <select value={(scrapeFilters as Record<string, unknown>)[f.key] as string} onChange={e => setScrapeFilters(prev => ({ ...prev, [f.key]: e.target.value }))}
+                          className="flex-1 bg-transparent text-white text-xs focus:outline-none min-w-0">
+                          {f.options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                        </select>
+                      </div>
+                    ))}
+                    <div className="flex items-center gap-2 bg-[#1a1a24] border border-slate-800 rounded-lg px-3 py-2">
+                      <span className="text-[10px] text-slate-500 whitespace-nowrap">Note</span>
+                      <select value={scrapeFilters.minRating} onChange={e => setScrapeFilters(f => ({ ...f, minRating: Number(e.target.value) }))}
+                        className="flex-1 bg-transparent text-white text-xs focus:outline-none min-w-0">
+                        <option value={0}>Toutes</option><option value={3}>3+</option><option value={3.5}>3.5+</option><option value={4}>4+</option><option value={4.5}>4.5+</option>
+                      </select>
+                    </div>
+                    <div className="flex items-center gap-2 bg-[#1a1a24] border border-slate-800 rounded-lg px-3 py-2">
+                      <span className="text-[10px] text-slate-500 whitespace-nowrap">Avis</span>
+                      <select value={scrapeFilters.minReviews} onChange={e => setScrapeFilters(f => ({ ...f, minReviews: Number(e.target.value) }))}
+                        className="flex-1 bg-transparent text-white text-xs focus:outline-none min-w-0">
+                        <option value={0}>Tous</option><option value={1}>1+</option><option value={3}>3+</option><option value={5}>5+</option><option value={10}>10+</option><option value={20}>20+</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              )}
               {scraping && (
                 <div className="space-y-2">
                   {scrapeLocations.length > 1 && scrapeCurrentCity && (

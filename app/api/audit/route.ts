@@ -6,6 +6,8 @@ import { rateLimit } from '@/lib/security'
 import Anthropic from '@anthropic-ai/sdk'
 import { NextRequest, NextResponse } from 'next/server'
 
+export const maxDuration = 180
+
 // ── GET: list all audits ────────────────────────────────────────────────────────
 
 export async function GET() {
@@ -40,10 +42,13 @@ export async function POST(req: NextRequest) {
   const apiKey = process.env.PAGESPEED_API_KEY
 
   try {
-    // ── 1. PageSpeed Insights ─────────────────────────────────────────────────
-    const [mobile, desktop] = await Promise.all([
+    // ── 1. Run PageSpeed, multi-page scraping, technical checks, and backlinks in parallel ──
+    const [mobile, desktop, multiPage, technical, backlinksData] = await Promise.all([
       fetchPageSpeed(url, 'mobile', apiKey),
       fetchPageSpeed(url, 'desktop', apiKey),
+      discoverAndScrapePages(url),
+      checkTechnical(url),
+      fetchBacklinks(new URL(url).hostname).catch(() => null),
     ])
 
     const performanceMobile = mobile.performance
@@ -52,13 +57,51 @@ export async function POST(req: NextRequest) {
     // ── 2. Fetch & analyze website HTML ───────────────────────────────────────
     const siteAnalysis = await analyzeWebsite(url)
 
-    // ── 3. Technical checks ───────────────────────────────────────────────────
-    const technical = await checkTechnical(url)
+    // ── 2b. Broken links check ────────────────────────────────────────────────
+    const brokenLinks = await checkBrokenLinks(multiPage.allInternalLinks.slice(0, 15))
+
+    // ── 2c. Keyword density ───────────────────────────────────────────────────
+    const kws_ = (keywords || '').toLowerCase().split(/[,;|]+/).map((k: string) => k.trim()).filter(Boolean)
+    // Re-fetch homepage text content for keyword density calculation
+    let combinedTextContent = ''
+    try {
+      const densityRes = await fetch(url, {
+        signal: AbortSignal.timeout(8000),
+        redirect: 'follow',
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; KameoAudit/1.0)' },
+      })
+      const densityHtml = await densityRes.text()
+      combinedTextContent = densityHtml.replace(/<script[\s\S]*?<\/script>/gi, '')
+        .replace(/<style[\s\S]*?<\/style>/gi, '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+    } catch { /* ignore */ }
+    const keywordDensity = calculateKeywordDensity(combinedTextContent, kws_)
+
+    // ── Core Web Vitals (average mobile + desktop) ────────────────────────────
+    const cwvLcp = mobile.coreWebVitals.lcp ?? desktop.coreWebVitals.lcp ?? null
+    const cwvCls = mobile.coreWebVitals.cls ?? desktop.coreWebVitals.cls ?? null
 
     // ── 4. Calculate 6 category scores ────────────────────────────────────────
 
-    // 1. PERFORMANCES (moyenne mobile + desktop)
-    const performanceScore = Math.round((performanceMobile + performanceDesktop) / 2)
+    // 1. PERFORMANCES (moyenne mobile + desktop + CWV bonuses)
+    let performanceScore = Math.round((performanceMobile + performanceDesktop) / 2)
+    // CWV bonuses/penalties
+    if (cwvLcp !== null) {
+      if (cwvLcp < 2500) performanceScore += 5
+      else if (cwvLcp < 4000) performanceScore += 2
+      else performanceScore -= 5
+    }
+    if (cwvCls !== null) {
+      if (cwvCls < 0.1) performanceScore += 5
+      else if (cwvCls < 0.25) performanceScore += 2
+      else performanceScore -= 5
+    }
+    performanceScore = Math.max(0, Math.min(performanceScore, 100))
+    // CWV hard caps
+    if (cwvLcp !== null && cwvLcp > 4000) performanceScore = Math.min(performanceScore, 50)
+    if (cwvCls !== null && cwvCls > 0.25) performanceScore = Math.min(performanceScore, 55)
 
     // 2. BALISES — scoring exigeant avec analyse hiérarchie headings
     let balisesScore = 0
@@ -86,45 +129,75 @@ export async function POST(req: NextRequest) {
       duplicateHeadings: siteAnalysis.duplicateHeadings,
       hasDeepHeadingAbuse: siteAnalysis.hasDeepHeadingAbuse,
       headingStructure: siteAnalysis.headingStructure,
+      kwInH1: false,
+      kwInTitle: false,
+      kwInDesc: false,
     }
 
-    // ── H1 (max 20 pts) ──
+    // ── Keyword coherence analysis ──
+    const kws = (keywords || '').toLowerCase().split(/[,;|]+/).map((k: string) => k.trim()).filter(Boolean)
+    const h1Lower = (balisesChecks.h1Text || '').toLowerCase()
+    const titleLower = (siteAnalysis.metaTitle || '').toLowerCase()
+    const descLower = (siteAnalysis.metaDescription || '').toLowerCase()
+    const kwInH1 = kws.length > 0 ? kws.some((kw: string) => h1Lower.includes(kw)) : false
+    const kwInTitle = kws.length > 0 ? kws.some((kw: string) => titleLower.includes(kw)) : false
+    const kwInDesc = kws.length > 0 ? kws.some((kw: string) => descLower.includes(kw)) : false
+
+    balisesChecks.kwInH1 = kwInH1
+    balisesChecks.kwInTitle = kwInTitle
+    balisesChecks.kwInDesc = kwInDesc
+
+    // ── H1 (max 15 pts) ──
     if (balisesChecks.hasH1) {
-      if (balisesChecks.h1Count === 1) balisesScore += 20 // unique H1 = perfect
-      else balisesScore += 8 // multiple H1 = partial credit
+      if (balisesChecks.h1Count === 1) balisesScore += 10
+      else balisesScore += 4 // multiple H1 = probleme
+      // H1 quality: not too short, not too long
+      const h1Len = (balisesChecks.h1Text || '').length
+      if (h1Len >= 20 && h1Len <= 70) balisesScore += 5
+      else if (h1Len >= 10 && h1Len <= 100) balisesScore += 2
     }
 
-    // ── Meta title (max 15 pts) ──
+    // ── Meta title (max 12 pts) ──
     if (balisesChecks.hasMetaTitle) {
-      balisesScore += 8
+      balisesScore += 5
       if (balisesChecks.metaTitleLength >= 30 && balisesChecks.metaTitleLength <= 60) balisesScore += 7
       else if (balisesChecks.metaTitleLength >= 20 && balisesChecks.metaTitleLength <= 70) balisesScore += 3
+      // Title = juste le nom du site → pas optimise
+      if (balisesChecks.metaTitleLength < 15) balisesScore -= 3
     }
 
-    // ── Meta description (max 15 pts) ──
+    // ── Meta description (max 12 pts) ──
     if (balisesChecks.hasMetaDescription) {
-      balisesScore += 8
+      balisesScore += 5
       if (balisesChecks.metaDescLength >= 120 && balisesChecks.metaDescLength <= 160) balisesScore += 7
       else if (balisesChecks.metaDescLength >= 80 && balisesChecks.metaDescLength <= 200) balisesScore += 3
+      // Trop courte = pas optimisee
+      if (balisesChecks.metaDescLength < 70) balisesScore -= 3
     }
 
-    // ── Heading hierarchy quality (max 25 pts) ──
-    // Need at least some H2 for structure
-    if (balisesChecks.h2Count >= 3) balisesScore += 8
-    else if (balisesChecks.h2Count >= 1) balisesScore += 4
-    // H3 used properly under H2
-    if (balisesChecks.h3Count >= 1 && balisesChecks.h2Count >= 1) balisesScore += 5
+    // ── Keyword coherence (max 15 pts) — le plus important pour un expert SEO ──
+    if (kws.length > 0) {
+      if (kwInH1) balisesScore += 6  // mot-cle dans le H1 = critique
+      if (kwInTitle) balisesScore += 5  // mot-cle dans le title
+      if (kwInDesc) balisesScore += 4  // mot-cle dans la meta description
+    } else {
+      // Pas de mot-cle fourni → on ne peut pas verifier, points neutres
+      balisesScore += 8
+    }
 
-    // Penalize hierarchy violations (H1→H4, H2→H6 etc.)
-    if (balisesChecks.hierarchyViolations === 0) balisesScore += 7
-    else if (balisesChecks.hierarchyViolations <= 2) balisesScore += 3
-    // else: 0 points for 3+ violations
+    // ── Heading hierarchy quality (max 18 pts) ──
+    if (balisesChecks.h2Count >= 4) balisesScore += 7
+    else if (balisesChecks.h2Count >= 3) balisesScore += 5
+    else if (balisesChecks.h2Count >= 1) balisesScore += 3
+    if (balisesChecks.h3Count >= 2 && balisesChecks.h2Count >= 2) balisesScore += 5
+    else if (balisesChecks.h3Count >= 1 && balisesChecks.h2Count >= 1) balisesScore += 2
 
-    // Penalize deep heading abuse (H4-H6 overused for non-semantic purposes)
-    if (!balisesChecks.hasDeepHeadingAbuse) balisesScore += 5
-    // else: 0 points
+    if (balisesChecks.hierarchyViolations === 0) balisesScore += 4
+    else if (balisesChecks.hierarchyViolations <= 1) balisesScore += 2
 
-    // ── Duplicate headings penalty (max -10) ──
+    if (!balisesChecks.hasDeepHeadingAbuse) balisesScore += 2
+
+    // ── Duplicate headings penalty ──
     if (balisesChecks.duplicateHeadings > 5) balisesScore -= 10
     else if (balisesChecks.duplicateHeadings > 2) balisesScore -= 5
     else if (balisesChecks.duplicateHeadings > 0) balisesScore -= 2
@@ -132,27 +205,41 @@ export async function POST(req: NextRequest) {
     // ── Canonical (max 5 pts) ──
     if (balisesChecks.hasCanonical) balisesScore += 5
 
-    // ── Open Graph quality (max 15 pts) ──
+    // ── Open Graph quality (max 13 pts) ──
     if (balisesChecks.hasOgTitle) balisesScore += 4
-    if (balisesChecks.hasOgDescription) balisesScore += 4
+    if (balisesChecks.hasOgDescription) balisesScore += 3
     if (balisesChecks.hasOgImage) balisesScore += 4
-    if (balisesChecks.ogTagCount >= 4) balisesScore += 3 // has additional OG tags (type, url, etc.)
+    if (balisesChecks.ogTagCount >= 4) balisesScore += 2
 
-    // Floor at 0, cap at 100
     balisesScore = Math.max(0, Math.min(balisesScore, 100))
 
-    // Hard rule: missing essentials → capped
+    // ── HARD CAPS — un expert SEO est sans pitie ──
     if (!balisesChecks.hasH1 || !balisesChecks.hasMetaTitle || !balisesChecks.hasMetaDescription) {
-      balisesScore = Math.min(balisesScore, 35)
+      balisesScore = Math.min(balisesScore, 30) // manque un essentiel = max 30
     }
-    // Multiple H1 → capped at 70
-    if (balisesChecks.h1Count > 1) {
-      balisesScore = Math.min(balisesScore, 70)
+    if (!balisesChecks.hasH1 && !balisesChecks.hasMetaTitle) {
+      balisesScore = Math.min(balisesScore, 15) // manque les 2 = catastrophe
     }
-    // Severe hierarchy issues → capped at 65
-    if (balisesChecks.hierarchyViolations >= 3) {
-      balisesScore = Math.min(balisesScore, 65)
+    if (balisesChecks.h1Count > 1) balisesScore = Math.min(balisesScore, 55)
+    if (balisesChecks.hierarchyViolations >= 3) balisesScore = Math.min(balisesScore, 50)
+    if (balisesChecks.hierarchyViolations >= 5) balisesScore = Math.min(balisesScore, 35)
+    // Mot-cle absent du H1 et du title = pas optimise pour le SEO
+    if (kws.length > 0 && !kwInH1 && !kwInTitle) balisesScore = Math.min(balisesScore, 50)
+    // Title trop court (juste nom de marque) = pas optimise
+    if (balisesChecks.metaTitleLength > 0 && balisesChecks.metaTitleLength < 20) balisesScore = Math.min(balisesScore, 55)
+
+    // ── New balises signals ──
+    if (siteAnalysis.h1VsTitleIdentical) {
+      balisesScore -= 8
+      balisesScore = Math.min(balisesScore, 60)
     }
+    if (siteAnalysis.hasFavicon) balisesScore += 3
+    if (siteAnalysis.hasTwitterTitle && siteAnalysis.hasTwitterImage) balisesScore += 4
+    if (siteAnalysis.hasCharset) balisesScore += 2
+    if (siteAnalysis.hasLangAttr) balisesScore += 3
+    balisesScore = Math.max(0, Math.min(balisesScore, 100))
+    // Hard cap: no lang attribute
+    if (!siteAnalysis.hasLangAttr) balisesScore = Math.min(balisesScore, 55)
 
     // 3. CONTENU — scoring exigeant (vision rédacteur SEO expert)
     let contentScore = 0
@@ -172,69 +259,105 @@ export async function POST(req: NextRequest) {
       listCount: siteAnalysis.listCount,
     }
 
-    // ── Profondeur rédactionnelle (max 25 pts) ──
-    // On veut du VRAI contenu (paragraphes rédigés), pas juste des mots épars
-    // Combiner wordCount ET paragraphCount pour évaluer la profondeur
-    const hasRealContent = contentChecks.paragraphCount >= 5 && contentChecks.avgParagraphLength >= 25
-    const hasDecentContent = contentChecks.paragraphCount >= 3 && contentChecks.avgParagraphLength >= 15
-    if (hasRealContent && contentChecks.wordCount >= 800) contentScore += 25
-    else if (hasRealContent && contentChecks.wordCount >= 500) contentScore += 18
-    else if (hasDecentContent && contentChecks.wordCount >= 400) contentScore += 12
-    else if (hasDecentContent) contentScore += 7
-    else if (contentChecks.wordCount >= 300) contentScore += 4
-    // Beaucoup de mots mais pas de paragraphes = contenu superficiel → quasi 0
+    // ── QUANTITE DE CONTENU (max 20 pts) — un expert SEO veut du fond ──
+    // Pour une page d'accueil, 800+ mots est le minimum pour ranker
+    // Combiner wordCount, paragraphCount et avgParagraphLength
+    const hasRealContent = contentChecks.paragraphCount >= 6 && contentChecks.avgParagraphLength >= 30
+    const hasDecentContent = contentChecks.paragraphCount >= 4 && contentChecks.avgParagraphLength >= 20
+    const hasMinimalContent = contentChecks.paragraphCount >= 2 && contentChecks.avgParagraphLength >= 15
+    if (hasRealContent && contentChecks.wordCount >= 1200) contentScore += 20
+    else if (hasRealContent && contentChecks.wordCount >= 800) contentScore += 16
+    else if (hasDecentContent && contentChecks.wordCount >= 600) contentScore += 12
+    else if (hasDecentContent && contentChecks.wordCount >= 400) contentScore += 8
+    else if (hasMinimalContent && contentChecks.wordCount >= 300) contentScore += 5
+    else if (contentChecks.wordCount >= 200) contentScore += 2
 
-    // ── Structure rédactionnelle titres + sous-titres (max 18 pts) ──
-    // Les H2 découpent le contenu, les H3 le détaillent
-    if (contentChecks.h2Count >= 4) contentScore += 10
-    else if (contentChecks.h2Count >= 3) contentScore += 7
-    else if (contentChecks.h2Count >= 2) contentScore += 4
-    else if (contentChecks.h2Count >= 1) contentScore += 2
-    if (contentChecks.h3Count >= 3 && contentChecks.h2Count >= 2) contentScore += 8
-    else if (contentChecks.h3Count >= 2 && contentChecks.h2Count >= 1) contentScore += 5
-    else if (contentChecks.h3Count >= 1 && contentChecks.h2Count >= 1) contentScore += 2
+    // ── STRUCTURE REDACTIONNELLE (max 18 pts) ──
+    // H2 decoupent le contenu, H3 le detaillent — un expert veut une arbo riche
+    if (contentChecks.h2Count >= 5) contentScore += 9
+    else if (contentChecks.h2Count >= 4) contentScore += 7
+    else if (contentChecks.h2Count >= 3) contentScore += 5
+    else if (contentChecks.h2Count >= 2) contentScore += 3
+    else if (contentChecks.h2Count >= 1) contentScore += 1
+    if (contentChecks.h3Count >= 4 && contentChecks.h2Count >= 3) contentScore += 9
+    else if (contentChecks.h3Count >= 2 && contentChecks.h2Count >= 2) contentScore += 6
+    else if (contentChecks.h3Count >= 1 && contentChecks.h2Count >= 1) contentScore += 3
 
-    // ── Éléments de structuration (max 5 pts) ──
-    if (contentChecks.listCount >= 3) contentScore += 5
-    else if (contentChecks.listCount >= 1) contentScore += 2
+    // ── RATIO MOTS PAR HEADING (max 7 pts) — equilibre contenu/structure ──
+    // Ideal: 100-200 mots par heading, montre un contenu detaille sous chaque titre
+    if (contentChecks.wordsPerHeading >= 80 && contentChecks.wordsPerHeading <= 250) contentScore += 7
+    else if (contentChecks.wordsPerHeading >= 50 && contentChecks.wordsPerHeading <= 350) contentScore += 4
+    else if (contentChecks.wordsPerHeading > 0) contentScore += 1
 
-    // ── Maillage interne (max 10 pts) ──
-    if (contentChecks.internalLinks >= 10) contentScore += 10
-    else if (contentChecks.internalLinks >= 5) contentScore += 7
-    else if (contentChecks.internalLinks >= 3) contentScore += 4
-    else if (contentChecks.internalLinks >= 1) contentScore += 2
+    // ── ELEMENTS DE STRUCTURATION (max 5 pts) — listes, tableaux ──
+    if (contentChecks.listCount >= 4) contentScore += 5
+    else if (contentChecks.listCount >= 2) contentScore += 3
+    else if (contentChecks.listCount >= 1) contentScore += 1
 
-    // ── Images + alt (max 7 pts) ──
+    // ── MAILLAGE INTERNE (max 10 pts) — critique pour le SEO ──
+    if (contentChecks.internalLinks >= 15) contentScore += 10
+    else if (contentChecks.internalLinks >= 8) contentScore += 7
+    else if (contentChecks.internalLinks >= 5) contentScore += 5
+    else if (contentChecks.internalLinks >= 2) contentScore += 3
+    else if (contentChecks.internalLinks >= 1) contentScore += 1
+
+    // ── IMAGES + ALT (max 7 pts) ──
     contentScore += Math.round(contentChecks.imgAltRatio * 7)
 
-    // ── Données structurées (max 7 pts) ──
+    // ── DONNEES STRUCTUREES (max 7 pts) ──
     if (contentChecks.hasStructuredData) contentScore += 7
 
-    // ── Ratio contenu/code (max 8 pts) ──
-    if (contentChecks.contentRatio >= 25) contentScore += 8
-    else if (contentChecks.contentRatio >= 15) contentScore += 5
-    else if (contentChecks.contentRatio >= 8) contentScore += 2
+    // ── RATIO CONTENU/CODE (max 8 pts) ──
+    if (contentChecks.contentRatio >= 30) contentScore += 8
+    else if (contentChecks.contentRatio >= 20) contentScore += 6
+    else if (contentChecks.contentRatio >= 12) contentScore += 3
+    else if (contentChecks.contentRatio >= 8) contentScore += 1
 
-    // ── Liens externes pertinents (max 5 pts) ──
+    // ── LIENS EXTERNES (max 5 pts) ──
     if (contentChecks.externalLinks >= 3) contentScore += 5
     else if (contentChecks.externalLinks >= 1) contentScore += 2
 
-    // ── PageSpeed SEO (max 10 pts) — bonus modeste ──
-    contentScore += Math.round(contentChecks.pagespeedSeo * 0.10)
+    // ── PAGESPEED SEO (max 8 pts) ──
+    contentScore += Math.round(contentChecks.pagespeedSeo * 0.08)
 
     contentScore = Math.max(0, Math.min(contentScore, 100))
 
-    // ── Hard caps — contenu clairement insuffisant ──
-    // Pas de vrais paragraphes → site "vitrine vide"
-    if (contentChecks.paragraphCount < 2) contentScore = Math.min(contentScore, 30)
-    else if (contentChecks.paragraphCount < 4 && contentChecks.avgParagraphLength < 20) contentScore = Math.min(contentScore, 40)
-    // Aucun H2 → pas de structure → cap
-    if (contentChecks.h2Count === 0) contentScore = Math.min(contentScore, 35)
-    // Très peu de mots réels
-    if (contentChecks.wordCount < 150) contentScore = Math.min(contentScore, 20)
-    else if (contentChecks.wordCount < 300) contentScore = Math.min(contentScore, 40)
-    // Ratio contenu/code catastrophique
-    if (contentChecks.contentRatio < 5) contentScore = Math.min(contentScore, 30)
+    // ── HARD CAPS — un expert SEO est impitoyable sur le contenu ──
+    // Pas de vrais paragraphes = site vide
+    if (contentChecks.paragraphCount < 2) contentScore = Math.min(contentScore, 20)
+    else if (contentChecks.paragraphCount < 3) contentScore = Math.min(contentScore, 30)
+    else if (contentChecks.paragraphCount < 5 && contentChecks.avgParagraphLength < 20) contentScore = Math.min(contentScore, 40)
+    // Aucun H2 = pas de structure editoriale
+    if (contentChecks.h2Count === 0) contentScore = Math.min(contentScore, 25)
+    else if (contentChecks.h2Count === 1) contentScore = Math.min(contentScore, 50)
+    // Tres peu de mots = pas de contenu
+    if (contentChecks.wordCount < 100) contentScore = Math.min(contentScore, 10)
+    else if (contentChecks.wordCount < 200) contentScore = Math.min(contentScore, 25)
+    else if (contentChecks.wordCount < 400) contentScore = Math.min(contentScore, 40)
+    else if (contentChecks.wordCount < 600) contentScore = Math.min(contentScore, 55)
+    // Ratio contenu/code catastrophique = site presque vide
+    if (contentChecks.contentRatio < 5) contentScore = Math.min(contentScore, 20)
+    else if (contentChecks.contentRatio < 8) contentScore = Math.min(contentScore, 35)
+    // Pas de maillage interne = isolation SEO
+    if (contentChecks.internalLinks === 0) contentScore = Math.min(contentScore, 40)
+    // Paragraphes tres courts = contenu superficiel
+    if (contentChecks.avgParagraphLength < 10 && contentChecks.paragraphCount > 0) contentScore = Math.min(contentScore, 35)
+
+    // ── New content signals: keyword density ──
+    if (kws_.length > 0 && keywordDensity.length > 0) {
+      const primaryDensity = keywordDensity[0]?.density ?? 0
+      if (primaryDensity >= 1 && primaryDensity <= 3) contentScore += 7
+      else if ((primaryDensity >= 0.5 && primaryDensity < 1) || (primaryDensity > 3 && primaryDensity <= 4)) contentScore += 3
+      // else: 0% or >5% → no bonus
+      contentScore = Math.max(0, Math.min(contentScore, 100))
+      // Hard cap: keyword absent from body
+      if (primaryDensity === 0) contentScore = Math.min(contentScore, 45)
+    }
+    // Multi-page: low total word count across pages = thin site
+    if (multiPage.pagesScraped > 1 && multiPage.totalWordCount < 500) {
+      contentScore = Math.min(contentScore, contentScore - 5)
+      contentScore = Math.max(0, contentScore)
+    }
 
     // 4. RESPONSIVE — scoring expert webdesigner mobile
     // Un site "fonctionnel" sur mobile ≠ un site "pensé" pour le mobile
@@ -322,6 +445,8 @@ export async function POST(req: NextRequest) {
       hasSitemap: technical.hasSitemap,
       hasMixedContent: technical.hasMixedContent,
       responseTime: technical.responseTime,
+      sitemapUrlCount: technical.sitemapUrlCount,
+      sitemapLastMod: technical.sitemapLastMod,
     }
     // HTTPS (30 pts) — fondamental, sans HTTPS le site ne devrait pas exister en 2026
     if (configChecks.isHttps) configScore += 30
@@ -335,6 +460,27 @@ export async function POST(req: NextRequest) {
     if (!configChecks.hasMixedContent) configScore += 10
     // Temps de réponse : max 20 pts (< 500ms = 20, > 2000ms = 0 — plus exigeant)
     configScore += Math.round(Math.max(0, Math.min(20, (2000 - configChecks.responseTime) / 2000 * 20)))
+    // ── New config signals ──
+    if (siteAnalysis.hasCharset) configScore += 3
+    if (siteAnalysis.hasLangAttr) configScore += 3
+    // Broken links
+    if (brokenLinks.length === 0) configScore += 5
+    else if (brokenLinks.length <= 2) configScore += 2
+    // else 3+: no bonus
+    // Sitemap quality
+    if (technical.sitemapUrlCount >= 10) configScore += 3
+    if (technical.sitemapLastMod) {
+      const lastModDate = new Date(technical.sitemapLastMod)
+      const sixMonthsAgo = new Date(); sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6)
+      if (lastModDate > sixMonthsAgo) configScore += 2
+    }
+    // Backlinks
+    if (backlinksData) {
+      if (backlinksData.referringDomains >= 50) configScore += 5
+      else if (backlinksData.referringDomains >= 20) configScore += 3
+      else if (backlinksData.referringDomains >= 5) configScore += 1
+    }
+
     configScore = Math.min(configScore, 100)
     // Hard caps — pénalités lourdes pour manques critiques
     if (!configChecks.isHttps) configScore = Math.min(configScore, 20)
@@ -343,6 +489,8 @@ export async function POST(req: NextRequest) {
     else if (!configChecks.hasRobotsTxt) configScore = Math.min(configScore, 55)
     else if (!configChecks.hasSitemap) configScore = Math.min(configScore, 55)
     if (configChecks.responseTime > 3000) configScore = Math.min(configScore, 45)
+    // New hard cap: many broken links
+    if (brokenLinks.length > 5) configScore = Math.min(configScore, 40)
 
     // 6. EXPERIENCE UTILISATEUR — scoring très exigeant (vision webdesigner expert)
     // Un webdesigner regarde : modernité du design, animations, CTA, navigation, hero, footer, typographie, etc.
@@ -514,7 +662,7 @@ export async function POST(req: NextRequest) {
       visualBlockCount: siteAnalysis.visualBlockCount,
     }
 
-    const analysisData = {
+    const analysisData: AnalysisData = {
       url,
       technology: siteAnalysis.technology,
       keywords: keywords || null,
@@ -536,6 +684,22 @@ export async function POST(req: NextRequest) {
       globalScore,
       metaTitle: siteAnalysis.metaTitle,
       metaDescription: siteAnalysis.metaDescription,
+      // New fields
+      coreWebVitals: mobile.coreWebVitals,
+      backlinks: backlinksData,
+      brokenLinksCount: brokenLinks.length,
+      keywordDensity,
+      multiPageData: { pagesScraped: multiPage.pagesScraped, totalWordCount: multiPage.totalWordCount },
+      hasCharset: siteAnalysis.hasCharset,
+      hasLangAttr: siteAnalysis.hasLangAttr,
+      langValue: siteAnalysis.langValue,
+      hasFavicon: siteAnalysis.hasFavicon,
+      hasTwitterCards: siteAnalysis.hasTwitterCards,
+      hasTwitterTitle: siteAnalysis.hasTwitterTitle,
+      hasTwitterImage: siteAnalysis.hasTwitterImage,
+      h1VsTitleIdentical: siteAnalysis.h1VsTitleIdentical,
+      sitemapUrlCount: technical.sitemapUrlCount,
+      sitemapLastMod: technical.sitemapLastMod,
     }
 
     const aiAnalysis = await generateAIAnalysis(analysisData)
@@ -561,12 +725,23 @@ export async function POST(req: NextRequest) {
             config: configScore,
             ux: uxScore,
           },
-          logoUrl: `https://www.google.com/s2/favicons?domain=${new URL(url).hostname}&sz=128`,
+          logoUrl: siteAnalysis.faviconUrl || `https://icons.duckduckgo.com/ip3/${new URL(url).hostname}.ico`,
           balisesChecks,
           contentChecks,
           responsiveChecks,
           configChecks,
           descriptions: aiAnalysis.descriptions,
+          cost: aiAnalysis.cost || null,
+          costDetails: aiAnalysis.costDetails || null,
+          coreWebVitals: mobile.coreWebVitals,
+          backlinks: backlinksData,
+          brokenLinks,
+          multiPageData: {
+            pagesScraped: multiPage.pagesScraped,
+            totalWordCount: multiPage.totalWordCount,
+            pageDetails: multiPage.pageDetails,
+          },
+          keywordDensity,
         },
         improvements: aiAnalysis.improvements,
       },
@@ -588,12 +763,17 @@ export async function PATCH(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { id, keywords } = await req.json()
+  const { id, keywords, details } = await req.json()
   if (!id) return NextResponse.json({ error: 'ID requis' }, { status: 400 })
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data: any = {}
+  if (keywords !== undefined) data.keywords = keywords?.toString() ?? null
+  if (details !== undefined) data.details = details
 
   const audit = await prisma.audit.update({
     where: { id },
-    data: { keywords: keywords?.toString() ?? null },
+    data,
     include: { createdBy: true },
   })
 
@@ -671,12 +851,20 @@ async function fetchPageSpeed(url: string, strategy: 'mobile' | 'desktop', apiKe
     throw new Error("Pas de résultats Lighthouse — vérifiez que l'URL est accessible et publique.")
   }
 
+  const audits = data.lighthouseResult.audits ?? {}
   return {
     performance: Math.round((data.lighthouseResult.categories?.performance?.score ?? 0) * 100),
     seo: Math.round((data.lighthouseResult.categories?.seo?.score ?? 0) * 100),
     accessibility: Math.round((data.lighthouseResult.categories?.accessibility?.score ?? 0) * 100),
     bestPractices: Math.round((data.lighthouseResult.categories?.['best-practices']?.score ?? 0) * 100),
-    audits: data.lighthouseResult.audits ?? {},
+    audits,
+    coreWebVitals: {
+      lcp: audits?.['largest-contentful-paint']?.numericValue ?? null,
+      cls: audits?.['cumulative-layout-shift']?.numericValue ?? null,
+      inp: audits?.['interaction-to-next-paint']?.numericValue ?? null,
+      fcp: audits?.['first-contentful-paint']?.numericValue ?? null,
+      tbt: audits?.['total-blocking-time']?.numericValue ?? null,
+    },
   }
 }
 
@@ -936,6 +1124,27 @@ async function analyzeWebsite(url: string) {
       hasSmoothScroll,
       hasHoverEffects,
       visualBlockCount,
+      // Charset & lang
+      hasCharset: /<meta[^>]*charset=/i.test(html),
+      hasLangAttr: /<html[^>]*lang=/i.test(html),
+      langValue: html.match(/<html[^>]*lang=["']?([^"'\s>]+)/i)?.[1] || null,
+      // Favicon
+      hasFavicon: /<link[^>]*rel=["'](icon|shortcut icon|apple-touch-icon)["']/i.test(html),
+      faviconUrl: (() => {
+        const m = html.match(/<link[^>]*rel=["'](icon|shortcut icon|apple-touch-icon)["'][^>]*href=["']([^"']+)["']/i)
+          || html.match(/<link[^>]*href=["']([^"']+)["'][^>]*rel=["'](icon|shortcut icon|apple-touch-icon)["']/i)
+        const href = m?.[2] || m?.[1] || null
+        if (!href) return null
+        if (href.startsWith('http')) return href
+        if (href.startsWith('//')) return 'https:' + href
+        try { return new URL(href, parsedUrl.origin).href } catch { return null }
+      })(),
+      // Twitter Cards
+      hasTwitterCards: /<meta[^>]*name=["']twitter:/i.test(html),
+      hasTwitterTitle: /<meta[^>]*name=["']twitter:title["']/i.test(html),
+      hasTwitterImage: /<meta[^>]*name=["']twitter:image["']/i.test(html),
+      // H1 vs title identical
+      h1VsTitleIdentical: (h1s[0]?.text || '').toLowerCase().trim() === (metaTitle || '').toLowerCase().trim() && !!metaTitle,
     }
   } catch {
     return {
@@ -956,7 +1165,169 @@ async function analyzeWebsite(url: string) {
       hasHeroSection: false, hasSocialProof: false, hasCtaInNav: false, hasStickyNav: false,
       footerLinkCount: 0, footerHasColumns: false, hasBackToTop: false, hasBreadcrumbs: false,
       hasLazyLoading: false, hasSmoothScroll: false, hasHoverEffects: false, visualBlockCount: 0,
+      hasCharset: false, hasLangAttr: false, langValue: null, hasFavicon: false, faviconUrl: null,
+      hasTwitterCards: false, hasTwitterTitle: false, hasTwitterImage: false, h1VsTitleIdentical: false,
     }
+  }
+}
+
+// ── Multi-page scraping ─────────────────────────────────────────────────────
+
+async function discoverAndScrapePages(url: string): Promise<{
+  pagesScraped: number
+  totalWordCount: number
+  pageDetails: { url: string; wordCount: number; hasH1: boolean; metaTitle: string | null }[]
+  allInternalLinks: string[]
+}> {
+  const fallback = { pagesScraped: 0, totalWordCount: 0, pageDetails: [], allInternalLinks: [] }
+  try {
+    const parsedUrl = new URL(url)
+    const origin = parsedUrl.origin
+
+    // Fetch homepage HTML
+    const res = await fetch(url, {
+      signal: AbortSignal.timeout(10000),
+      redirect: 'follow',
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; KameoAudit/1.0)' },
+    })
+    const html = await res.text()
+
+    // Extract all same-domain links
+    const linkRegex = /<a[^>]*href=["']([^"'#]+)["']/gi
+    const allLinks: string[] = []
+    let lm
+    while ((lm = linkRegex.exec(html)) !== null) {
+      let href = lm[1]
+      if (href.startsWith('/')) href = origin + href
+      try {
+        const linkUrl = new URL(href)
+        if (linkUrl.hostname === parsedUrl.hostname && linkUrl.pathname !== parsedUrl.pathname) {
+          if (!allLinks.includes(linkUrl.href)) allLinks.push(linkUrl.href)
+        }
+      } catch { /* skip invalid URLs */ }
+    }
+
+    // Priority paths
+    const priorityPaths = ['/services', '/about', '/a-propos', '/contact', '/blog', '/nos-services',
+      '/qui-sommes-nous', '/tarifs', '/portfolio', '/realisations', '/agence', '/equipe', '/prestations']
+
+    const sorted = allLinks.sort((a, b) => {
+      const aPath = new URL(a).pathname.toLowerCase()
+      const bPath = new URL(b).pathname.toLowerCase()
+      const aPriority = priorityPaths.some(p => aPath.startsWith(p))
+      const bPriority = priorityPaths.some(p => bPath.startsWith(p))
+      if (aPriority && !bPriority) return -1
+      if (!aPriority && bPriority) return 1
+      return 0
+    })
+
+    const toScrape = sorted.slice(0, 4)
+    const results = await Promise.allSettled(
+      toScrape.map(async (link) => {
+        const r = await fetch(link, {
+          signal: AbortSignal.timeout(8000),
+          redirect: 'follow',
+          headers: { 'User-Agent': 'Mozilla/5.0 (compatible; KameoAudit/1.0)' },
+        })
+        const h = await r.text()
+        const textContent = h.replace(/<script[\s\S]*?<\/script>/gi, '')
+          .replace(/<style[\s\S]*?<\/style>/gi, '')
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+        const wordCount = textContent.split(/\s+/).filter(w => w.length > 2).length
+        const hasH1 = /<h1[\s>]/i.test(h)
+        const metaTitle = h.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1]?.trim() || null
+        return { url: link, wordCount, hasH1, metaTitle }
+      })
+    )
+
+    const pageDetails = results
+      .filter((r): r is PromiseFulfilledResult<{ url: string; wordCount: number; hasH1: boolean; metaTitle: string | null }> => r.status === 'fulfilled')
+      .map(r => r.value)
+
+    const totalWordCount = pageDetails.reduce((sum, p) => sum + p.wordCount, 0)
+
+    return {
+      pagesScraped: pageDetails.length,
+      totalWordCount,
+      pageDetails,
+      allInternalLinks: allLinks,
+    }
+  } catch {
+    return fallback
+  }
+}
+
+// ── Keyword density ─────────────────────────────────────────────────────────
+
+function calculateKeywordDensity(text: string, keywords: string[]): { keyword: string; count: number; density: number }[] {
+  if (!text || keywords.length === 0) return []
+  const lowerText = text.toLowerCase()
+  const totalWords = lowerText.split(/\s+/).filter(w => w.length > 1).length
+  if (totalWords === 0) return keywords.map(kw => ({ keyword: kw, count: 0, density: 0 }))
+
+  return keywords.map(kw => {
+    const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const regex = new RegExp(`\\b${escaped}\\b`, 'gi')
+    const matches = lowerText.match(regex)
+    const count = matches ? matches.length : 0
+    const density = Math.round((count / totalWords) * 10000) / 100
+    return { keyword: kw, count, density }
+  })
+}
+
+// ── Broken links check ──────────────────────────────────────────────────────
+
+async function checkBrokenLinks(links: string[]): Promise<{ url: string; status: number }[]> {
+  if (links.length === 0) return []
+  const toCheck = links.slice(0, 15)
+  const results = await Promise.allSettled(
+    toCheck.map(async (link) => {
+      const res = await fetch(link, {
+        method: 'HEAD',
+        signal: AbortSignal.timeout(5000),
+        redirect: 'follow',
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; KameoAudit/1.0)' },
+      })
+      return { url: link, status: res.status }
+    })
+  )
+  return results
+    .filter((r): r is PromiseFulfilledResult<{ url: string; status: number }> => r.status === 'fulfilled')
+    .map(r => r.value)
+    .filter(r => r.status >= 400)
+}
+
+// ── Backlinks fetch (DataForSEO) ────────────────────────────────────────────
+
+function dfHeaders(): Record<string, string> | null {
+  const login = process.env.DATAFORSEO_LOGIN
+  const password = process.env.DATAFORSEO_PASSWORD
+  if (!login || !password) return null
+  return { 'Authorization': `Basic ${Buffer.from(`${login}:${password}`).toString('base64')}`, 'Content-Type': 'application/json' }
+}
+
+async function fetchBacklinks(domain: string): Promise<{ backlinks: number; referringDomains: number; rank: number } | null> {
+  const headers = dfHeaders()
+  if (!headers) return null
+  try {
+    const res = await fetch('https://api.dataforseo.com/v3/backlinks/summary/live', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify([{ target: domain, internal_list_limit: 0, backlinks_filters: ['dofollow', '=', 'true'] }]),
+      signal: AbortSignal.timeout(10000),
+    })
+    const data = await res.json()
+    const r = data?.tasks?.[0]?.result?.[0]
+    if (!r) return null
+    return {
+      backlinks: (r.backlinks as number) || 0,
+      referringDomains: (r.referring_domains as number) || 0,
+      rank: (r.rank as number) || 0,
+    }
+  } catch {
+    return null
   }
 }
 
@@ -1000,10 +1371,21 @@ async function checkTechnical(url: string) {
   } catch { /* ignore */ }
 
   let hasSitemap = false
+  let sitemapUrlCount = 0
+  let sitemapLastMod: string | null = null
   try {
     const res = await fetch(`${baseUrl}/sitemap.xml`, { signal: AbortSignal.timeout(5000) })
     const text = await res.text()
     hasSitemap = res.ok && (text.includes('<urlset') || text.includes('<sitemapindex'))
+    if (hasSitemap) {
+      const urlMatches = text.match(/<url>/gi)
+      sitemapUrlCount = urlMatches ? urlMatches.length : 0
+      const lastmodMatches = text.match(/<lastmod>([^<]+)<\/lastmod>/gi)
+      if (lastmodMatches && lastmodMatches.length > 0) {
+        const dates = lastmodMatches.map(m => m.replace(/<\/?lastmod>/gi, '').trim()).sort().reverse()
+        sitemapLastMod = dates[0] || null
+      }
+    }
   } catch { /* ignore */ }
 
   let hasMixedContent = false
@@ -1032,7 +1414,7 @@ async function checkTechnical(url: string) {
     } catch { /* ignore */ }
   }
 
-  return { isHttps, hasRobotsTxt, hasSitemap, hasMixedContent, responseTime, hasRedirectToHttps }
+  return { isHttps, hasRobotsTxt, hasSitemap, hasMixedContent, responseTime, hasRedirectToHttps, sitemapUrlCount, sitemapLastMod }
 }
 
 // ── AI Analysis (Claude) ────────────────────────────────────────────────────────
@@ -1052,6 +1434,7 @@ interface AnalysisData {
     h2Count: number; h3Count: number; h4Count: number; h5Count: number; h6Count: number
     totalHeadings: number; hierarchyViolations: number; duplicateHeadings: number; hasDeepHeadingAbuse: boolean
     headingStructure: string[]
+    kwInH1: boolean; kwInTitle: boolean; kwInDesc: boolean
   }
   contentScore: number
   contentChecks: {
@@ -1066,7 +1449,7 @@ interface AnalysisData {
     hasLazyLoading: boolean; hasModernImageFormats: boolean; hasSmoothScroll: boolean; hasCtaInNav: boolean; ctaCount: number
   }
   configScore: number
-  configChecks: { isHttps: boolean; hasRedirectToHttps: boolean; hasRobotsTxt: boolean; hasSitemap: boolean; hasMixedContent: boolean; responseTime: number }
+  configChecks: { isHttps: boolean; hasRedirectToHttps: boolean; hasRobotsTxt: boolean; hasSitemap: boolean; hasMixedContent: boolean; responseTime: number; sitemapUrlCount: number; sitemapLastMod: string | null }
   uxScore: number
   uxChecks: {
     ctaCount: number; hasNav: boolean; sectionCount: number; hasFooter: boolean; formCount: number; mobileRatio: number
@@ -1082,6 +1465,22 @@ interface AnalysisData {
   globalScore: number
   metaTitle: string | null
   metaDescription: string | null
+  // New fields
+  coreWebVitals: { lcp: number | null; cls: number | null; inp: number | null; fcp: number | null; tbt: number | null }
+  backlinks: { backlinks: number; referringDomains: number; rank: number } | null
+  brokenLinksCount: number
+  keywordDensity: { keyword: string; count: number; density: number }[]
+  multiPageData: { pagesScraped: number; totalWordCount: number }
+  hasCharset: boolean
+  hasLangAttr: boolean
+  langValue: string | null
+  hasFavicon: boolean
+  hasTwitterCards: boolean
+  hasTwitterTitle: boolean
+  hasTwitterImage: boolean
+  h1VsTitleIdentical: boolean
+  sitemapUrlCount: number
+  sitemapLastMod: string | null
 }
 
 async function generateAIAnalysis(data: AnalysisData) {
@@ -1113,19 +1512,25 @@ DONNÉES COLLECTÉES :
 - Doublons headings : ${data.balisesChecks.duplicateHeadings}${data.balisesChecks.duplicateHeadings > 2 ? ' (PROBLÈME)' : ''}
 - Abus H4-H6 : ${data.balisesChecks.hasDeepHeadingAbuse ? 'OUI — H4-H6 surreprésentés vs H2-H3' : 'Non'}
 - Structure headings : ${data.balisesChecks.headingStructure.slice(0, 15).join(' | ')}
+- COHERENCE MOT-CLE / CIBLE :
+  - Mots-clés ciblés : ${(data.keywords ?? 'Non renseignés').replace(/[\r\n]/g, ' ').slice(0, 200)}
+  - Mot-clé dans H1 : ${data.balisesChecks.kwInH1 ? 'Oui ✓' : 'NON — le H1 ne contient pas le mot-clé ciblé'}
+  - Mot-clé dans Title : ${data.balisesChecks.kwInTitle ? 'Oui ✓' : 'NON — le title ne contient pas le mot-clé ciblé'}
+  - Mot-clé dans Meta Desc : ${data.balisesChecks.kwInDesc ? 'Oui ✓' : 'NON — la meta description ne contient pas le mot-clé ciblé'}
 
-3. CONTENU (${data.contentScore}/100) :
-- Nombre de mots : ${data.contentChecks.wordCount}${data.contentChecks.wordCount < 300 ? ' (INSUFFISANT, min 500-800 recommandé)' : ''}
-- Paragraphes structurés : ${data.contentChecks.paragraphCount}${data.contentChecks.paragraphCount < 3 ? ' (INSUFFISANT)' : ''}
-- Longueur moyenne paragraphes : ${data.contentChecks.avgParagraphLength} mots
-- Ratio contenu/code : ${data.contentChecks.contentRatio}%${data.contentChecks.contentRatio < 10 ? ' (TRÈS FAIBLE)' : ''}
-- Balises H2 : ${data.contentChecks.h2Count}${data.contentChecks.h2Count < 2 ? ' (PAS DE STRUCTURE)' : ''}
-- Balises H3 : ${data.contentChecks.h3Count}
-- Listes (ul/ol) : ${data.contentChecks.listCount}
-- Liens internes : ${data.contentChecks.internalLinks}
+3. CONTENU (${data.contentScore}/100) — ANALYSE EXPERT SEO EXIGEANTE :
+- Nombre de mots : ${data.contentChecks.wordCount}${data.contentChecks.wordCount < 600 ? ' (INSUFFISANT — un expert SEO attend min 800-1200 mots sur une page d\'accueil)' : data.contentChecks.wordCount < 800 ? ' (FAIBLE — manque de profondeur)' : ''}
+- Paragraphes structurés : ${data.contentChecks.paragraphCount}${data.contentChecks.paragraphCount < 5 ? ' (INSUFFISANT — contenu superficiel)' : ''}
+- Longueur moyenne paragraphes : ${data.contentChecks.avgParagraphLength} mots${data.contentChecks.avgParagraphLength < 20 ? ' (TROP COURT — paragraphes pas développés)' : ''}
+- Mots par heading : ${data.contentChecks.wordsPerHeading}${data.contentChecks.wordsPerHeading < 50 ? ' (contenu trop fragmenté)' : data.contentChecks.wordsPerHeading > 300 ? ' (pavés de texte sans sous-titres)' : ' ✓'}
+- Ratio contenu/code : ${data.contentChecks.contentRatio}%${data.contentChecks.contentRatio < 10 ? ' (TRÈS FAIBLE — le site est presque vide de contenu texte)' : data.contentChecks.contentRatio < 15 ? ' (FAIBLE)' : ''}
+- Balises H2 : ${data.contentChecks.h2Count}${data.contentChecks.h2Count < 3 ? ' (STRUCTURE INSUFFISANTE — un expert attend 4-6 H2 minimum)' : ''}
+- Balises H3 : ${data.contentChecks.h3Count}${data.contentChecks.h3Count < 2 ? ' (PAS DE SOUS-STRUCTURE)' : ''}
+- Listes (ul/ol) : ${data.contentChecks.listCount}${data.contentChecks.listCount === 0 ? ' (aucune liste — contenu monotone)' : ''}
+- Liens internes : ${data.contentChecks.internalLinks}${data.contentChecks.internalLinks < 3 ? ' (MAILLAGE INEXISTANT)' : data.contentChecks.internalLinks < 8 ? ' (MAILLAGE FAIBLE)' : ''}
 - Liens externes : ${data.contentChecks.externalLinks}
-- Ratio alt images : ${Math.round(data.contentChecks.imgAltRatio * 100)}%
-- Données structurées : ${data.contentChecks.hasStructuredData ? 'Oui' : 'Non'}
+- Ratio alt images : ${Math.round(data.contentChecks.imgAltRatio * 100)}%${data.contentChecks.imgAltRatio < 0.5 ? ' (PLUS DE LA MOITIÉ DES IMAGES SANS ALT)' : ''}
+- Données structurées : ${data.contentChecks.hasStructuredData ? 'Oui' : 'NON — aucune donnée structurée (Schema.org absent)'}
 
 4. RESPONSIVE (${data.responsiveScore}/100) — ANALYSE MOBILE EXPERT :
 - Viewport : ${data.responsiveChecks.hasViewport ? 'Oui' : 'Non'}
@@ -1143,9 +1548,18 @@ DONNÉES COLLECTÉES :
 - HTTPS : ${data.configChecks.isHttps ? 'Oui' : 'NON'}
 - Redirection HTTP→HTTPS : ${data.configChecks.hasRedirectToHttps ? 'Oui' : 'Non'}
 - robots.txt : ${data.configChecks.hasRobotsTxt ? 'Oui' : 'Non'}
-- sitemap.xml : ${data.configChecks.hasSitemap ? 'Oui' : 'Non'}
+- sitemap.xml : ${data.configChecks.hasSitemap ? 'Oui' : 'Non'}${data.configChecks.sitemapUrlCount > 0 ? ` (${data.configChecks.sitemapUrlCount} URLs)` : ''}
+- Sitemap dernière mise à jour : ${data.sitemapLastMod || 'N/A'}
 - Contenu mixte : ${data.configChecks.hasMixedContent ? 'OUI (problème)' : 'Non'}
 - Temps de réponse : ${data.configChecks.responseTime}ms
+- Charset déclaré : ${data.hasCharset ? 'Oui' : 'NON'}
+- Attribut lang : ${data.hasLangAttr ? `Oui (${data.langValue})` : 'NON'}
+- Favicon : ${data.hasFavicon ? 'Oui' : 'Non'}
+- Twitter Cards : ${data.hasTwitterCards ? `Oui (title:${data.hasTwitterTitle ? '✓' : '✗'} image:${data.hasTwitterImage ? '✓' : '✗'})` : 'Non'}
+- Liens cassés : ${data.brokenLinksCount}${data.brokenLinksCount > 0 ? ' (PROBLÈME)' : ' ✓'}
+- Backlinks dofollow : ${data.backlinks ? data.backlinks.backlinks : 'N/A'}
+- Domaines référents : ${data.backlinks ? data.backlinks.referringDomains : 'N/A'}
+- Rank DataForSEO : ${data.backlinks ? data.backlinks.rank : 'N/A'}
 
 6. EXPERIENCE UTILISATEUR (${data.uxScore}/100) — ANALYSE WEBDESIGNER :
 A) Design & Modernité :
@@ -1189,14 +1603,30 @@ F) Technique UX :
 - Lazy loading images : ${data.uxChecks.hasLazyLoading ? 'Oui' : 'Non'}
 - Ratio mobile/desktop : ${Math.round(data.uxChecks.mobileRatio * 100)}%
 
+7. CORE WEB VITALS :
+- LCP (Largest Contentful Paint) : ${data.coreWebVitals.lcp !== null ? `${Math.round(data.coreWebVitals.lcp)}ms` : 'N/A'}${data.coreWebVitals.lcp !== null ? (data.coreWebVitals.lcp < 2500 ? ' ✓ (bon)' : data.coreWebVitals.lcp < 4000 ? ' (à améliorer)' : ' (MAUVAIS)') : ''}
+- CLS (Cumulative Layout Shift) : ${data.coreWebVitals.cls !== null ? data.coreWebVitals.cls.toFixed(3) : 'N/A'}${data.coreWebVitals.cls !== null ? (data.coreWebVitals.cls < 0.1 ? ' ✓ (bon)' : data.coreWebVitals.cls < 0.25 ? ' (à améliorer)' : ' (MAUVAIS)') : ''}
+- INP : ${data.coreWebVitals.inp !== null ? `${Math.round(data.coreWebVitals.inp)}ms` : 'N/A'}
+- FCP : ${data.coreWebVitals.fcp !== null ? `${Math.round(data.coreWebVitals.fcp)}ms` : 'N/A'}
+- TBT : ${data.coreWebVitals.tbt !== null ? `${Math.round(data.coreWebVitals.tbt)}ms` : 'N/A'}
+
+8. H1 vs TITLE : ${data.h1VsTitleIdentical ? 'IDENTIQUES (PROBLÈME — H1 et title doivent être différenciés)' : 'Différents ✓'}
+
+9. DENSITÉ MOTS-CLÉS :
+${data.keywordDensity.length > 0 ? data.keywordDensity.map(kd => `- "${kd.keyword}" : ${kd.count} occurrences (${kd.density}%)`).join('\n') : '- Non calculée (pas de mots-clés fournis)'}
+
+10. EXPLORATION MULTI-PAGES :
+- Pages analysées : ${data.multiPageData.pagesScraped}
+- Nombre total de mots (pages secondaires) : ${data.multiPageData.totalWordCount}
+
 Score global : ${data.globalScore}/100
 
 GÉNÈRE un JSON avec cette structure exacte :
 {
   "descriptions": {
     "performance": "2-3 phrases. Moyenne en premier, puis détail mobile/desktop.",
-    "balises": "2-3 phrases. Mentionne les balises présentes/absentes et leur qualité.",
-    "content": "2-3 phrases. Analyse contenu, maillage interne, structure.",
+    "balises": "3-4 phrases. Analyse en expert SEO pointilleux : cohérence du H1 avec le mot-clé ciblé, qualité du meta title (longueur, présence du mot-clé, caractère incitatif), meta description (longueur, call-to-action, mot-clé), hiérarchie des headings (logique, violations, abus), Open Graph. Sois sévère si le mot-clé ciblé n'est pas dans le H1 ou le title.",
+    "content": "3-4 phrases. Analyse en rédacteur SEO exigeant : le contenu est-il suffisamment développé (800+ mots attendus) ? Les paragraphes sont-ils rédigés en profondeur ou superficiels ? La structure H2/H3 découpe-t-elle logiquement le sujet ? Le maillage interne est-il travaillé ? Le ratio contenu/code est-il acceptable ? Sois critique si le contenu est maigre ou mal structuré.",
     "responsive": "3-4 phrases. Analyse en tant que webdesigner exigeant : le site est-il pensé mobile-first ? Navigation sticky, animations tactiles, optimisation images, CTA accessibles sur petit écran. Un site 'fonctionnel' sur mobile ne mérite pas plus de 75.",
     "config": "2-3 phrases. Analyse HTTPS, robots.txt, sitemap, temps de réponse.",
     "ux": "3-4 phrases. Analyse en tant que webdesigner exigeant : modernité du design (animations, effets visuels), qualité des CTA et leur placement, navigation, hero section, footer, typographie, preuves sociales. Sois critique si le site est basique/statique."
@@ -1218,14 +1648,20 @@ RÈGLES pour les 10 axes d'amélioration :
 Réponds UNIQUEMENT avec le JSON, sans markdown ni backticks.`
 
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 2000,
       messages: [{ role: 'user', content: prompt }],
     })
 
     const text = (response.content[0] as { type: string; text: string }).text
     const parsed = JSON.parse(text)
-    return { descriptions: parsed.descriptions, improvements: parsed.improvements }
+    // Track real cost
+    const usage = response.usage
+    const inputCost = (usage?.input_tokens || 0) * 0.80 / 1_000_000 // Haiku $0.80/M input
+    const outputCost = (usage?.output_tokens || 0) * 4 / 1_000_000 // Haiku $4/M output
+    const dfCost = 0.30 // DataForSEO backlinks call
+    const totalCost = Math.round((inputCost + outputCost + dfCost) * 1000) / 1000
+    return { descriptions: parsed.descriptions, improvements: parsed.improvements, cost: totalCost, costDetails: { ai: Math.round((inputCost + outputCost) * 1000) / 1000, dataForSeo: dfCost, inputTokens: usage?.input_tokens || 0, outputTokens: usage?.output_tokens || 0 } }
   } catch (err) {
     console.error('[Audit] AI analysis error:', err)
     return generateFallbackAnalysis(data)
@@ -1271,5 +1707,5 @@ function generateFallbackAnalysis(data: AnalysisData) {
     else break
   }
 
-  return { descriptions, improvements: improvements.slice(0, 10) }
+  return { descriptions, improvements: improvements.slice(0, 10), cost: 0.30, costDetails: { ai: 0, dataForSeo: 0.30 } }
 }

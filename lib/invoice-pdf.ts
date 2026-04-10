@@ -245,7 +245,7 @@ export async function generateInvoicePdf(params: InvoicePdfParams): Promise<Buff
   // ─── Footer ───
   const footerY = margin + 20
   page.drawLine({ start: { x: margin, y: footerY + 10 }, end: { x: pageWidth - margin, y: footerY + 10 }, thickness: 0.5, color: lightGray })
-  const footerText = 'Agence Kameo - 9 rue des colonnes, 75002 Paris - contact@agencekameo.fr - 06 76 23 00 37'
+  const footerText = 'Agence Kameo - 9 rue des colonnes, 75002 Paris - contact@agencekameo.fr - 06 62 37 99 85'
   const footerW = font.widthOfTextAtSize(footerText, 7)
   page.drawText(footerText, { x: (pageWidth - footerW) / 2, y: footerY - 4, size: 7, font, color: gray })
   const siretText = 'SIRET : 980 573 984 00013 - TVA : FR54980573984'

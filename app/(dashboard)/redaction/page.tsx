@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useRef, useMemo } from 'react'
-import { FileText, Loader2, Search, ChevronDown, Download, FolderKanban, Sparkles, CheckCircle2, ArrowRight, Copy, AlertCircle, Save, Clock, Eye, Trash2 } from 'lucide-react'
+import { FileText, Loader2, Search, ChevronDown, Download, FolderKanban, Sparkles, CheckCircle2, ArrowRight, AlertCircle, Clock, Eye, Trash2 } from 'lucide-react'
 
 interface Project {
   id: string
@@ -26,6 +26,7 @@ interface RedactionHistory {
   projectId: string
   analysis: string
   content?: string | null
+  cost?: number | null
   createdAt: string
   project: { id: string; name: string; client: { name: string; company?: string } }
   createdBy: { name: string }
@@ -50,14 +51,13 @@ export default function RedactionPage() {
   const [content, setContent] = useState('')
   const [error, setError] = useState('')
   const [activeTab, setActiveTab] = useState<'analysis' | 'content'>('analysis')
-  const [copied, setCopied] = useState(false)
   const [history, setHistory] = useState<RedactionHistory[]>([])
-  const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
   const [linking, setLinking] = useState(false)
   const [linked, setLinked] = useState(false)
   const [activeSection, setActiveSection] = useState(0)
   const [activePage, setActivePage] = useState(0)
+  const [totalCost, setTotalCost] = useState<{ analysis: number; redaction: number }>({ analysis: 0, redaction: 0 })
+  const [costDetails, setCostDetails] = useState<Record<string, unknown> | null>(null)
 
   function fetchHistory() {
     fetch('/api/redaction').then(r => r.json()).then(data => { if (Array.isArray(data)) setHistory(data) })
@@ -89,7 +89,7 @@ export default function RedactionPage() {
 
   const [redactionPhase, setRedactionPhase] = useState<'draft' | 'review' | null>(null)
 
-  async function readStream(res: Response, onChunk: (text: string) => void): Promise<string> {
+  async function readStream(res: Response, onChunk: (text: string) => void, onCost?: (cost: Record<string, unknown>) => void): Promise<string> {
     const reader = res.body?.getReader()
     if (!reader) throw new Error('No reader')
     const decoder = new TextDecoder()
@@ -109,6 +109,8 @@ export default function RedactionPage() {
           if (parsed.error) throw new Error(parsed.error)
           if (parsed.phase) { setRedactionPhase(parsed.phase); continue }
           if (parsed.clear) { full = ''; onChunk(''); continue }
+          if (parsed.cost && onCost) { onCost(parsed.cost); continue }
+          if (parsed.passCost && onCost) { onCost(parsed.passCost); continue }
           if (parsed.text) {
             full += parsed.text
             onChunk(full)
@@ -127,28 +129,61 @@ export default function RedactionPage() {
     setStep('generating-analysis')
     setActiveTab('analysis')
 
+    setTotalCost({ analysis: 0, redaction: 0 })
+    setCostDetails(null)
+
     try {
       // Step 1: Analyse SEO
+      let analysisCostData: Record<string, unknown> = {}
       const res1 = await fetch('/api/redaction', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ projectId: selectedProject.id, step: 'analyse' }),
       })
       if (!res1.ok) throw new Error('Erreur API analyse')
-      const analysisResult = await readStream(res1, text => setAnalysis(text))
+      const analysisResult = await readStream(res1, text => setAnalysis(text), cost => {
+        analysisCostData = cost
+        setTotalCost(prev => ({ ...prev, analysis: (cost.total as number) || 0 }))
+      })
 
       // Step 2: Rédaction (enchaîne automatiquement)
       setStep('generating-content')
       setActiveTab('content')
 
+      let redactionCostData: Record<string, unknown> = {}
+      let redactionRunningCost = 0
       const res2 = await fetch('/api/redaction', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ projectId: selectedProject.id, step: 'redaction', analysis: analysisResult }),
       })
       if (!res2.ok) throw new Error('Erreur API rédaction')
-      await readStream(res2, text => setContent(text))
+      const contentResult = await readStream(res2, text => setContent(text), cost => {
+        if (cost.pass) {
+          // Incremental pass cost
+          redactionRunningCost += (cost.cost as number) || 0
+          setTotalCost(prev => ({ ...prev, redaction: redactionRunningCost }))
+        } else if (cost.total) {
+          // Final total cost
+          redactionCostData = cost
+          setTotalCost(prev => ({ ...prev, redaction: (cost.total as number) || redactionRunningCost }))
+        }
+      })
+
+      const allCostDetails = { analysis: analysisCostData, redaction: redactionCostData }
+      const finalCost = ((analysisCostData.total as number) || 0) + ((redactionCostData.total as number) || redactionRunningCost)
+      setCostDetails(allCostDetails)
       setStep('done')
+
+      // Auto-save to DB
+      try {
+        await fetch('/api/redaction', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ projectId: selectedProject.id, analysis: analysisResult, content: contentResult || null, cost: finalCost || null, costDetails: allCostDetails }),
+        })
+        fetchHistory()
+      } catch { /* silent */ }
     } catch {
       setError('Erreur lors de la génération')
       if (!analysis) setStep('select')
@@ -156,37 +191,81 @@ export default function RedactionPage() {
     }
   }
 
-  function handleDownload() {
-    const text = `# Analyse SEO\n\n${analysis}\n\n---\n\n# Contenu rédigé\n\n${content}`
-    const blob = new Blob([text], { type: 'text/markdown' })
+  function handleDownload(type: 'analysis' | 'content' | 'all' = 'all') {
+    const projectName = selectedProject?.name?.replace(/\s+/g, '-').toLowerCase() || 'projet'
+    const clientName = selectedProject?.client?.company || selectedProject?.client?.name || ''
+
+    // Build structured HTML for Google Stitch compatibility
+    function mdToHtml(md: string): string {
+      return md.split('\n').map(line => {
+        if (line.startsWith('#### ')) return `<h4>${line.slice(5)}</h4>`
+        if (line.startsWith('### ')) return `<h3>${line.slice(4)}</h3>`
+        if (line.startsWith('## ')) return `<h2>${line.slice(3)}</h2>`
+        if (line.startsWith('# ')) return `<h1>${line.slice(2)}</h1>`
+        if (/^\d+\.\s/.test(line)) return `<li>${line.replace(/^\d+\.\s/, '')}</li>`
+        if (line.startsWith('- ') || line.startsWith('* ')) return `<li>${line.slice(2)}</li>`
+        if (line.startsWith('> ')) return `<blockquote>${line.slice(2)}</blockquote>`
+        if (line.startsWith('---')) return '<hr>'
+        if (line.trim() === '') return '<br>'
+        // Bold
+        const formatted = line.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        // Table rows
+        if (formatted.trim().startsWith('|')) {
+          const cells = formatted.split('|').filter(c => c.trim()).map(c => `<td>${c.trim()}</td>`)
+          return `<tr>${cells.join('')}</tr>`
+        }
+        return `<p>${formatted}</p>`
+      }).join('\n')
+    }
+
+    let htmlContent = ''
+    if (type === 'analysis' || type === 'all') {
+      htmlContent += `<h1>Analyse SEO — ${clientName}</h1>\n${mdToHtml(analysis)}`
+    }
+    if (type === 'all') htmlContent += '\n<hr style="page-break-before: always">\n'
+    if (type === 'content' || type === 'all') {
+      htmlContent += `<h1>Contenu rédactionnel — ${clientName}</h1>\n${mdToHtml(content)}`
+    }
+
+    const html = `<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Rédaction SEO — ${clientName}</title>
+<style>
+  body { font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; color: #1a1a2e; line-height: 1.7; }
+  h1 { font-size: 24px; color: #1a1a2e; border-bottom: 3px solid #E14B89; padding-bottom: 8px; margin-top: 40px; }
+  h2 { font-size: 20px; color: #E14B89; margin-top: 32px; border-bottom: 1px solid #eee; padding-bottom: 6px; }
+  h3 { font-size: 16px; color: #333; margin-top: 24px; }
+  h4 { font-size: 14px; color: #555; margin-top: 16px; }
+  p { margin: 8px 0; font-size: 14px; }
+  li { margin: 4px 0; font-size: 14px; margin-left: 20px; }
+  blockquote { border-left: 3px solid #E14B89; padding: 8px 16px; margin: 12px 0; background: #fdf2f8; color: #555; font-style: italic; }
+  strong { color: #1a1a2e; }
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px; }
+  td, th { border: 1px solid #ddd; padding: 8px 12px; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  tr:nth-child(even) { background: #fafafa; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 32px 0; }
+  code { background: #f5f5f5; padding: 2px 6px; border-radius: 3px; font-size: 12px; }
+</style>
+</head>
+<body>
+${htmlContent}
+<footer style="margin-top:60px;padding-top:20px;border-top:1px solid #eee;font-size:11px;color:#999;text-align:center">
+  Agence Kameo — agence-kameo.fr — Document généré le ${new Date().toLocaleDateString('fr-FR')}
+</footer>
+</body>
+</html>`
+
+    const blob = new Blob([html], { type: 'text/html' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `redaction-${selectedProject?.name?.replace(/\s+/g, '-').toLowerCase() || 'projet'}.md`
+    const suffix = type === 'analysis' ? '-analyse' : type === 'content' ? '-contenu' : ''
+    a.download = `redaction-${projectName}${suffix}.html`
     a.click()
     URL.revokeObjectURL(url)
-  }
-
-  function handleCopy(text: string) {
-    navigator.clipboard.writeText(text)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
-
-  async function handleSave() {
-    if (!selectedProject || !analysis) return
-    setSaving(true)
-    try {
-      await fetch('/api/redaction', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId: selectedProject.id, analysis, content: content || null }),
-      })
-      setSaved(true)
-      fetchHistory()
-      setTimeout(() => setSaved(false), 3000)
-    } catch { /* ignore */ }
-    setSaving(false)
   }
 
   async function handleLink() {
@@ -197,7 +276,7 @@ export default function RedactionPage() {
       const res = await fetch('/api/redaction', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId: selectedProject.id, analysis, content: content || null }),
+        body: JSON.stringify({ projectId: selectedProject.id, analysis, content: content || null, cost: totalCost.analysis + totalCost.redaction || null, costDetails: costDetails || null }),
       })
       const redaction = await res.json()
 
@@ -236,7 +315,6 @@ export default function RedactionPage() {
     setContent('')
     setError('')
     setActiveTab('analysis')
-    setSaved(false)
   }
 
   // Render markdown-like content with basic styling
@@ -246,11 +324,13 @@ export default function RedactionPage() {
     const parts = analysis.split(/^## /m)
     if (parts.length <= 1) return [{ title: 'Analyse complète', content: analysis }]
     const sections = []
-    if (parts[0].trim()) sections.push({ title: 'Introduction', content: parts[0].trim() })
     for (let i = 1; i < parts.length; i++) {
       const lines = parts[i].split('\n')
       const title = lines[0].trim()
+      if (!title) continue
       const content = '## ' + parts[i]
+      // Skip sections with less than 20 chars of real content (empty/separator)
+      if (content.replace(/^##\s+\S+\n/, '').trim().length < 20) continue
       sections.push({ title, content })
     }
     return sections
@@ -263,8 +343,11 @@ export default function RedactionPage() {
     const pagePattern = /^(?:#{1,2}\s+(?:Page\s*[:—–-]\s*)?(.+)|---\s*\n\s*\*\*Slug\*\*)/m
     const slugPattern = /\*\*Slug\*\*\s*[:—–-]?\s*(.+)/
 
+    // Filter: must have real content (>50 chars after removing headers/separators)
+    const hasContent = (block: string) => block.replace(/^#+\s+.*/gm, '').replace(/---/g, '').replace(/\*\*[^*]+\*\*/g, '').trim().length > 50
+
     // First try: split by H1/H2 that look like page names
-    const h1Splits = content.split(/(?=^# [^#])/m).filter(s => s.trim())
+    const h1Splits = content.split(/(?=^# [^#])/m).filter(s => s.trim() && hasContent(s))
     if (h1Splits.length > 1) {
       return h1Splits.map(block => {
         const firstLine = block.split('\n')[0]
@@ -274,7 +357,7 @@ export default function RedactionPage() {
     }
 
     // Second try: split by --- separators
-    const hrSplits = content.split(/\n---\n/).filter(s => s.trim())
+    const hrSplits = content.split(/\n---\n/).filter(s => s.trim() && hasContent(s))
     if (hrSplits.length > 1) {
       return hrSplits.map(block => {
         const slugMatch = block.match(slugPattern)
@@ -286,7 +369,7 @@ export default function RedactionPage() {
     }
 
     // Fallback: split by ## headers
-    const h2Splits = content.split(/(?=^## )/m).filter(s => s.trim())
+    const h2Splits = content.split(/(?=^## )/m).filter(s => s.trim() && hasContent(s))
     if (h2Splits.length > 1) {
       return h2Splits.map(block => {
         const firstLine = block.split('\n')[0]
@@ -300,28 +383,88 @@ export default function RedactionPage() {
   }, [content])
 
   function renderMarkdown(md: string) {
-    return md.split('\n').map((line, i) => {
-      if (line.startsWith('#### ')) return <h4 key={i} className="text-white font-medium text-sm mt-4 mb-1">{line.slice(5)}</h4>
-      if (line.startsWith('### ')) return <h3 key={i} className="text-white font-semibold mt-5 mb-2">{line.slice(4)}</h3>
-      if (line.startsWith('## ')) return <h2 key={i} className="text-[#E14B89] font-bold text-lg mt-6 mb-3 pb-2 border-b border-slate-800">{line.slice(3)}</h2>
-      if (line.startsWith('# ')) return <h1 key={i} className="text-white font-bold text-xl mt-6 mb-3">{line.slice(2)}</h1>
-      if (line.startsWith('- ') || line.startsWith('* ')) return <li key={i} className="text-slate-300 text-sm ml-4 mb-0.5 list-disc">{formatInline(line.slice(2))}</li>
-      if (line.startsWith('> ')) return <blockquote key={i} className="border-l-2 border-[#E14B89] pl-3 text-slate-400 text-sm italic my-2">{line.slice(2)}</blockquote>
-      if (line.trim() === '') return <div key={i} className="h-2" />
-      if (line.startsWith('---')) return <hr key={i} className="border-slate-800 my-6" />
-      return <p key={i} className="text-slate-300 text-sm mb-1 leading-relaxed">{formatInline(line)}</p>
-    })
+    const lines = md.split('\n')
+    const elements: React.ReactNode[] = []
+    let i = 0
+
+    while (i < lines.length) {
+      const line = lines[i]
+
+      // Table detection (| col | col |)
+      if (line.trim().startsWith('|') && line.includes('|', 1)) {
+        const tableLines: string[] = []
+        while (i < lines.length && lines[i].trim().startsWith('|')) {
+          tableLines.push(lines[i])
+          i++
+        }
+        const rows = tableLines.filter(l => !/^\|[\s-:|]+\|$/.test(l)) // remove separator rows
+        if (rows.length > 0) {
+          const headerCells = rows[0].split('|').filter(c => c.trim()).map(c => c.trim())
+          const bodyRows = rows.slice(1).map(r => r.split('|').filter(c => c.trim()).map(c => c.trim()))
+          elements.push(
+            <div key={`table-${elements.length}`} className="overflow-x-auto my-4">
+              <table className="w-full text-xs border border-slate-800 rounded-lg overflow-hidden">
+                <thead>
+                  <tr className="bg-slate-800/50">
+                    {headerCells.map((c, ci) => <th key={ci} className="px-3 py-2 text-left text-slate-300 font-semibold border-b border-slate-700">{formatInline(c)}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {bodyRows.map((row, ri) => (
+                    <tr key={ri} className={ri % 2 ? 'bg-slate-800/20' : ''}>
+                      {row.map((c, ci) => <td key={ci} className="px-3 py-2 text-slate-300 border-b border-slate-800/50">{formatInline(c)}</td>)}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+          continue
+        }
+      }
+
+      if (line.startsWith('#### ')) { elements.push(<h4 key={i} className="text-slate-200 font-medium text-sm mt-5 mb-1.5">{formatInline(line.slice(5))}</h4>); i++; continue }
+      if (line.startsWith('### ')) { elements.push(<h3 key={i} className="text-white font-semibold mt-6 mb-2 text-[15px]">{formatInline(line.slice(4))}</h3>); i++; continue }
+      if (line.startsWith('## ')) { elements.push(<h2 key={i} className="text-[#E14B89] font-bold text-lg mt-8 mb-3 pb-2 border-b border-slate-800">{formatInline(line.slice(3))}</h2>); i++; continue }
+      if (line.startsWith('# ')) { elements.push(<h1 key={i} className="text-white font-bold text-xl mt-8 mb-4">{formatInline(line.slice(2))}</h1>); i++; continue }
+      if (/^\d+\.\s/.test(line)) { elements.push(<li key={i} className="text-slate-300 text-sm ml-5 mb-1 list-decimal leading-relaxed">{formatInline(line.replace(/^\d+\.\s/, ''))}</li>); i++; continue }
+      if (line.startsWith('- ') || line.startsWith('* ')) { elements.push(<li key={i} className="text-slate-300 text-sm ml-5 mb-1 list-disc leading-relaxed">{formatInline(line.slice(2))}</li>); i++; continue }
+      if (line.startsWith('> ')) { elements.push(<blockquote key={i} className="border-l-2 border-[#E14B89]/50 pl-4 py-1 text-slate-400 text-sm italic my-3 bg-[#E14B89]/5 rounded-r-lg">{formatInline(line.slice(2))}</blockquote>); i++; continue }
+      if (line.trim() === '') { elements.push(<div key={i} className="h-3" />); i++; continue }
+      if (line.startsWith('---')) { elements.push(<hr key={i} className="border-slate-700/50 my-8" />); i++; continue }
+      elements.push(<p key={i} className="text-slate-300 text-sm mb-1.5 leading-[1.7]">{formatInline(line)}</p>)
+      i++
+    }
+    return elements
   }
 
   function formatInline(text: string) {
-    // Bold
-    const parts = text.split(/(\*\*[^*]+\*\*)/g)
+    // Bold + inline code
+    const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g)
     return parts.map((part, i) => {
       if (part.startsWith('**') && part.endsWith('**')) {
         return <strong key={i} className="text-white font-semibold">{part.slice(2, -2)}</strong>
       }
+      if (part.startsWith('`') && part.endsWith('`')) {
+        return <code key={i} className="bg-slate-800 text-[#F8903C] px-1.5 py-0.5 rounded text-xs font-mono">{part.slice(1, -1)}</code>
+      }
       return part
     })
+  }
+
+  // Estimate API cost based on content length
+  // Sonnet: ~$3/M input, ~$15/M output | Opus: ~$15/M input, ~$75/M output | 1 token ≈ 4 chars FR
+  function estimateCost(analysisText: string, contentText?: string | null): number {
+    const analysisTokens = (analysisText?.length || 0) / 4
+    const contentTokens = (contentText?.length || 0) / 4
+    // Analysis: Sonnet (seed keywords + clustering + analysis generation)
+    const sonnetCost = analysisTokens * 0.015 / 1000 // ~$15/M output
+    // DataForSEO: ~$0.50-1.50 flat
+    const dataForSeoCost = 1.0
+    // Redaction: Opus x2 passes (draft + review) + Sonnet audit
+    const opusCost = contentTokens > 0 ? (contentTokens * 2 * 0.075 / 1000) : 0 // ~$75/M output x2
+    const auditCost = contentTokens > 0 ? 0.05 : 0
+    return Math.round((sonnetCost + dataForSeoCost + opusCost + auditCost) * 100) / 100
   }
 
   const isGenerating = step === 'generating-analysis' || step === 'generating-content'
@@ -517,33 +660,35 @@ export default function RedactionPage() {
         <div className="space-y-4">
           {/* Tabs + actions */}
           <div className="flex items-center justify-between flex-wrap gap-3">
-            <div className="flex bg-[#111118] border border-slate-800 rounded-xl p-0.5">
-              <button onClick={() => setActiveTab('analysis')}
-                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium transition-all ${activeTab === 'analysis' ? 'bg-[#E14B89]/10 text-[#E14B89]' : 'text-slate-400 hover:text-white'}`}>
-                <Search size={13} /> Analyse SEO
-              </button>
-              <button onClick={() => setActiveTab('content')} disabled={!content}
-                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium transition-all ${activeTab === 'content' ? 'bg-[#F8903C]/10 text-[#F8903C]' : 'text-slate-400 hover:text-white'} disabled:opacity-30`}>
-                <FileText size={13} /> Contenu rédigé
-              </button>
+            <div className="flex items-center gap-3">
+              <div className="flex bg-[#111118] border border-slate-800 rounded-xl p-0.5">
+                <button onClick={() => setActiveTab('analysis')}
+                  className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium transition-all ${activeTab === 'analysis' ? 'bg-[#E14B89]/10 text-[#E14B89]' : 'text-slate-400 hover:text-white'}`}>
+                  <Search size={13} /> Analyse SEO
+                </button>
+                <button onClick={() => setActiveTab('content')} disabled={!content}
+                  className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium transition-all ${activeTab === 'content' ? 'bg-[#F8903C]/10 text-[#F8903C]' : 'text-slate-400 hover:text-white'} disabled:opacity-30`}>
+                  <FileText size={13} /> Contenu rédigé
+                </button>
+              </div>
+              {(totalCost.analysis + totalCost.redaction) > 0 && (
+                <span className="text-slate-600 text-[10px] font-mono">Coût réel : {(totalCost.analysis + totalCost.redaction).toFixed(3)} $</span>
+              )}
             </div>
 
             <div className="flex items-center gap-2">
-              <button onClick={() => handleCopy(activeTab === 'analysis' ? analysis : content)}
-                className="flex items-center gap-1.5 bg-[#111118] border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-white px-3 py-2.5 rounded-xl text-xs transition-colors">
-                <Copy size={13} /> {copied ? 'Copié !' : 'Copier'}
-              </button>
               {step === 'done' && (
                 <>
-                  <button onClick={handleDownload}
+                  <button onClick={() => handleDownload(activeTab === 'analysis' ? 'analysis' : 'content')}
                     className="flex items-center gap-1.5 bg-[#111118] border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-white px-3 py-2.5 rounded-xl text-xs transition-colors">
-                    <Download size={13} /> Télécharger
+                    <Download size={13} /> {activeTab === 'analysis' ? 'Analyse' : 'Contenu'}
                   </button>
-                  <button onClick={handleSave} disabled={saving || saved}
-                    className={`flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-medium transition-colors ${saved ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-[#111118] border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-white'} disabled:opacity-60`}>
-                    {saving ? <Loader2 size={13} className="animate-spin" /> : saved ? <CheckCircle2 size={13} /> : <Save size={13} />}
-                    {saving ? 'Sauvegarde...' : saved ? 'Sauvegardé' : 'Sauvegarder'}
-                  </button>
+                  {analysis && content && (
+                    <button onClick={() => handleDownload('all')}
+                      className="flex items-center gap-1.5 bg-[#111118] border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-white px-3 py-2.5 rounded-xl text-xs transition-colors">
+                      <Download size={13} /> Tout
+                    </button>
+                  )}
                   <button onClick={handleLink} disabled={linking || linked}
                     className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-medium transition-colors ${linked ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-gradient-to-r from-[#E14B89] to-[#F8903C] hover:opacity-90 text-white'} disabled:opacity-60`}>
                     {linking ? <Loader2 size={13} className="animate-spin" /> : linked ? <CheckCircle2 size={13} /> : <FolderKanban size={13} />}
@@ -581,7 +726,7 @@ export default function RedactionPage() {
           )}
 
           {/* Content display */}
-          <div className="bg-[#111118] border border-slate-800 rounded-2xl p-6 sm:p-8 max-h-[70vh] overflow-y-auto">
+          <div className="bg-[#111118] border border-slate-800 rounded-2xl p-6 sm:p-10 max-h-[75vh] overflow-y-auto">
             {activeTab === 'analysis' && analysis && (
               analysisSections.length > 1
                 ? renderMarkdown(analysisSections[activeSection]?.content || '')
@@ -618,6 +763,7 @@ export default function RedactionPage() {
                     {h.content ? ' · Analyse + Rédaction' : ' · Analyse uniquement'}
                   </p>
                 </div>
+                <span className="text-slate-600 text-xs font-mono mr-3">{h.cost ? `${h.cost.toFixed(3)} $` : `~${estimateCost(h.analysis, h.content).toFixed(2)} $`}</span>
                 <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button onClick={() => loadFromHistory(h)}
                     className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-slate-400 hover:text-white rounded-lg hover:bg-white/5 transition-colors">

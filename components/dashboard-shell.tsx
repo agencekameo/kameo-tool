@@ -1,10 +1,12 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { useSession } from 'next-auth/react'
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { Sidebar } from './sidebar'
 import { MessageriePopup } from './messagerie-popup'
+import { Chatbot } from './chatbot'
 import { ImpersonationBanner } from './impersonation-banner'
 import { Menu, LayoutDashboard, FolderKanban, FileText, Users, Calendar, Bell } from 'lucide-react'
 import Image from 'next/image'
@@ -57,6 +59,8 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>([])
   const notifRef = useRef<HTMLDivElement>(null)
   const pathname = usePathname()
+  const { data: session } = useSession()
+  const isAdmin = (session?.user as { role?: string })?.role === 'ADMIN'
 
   const unreadCount = notifications.filter(n => !n.read).length
 
@@ -108,7 +112,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
         collapsed={sidebarCollapsed} onToggleCollapse={() => { const next = !sidebarCollapsed; setSidebarCollapsed(next); localStorage.setItem('sidebar-collapsed', String(next)) }} />
 
       {/* Main content */}
-      <main className={`min-h-screen pb-16 md:pb-0 transition-all duration-300 ${sidebarCollapsed ? 'md:ml-[68px]' : 'md:ml-60'}`}>
+      <main className={`min-h-screen pb-16 md:pb-0 transition-[margin] duration-200 ease-out ${sidebarCollapsed ? 'md:ml-[52px]' : 'md:ml-60'}`}>
         <ImpersonationBanner />
 
         {/* Mobile top bar: notif left, logo center, hamburger right */}
@@ -190,7 +194,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
         })}
       </nav>
 
-      <MessageriePopup />
+      {isAdmin ? <Chatbot /> : <MessageriePopup />}
     </>
   )
 }

@@ -23,6 +23,9 @@ interface AuditScores {
 
 interface AuditDetails {
   scores?: AuditScores
+  logoUrl?: string
+  cost?: number
+  costDetails?: Record<string, unknown>
   descriptions?: {
     performance: string
     balises: string
@@ -459,7 +462,7 @@ export default function AuditPage() {
   const { data: session } = useSession()
   const role = (session?.user as { role?: string })?.role ?? ''
   const isAdmin = role === 'ADMIN'
-  const [auditTab, setAuditTab] = useState<'gratuit' | 'premium'>('gratuit')
+  const [auditTab, setAuditTab] = useState<'onsite' | 'complet'>('onsite')
   const [url, setUrl] = useState('')
   const [projectId, setProjectId] = useState('')
   const [projects, setProjects] = useState<Project[]>([])
@@ -590,24 +593,24 @@ export default function AuditPage() {
         <div>
           <h1 className="text-2xl font-semibold text-white">Audit SEO</h1>
           <p className="text-slate-400 text-sm mt-1">
-            {auditTab === 'gratuit' ? 'Analyse performances, balises, contenu, responsive, technique et UX' : 'Étude de marché SEO complète avec données réelles'}
+            {auditTab === 'onsite' ? 'Analyse performances, balises, contenu, responsive, technique et UX' : 'Étude de marché SEO complète avec données réelles'}
           </p>
         </div>
         {isAdmin && (
           <div className="flex bg-[#111118] border border-slate-800 rounded-xl p-0.5">
-            <button onClick={() => setAuditTab('gratuit')}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium transition-all ${auditTab === 'gratuit' ? 'bg-[#E14B89]/10 text-[#E14B89]' : 'text-slate-400 hover:text-white'}`}>
-              <Search size={13} /> Audit gratuit
+            <button onClick={() => setAuditTab('onsite')}
+              className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium transition-all ${auditTab === 'onsite' ? 'bg-[#E14B89]/10 text-[#E14B89]' : 'text-slate-400 hover:text-white'}`}>
+              <Search size={13} /> Audit on site
             </button>
-            <button onClick={() => setAuditTab('premium')}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium transition-all ${auditTab === 'premium' ? 'bg-gradient-to-r from-[#E14B89]/10 to-[#F8903C]/10 text-[#F8903C]' : 'text-slate-400 hover:text-white'}`}>
-              <Shield size={13} /> Audit premium
+            <button onClick={() => setAuditTab('complet')}
+              className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium transition-all ${auditTab === 'complet' ? 'bg-gradient-to-r from-[#E14B89]/10 to-[#F8903C]/10 text-[#F8903C]' : 'text-slate-400 hover:text-white'}`}>
+              <Shield size={13} /> Audit complet
             </button>
           </div>
         )}
       </div>
 
-      {auditTab === 'premium' && isAdmin ? (
+      {auditTab === 'complet' && isAdmin ? (
         <AuditPremium />
       ) : (
       <>
@@ -715,7 +718,13 @@ export default function AuditPage() {
             <div className="bg-[#111118] border border-slate-800 rounded-2xl p-6">
               <div className="flex items-center justify-between mb-5">
                 <div>
+                  <div className="flex items-center gap-3">
+                  {displayAudit.details?.logoUrl && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={displayAudit.details.logoUrl} alt="" className="w-8 h-8 rounded-lg object-contain bg-white/10 flex-shrink-0" onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+                  )}
                   <h2 className="text-white font-semibold text-lg">Résultats — {displayAudit.url}</h2>
+                  </div>
                   <p className="text-slate-400 text-sm mt-0.5">Analyse complète multi-critères</p>
                 </div>
                 <div className="flex items-center gap-4">
@@ -737,7 +746,7 @@ export default function AuditPage() {
                   <div className={`text-4xl font-bold ${SCORE_COLOR(displayAudit.globalScore ?? 0)}`}>
                     {displayAudit.globalScore}/100
                   </div>
-                  <p className="text-slate-400 text-xs mt-1">Score global</p>
+                  <p className="text-slate-400 text-xs mt-1">Score global · <span className="font-mono text-slate-600">{displayAudit.details?.cost ? `${displayAudit.details.cost.toFixed(3)} $` : '~0.50 $'}</span></p>
                 </div>
               </div>
               </div>
@@ -821,6 +830,10 @@ export default function AuditPage() {
                 <div key={audit.id} className="bg-[#111118] border border-slate-800 rounded-2xl overflow-hidden">
                   <button onClick={() => setExpandedId(expandedId === audit.id ? null : audit.id)}
                     className="w-full flex items-center gap-4 p-4 hover:bg-slate-800/20 transition-colors">
+                    {audit.details?.logoUrl && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={audit.details.logoUrl} alt="" className="w-7 h-7 rounded-lg object-contain bg-white/10 flex-shrink-0" onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+                    )}
                     <div className="flex-1 text-left">
                       <div className="flex items-center gap-2.5">
                         <p className="text-white text-sm font-medium">{audit.url}</p>
@@ -846,6 +859,7 @@ export default function AuditPage() {
                           <span className={SCORE_COLOR(audit.performanceDesktop ?? 0)}>{audit.performanceDesktop}</span>
                         </div>
                       </div>
+                      <span className="text-slate-600 text-[10px] font-mono">{audit.details?.cost ? `${audit.details.cost.toFixed(3)} $` : '~0.50 $'}</span>
                       <div className={`text-xl font-bold ${SCORE_COLOR(audit.globalScore ?? 0)}`}>{audit.globalScore}</div>
                       <button
                         onClick={(e) => { e.stopPropagation(); setCurrentAudit(audit); setExpandedId(null); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
@@ -853,6 +867,19 @@ export default function AuditPage() {
                         title="Rouvrir cet audit"
                       >
                         <ExternalLink size={14} />
+                      </button>
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation()
+                          const d = (audit.details || {}) as Record<string, unknown>
+                          const newVal = !d.showAllImprovements
+                          await fetch(`/api/audit`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: audit.id, details: { ...d, showAllImprovements: newVal } }) })
+                          setAudits(prev => prev.map(a => a.id === audit.id ? { ...a, details: { ...d, showAllImprovements: newVal } as AuditDetails } : a))
+                        }}
+                        className={`p-1.5 rounded-lg transition-colors text-[10px] ${(audit.details as Record<string, unknown>)?.showAllImprovements ? 'text-emerald-400 bg-emerald-500/10' : 'text-slate-600 hover:text-amber-400 hover:bg-amber-500/10'}`}
+                        title={(audit.details as Record<string, unknown>)?.showAllImprovements ? 'Masquer les axes (flou actif)' : 'Afficher tous les axes (flou desactive)'}
+                      >
+                        {(audit.details as Record<string, unknown>)?.showAllImprovements ? '🔓' : '🔒'}
                       </button>
                       <button
                         onClick={(e) => { e.stopPropagation(); handleDelete(audit.id) }}

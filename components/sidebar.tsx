@@ -21,6 +21,7 @@ import {
   ChevronUp,
   Mail,
   Activity,
+  Cpu,
   Sun,
   Moon,
   TrendingUp,
@@ -116,22 +117,29 @@ const sections: { label: string; items: NavItem[] }[] = [
     ],
   },
   {
-    label: 'Suivi',
-    items: [
-      { href: '/projects', label: 'Projets', icon: FolderKanban },
-      { href: '/small-projects', label: 'Petits projets', icon: ClipboardList },
-      { href: '/maintenances', label: 'Maintenances', icon: Wrench },
-      { href: '/aysha', label: 'Aysha', icon: ListTodo },
-    ],
-  },
-  {
     label: 'Commercial',
     items: [
       { href: '/commercial', label: 'Prospects', icon: TrendingUp },
       { href: '/commerciaux', label: 'Commerciaux', icon: Briefcase },
       { href: '/devis', label: 'Devis', icon: FileText },
       { href: '/skills', label: 'Skills', icon: BookOpen },
-      { href: '/partenaires', label: 'Partenaires', icon: Handshake },
+      { href: '/partenaires', label: 'Mailings', icon: Handshake },
+    ],
+  },
+  {
+    label: 'Suivi',
+    items: [
+      { href: '/projects', label: 'Projets', icon: FolderKanban },
+      { href: '/small-projects', label: 'Petits projets', icon: ClipboardList },
+      { href: '/aysha', label: 'Aysha', icon: ListTodo },
+    ],
+  },
+  {
+    label: 'Maintenances',
+    items: [
+      { href: '/maintenances', label: 'Liste des maintenances', icon: Wrench },
+      { href: '/contrats', label: 'Contrats', icon: FileCheck2 },
+      { href: '/mandats', label: 'Mandats', icon: FileText },
     ],
   },
   {
@@ -147,8 +155,7 @@ const sections: { label: string; items: NavItem[] }[] = [
 
 const adminItems: { href: string; label: string; Icon: typeof LayoutDashboard }[] = [
   { href: '/parametres', label: 'Paramètres', Icon: Settings },
-  { href: '/contrats', label: 'Contrats', Icon: FileCheck2 },
-  { href: '/mandats', label: 'Mandats', Icon: FileText },
+  { href: '/costs', label: 'Coûts IA', Icon: Cpu },
 ]
 
 export function Sidebar({
@@ -317,8 +324,8 @@ export function Sidebar({
     <aside
       className={cn(
         'fixed top-0 h-screen bg-[#0d0d14] border-r border-slate-800/60 flex flex-col z-40',
-        'transition-all duration-300 ease-in-out',
-        collapsed ? 'md:w-[68px]' : 'md:w-60',
+        'transition-[width] duration-200 ease-out',
+        collapsed ? 'md:w-[52px]' : 'md:w-60',
         'w-60', // Mobile always full width
         // Desktop: left side, always visible
         'md:left-0 md:translate-x-0',
@@ -338,10 +345,9 @@ export function Sidebar({
         </button>
       )}
       {/* Header: Logo (desktop) / Close + title (mobile) */}
-      <div className="px-4 py-2 border-b border-slate-800/60 flex-shrink-0 flex items-center justify-between" ref={notifRef}>
+      <div className="px-4 py-2 border-b border-slate-800/60 flex-shrink-0 flex items-center justify-between overflow-hidden" ref={notifRef}>
         {/* Desktop: logo + theme toggle + notif bell */}
-        <div className="hidden md:flex items-center justify-between w-full">
-          {!collapsed ? (
+        <div className="hidden md:flex items-center justify-between w-full whitespace-nowrap overflow-hidden">
             <Image
               src={isLight ? '/kameo-logo-light.svg' : '/kameo-logo.svg'}
               alt="Kameo"
@@ -351,19 +357,7 @@ export function Sidebar({
               className="flex-shrink-0"
               style={{ objectFit: 'contain', objectPosition: 'left' }}
             />
-          ) : (
-            <Image
-              src="/kameo-logo.svg"
-              alt="K"
-              width={28}
-              height={28}
-              priority
-              className="flex-shrink-0 mx-auto"
-              style={{ objectFit: 'contain', objectPosition: 'center', clipPath: 'inset(0 72% 0 0)' }}
-            />
-          )}
-          {!collapsed && (
-            <div className="flex items-center gap-0.5">
+            <div className="flex items-center gap-0.5 flex-shrink-0">
               <button
                 onClick={() => setTheme(isLight ? 'dark' : 'light')}
                 className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-800/60 transition-colors"
@@ -383,7 +377,6 @@ export function Sidebar({
                 )}
               </button>
             </div>
-          )}
         </div>
 
         {/* Mobile: close button + Menu title */}
@@ -399,7 +392,7 @@ export function Sidebar({
 
         {/* Desktop notification panel */}
         {notifOpen && (
-          <div className={`hidden md:flex absolute top-0 w-80 max-h-[80vh] bg-[#111118] border border-slate-700 rounded-2xl shadow-2xl z-50 flex-col overflow-hidden ${collapsed ? 'left-[68px]' : 'left-60'}`}>
+          <div className={`hidden md:flex absolute top-0 w-80 max-h-[80vh] bg-[#111118] border border-slate-700 rounded-2xl shadow-2xl z-50 flex-col overflow-hidden ${collapsed ? 'left-[52px]' : 'left-60'}`}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
               <h3 className="text-white text-sm font-semibold">Notifications</h3>
               {unreadCount > 0 && (
@@ -446,17 +439,15 @@ export function Sidebar({
       </div>
 
       {/* Navigation */}
-      <nav ref={navRef} className="flex-1 min-h-0 px-2 py-1 overflow-y-auto flex flex-col scrollbar-none" style={{ gap: `${navGap}px` }}>
+      <nav ref={navRef} className="flex-1 min-h-0 px-2 py-1 overflow-y-auto overflow-x-hidden flex flex-col scrollbar-none" style={{ gap: `${navGap}px` }}>
         {filteredSections.map(section => {
           const isOpen = openSections[section.label] ?? false
           return (
             <div key={section.label}>
               {/* Desktop: static header */}
-              {!collapsed && (
-                <p className="hidden md:block px-3 text-[8px] font-semibold text-slate-600 uppercase tracking-wider" style={{ height: `${headerSize}px`, lineHeight: `${headerSize}px` }}>
+              <p className="hidden md:block px-3 text-[8px] font-semibold text-slate-600 uppercase tracking-wider whitespace-nowrap" style={{ height: `${headerSize}px`, lineHeight: `${headerSize}px` }}>
                   {section.label}
                 </p>
-              )}
               {/* Mobile: clickable collapsible header */}
               <button
                 onClick={() => setOpenSections(prev => ({ ...prev, [section.label]: !prev[section.label] }))}
@@ -475,16 +466,15 @@ export function Sidebar({
                     style={{ paddingTop: `${navPy}px`, paddingBottom: `${navPy}px` }}
                     title={collapsed ? label : undefined}
                     className={cn(
-                      'flex items-center rounded-lg text-[11px] md:text-[11px] text-[13px] font-medium transition-all duration-150',
-                      collapsed ? 'justify-center px-2' : 'gap-2 px-3',
+                      'flex items-center gap-2 px-3 rounded-lg text-[11px] font-medium transition-colors whitespace-nowrap',
                       isActive(href)
                         ? 'bg-[#E14B89]/10 text-[#E14B89] border border-[#E14B89]/20'
                         : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
                     )}
                   >
-                    <Icon size={15} className="flex-shrink-0 md:w-[13px] md:h-[13px]" />
-                    {!collapsed && <span className="flex-1 truncate">{label}</span>}
-                    {!collapsed && isActive(href) && <ChevronRight size={10} className="text-[#E14B89]/60 flex-shrink-0" />}
+                    <Icon size={15} className="flex-shrink-0" style={{ width: 15, height: 15 }} />
+                    <span className="flex-1 truncate">{label}</span>
+                    {isActive(href) && <ChevronRight size={10} className="text-[#E14B89]/60 flex-shrink-0" />}
                   </Link>
                 ))}
               </div>
@@ -497,11 +487,9 @@ export function Sidebar({
           const isOpen = openSections['Admin'] ?? false
           return (
             <div>
-              {!collapsed && (
-                <p className="hidden md:block px-3 text-[8px] font-semibold text-slate-600 uppercase tracking-wider" style={{ height: `${headerSize}px`, lineHeight: `${headerSize}px` }}>
+              <p className="hidden md:block px-3 text-[8px] font-semibold text-slate-600 uppercase tracking-wider whitespace-nowrap" style={{ height: `${headerSize}px`, lineHeight: `${headerSize}px` }}>
                   Admin
                 </p>
-              )}
               <button
                 onClick={() => setOpenSections(prev => ({ ...prev, Admin: !prev.Admin }))}
                 className="md:hidden flex items-center justify-between w-full px-3 py-2.5 text-slate-400 hover:text-white transition-colors"
@@ -518,16 +506,15 @@ export function Sidebar({
                     style={{ paddingTop: `${navPy}px`, paddingBottom: `${navPy}px` }}
                     title={collapsed ? label : undefined}
                     className={cn(
-                      'flex items-center rounded-lg text-[11px] md:text-[11px] text-[13px] font-medium transition-all duration-150',
-                      collapsed ? 'justify-center px-2' : 'gap-2 px-3',
+                      'flex items-center gap-2 px-3 rounded-lg text-[11px] font-medium transition-colors whitespace-nowrap',
                       pathname.startsWith(href)
                         ? 'bg-[#E14B89]/10 text-[#E14B89] border border-[#E14B89]/20'
                         : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
                     )}
                   >
-                    <Icon size={15} className="flex-shrink-0 md:w-[13px] md:h-[13px]" />
-                    {!collapsed && <span className="flex-1">{label}</span>}
-                    {!collapsed && pathname.startsWith(href) && (
+                    <Icon size={15} className="flex-shrink-0" style={{ width: 15, height: 15 }} />
+                    <span className="flex-1 truncate">{label}</span>
+                    {pathname.startsWith(href) && (
                       <ChevronRight size={10} className="text-[#E14B89]/60 flex-shrink-0" />
                     )}
                   </Link>
@@ -539,7 +526,7 @@ export function Sidebar({
       </nav>
 
       {/* User dropdown */}
-      <div className="px-2 py-1 border-t border-slate-800/60 flex-shrink-0" ref={dropdownRef}>
+      <div className="px-2 py-1 border-t border-slate-800/60 flex-shrink-0 overflow-hidden" ref={dropdownRef}>
         {dropdownOpen && (
           <div className="mb-2 bg-[#111118] border border-slate-700 rounded-xl overflow-hidden shadow-xl">
             <Link
@@ -573,8 +560,7 @@ export function Sidebar({
           onClick={() => setDropdownOpen(!dropdownOpen)}
           title={collapsed ? session?.user?.name ?? '' : undefined}
           className={cn(
-            'flex items-center rounded-xl transition-all w-full group',
-            collapsed ? 'justify-center px-1 py-2' : 'gap-3 px-3 py-2',
+            'flex items-center gap-3 px-3 py-2 rounded-xl transition-colors w-full group overflow-hidden whitespace-nowrap',
             dropdownOpen ? 'bg-slate-800/70' : 'hover:bg-slate-800/50'
           )}
         >
@@ -593,8 +579,6 @@ export function Sidebar({
               </div>
             )}
           </div>
-          {!collapsed && (
-            <>
               <div className="flex-1 min-w-0 text-left">
                 <p className="text-xs font-medium text-white truncate">{session?.user?.name}</p>
                 <p className="text-slate-500 text-xs truncate">{ROLE_LABELS[role] ?? role}</p>
@@ -606,8 +590,6 @@ export function Sidebar({
                   dropdownOpen ? 'rotate-0' : 'rotate-180'
                 )}
               />
-            </>
-          )}
         </button>
       </div>
     </aside>

@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import {
-  Plus, Trash2, Pencil, Eye, Download, X, ChevronDown, ChevronLeft, FileText, Check, Send, Loader2, Package, Sparkles, Settings, Copy, GripVertical,
+  Plus, Trash2, Pencil, Eye, Download, X, ChevronDown, ChevronLeft, FileText, Check, Send, Loader2, Package, Sparkles, Settings, Copy, GripVertical, Clock,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { usePolling } from '@/hooks/usePolling'
@@ -32,12 +32,15 @@ interface Quote {
   notes?: string
   discount: number
   discountType: 'PERCENT' | 'FIXED'
+  paymentTerms?: string | null
   deliveryDays?: number | null
   items: QuoteItem[]
   clientWebsite?: string
   client?: { id: string; name: string }
   createdBy: { name: string }
   createdAt: string
+  _count?: { signatureRequests: number }
+  signatureRequests?: { id: string; scheduledAt: string; signerEmail: string }[]
 }
 
 interface ArticleTemplate {
@@ -59,6 +62,7 @@ interface Client {
   address?: string
   postalCode?: string
   city?: string
+  phone?: string
   website?: string
   logo?: string
 }
@@ -98,6 +102,16 @@ function calcTotals(items: QuoteItem[], discount: number, discountType: 'PERCENT
   const tva = sousTotal * 0.20
   const totalTTC = sousTotal + tva
   return { totalHT, remise, sousTotal, tva, totalTTC }
+}
+
+function getPaymentSchedule(terms: string | undefined | null, totalTTC: number): { lines: { label: string; amount: number }[]; conditions: string } {
+  const fmt = (n: number) => new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(n)
+  if (terms === '100_COMMANDE') return { lines: [{ label: '100% a la commande', amount: totalTTC }], conditions: '100% a la commande' }
+  if (terms === '100_LIVRAISON') return { lines: [{ label: '100% a la livraison', amount: totalTTC }], conditions: '100% a la livraison' }
+  if (terms === '30_70') return { lines: [{ label: '30% a la commande', amount: totalTTC * 0.3 }, { label: '70% a la livraison', amount: totalTTC * 0.7 }], conditions: '30% a la commande - 70% a la livraison' }
+  if (terms === '30_30_40') return { lines: [{ label: '30% a la commande', amount: totalTTC * 0.3 }, { label: '30% a mi-parcours', amount: totalTTC * 0.3 }, { label: '40% a la livraison', amount: totalTTC * 0.4 }], conditions: '30% commande - 30% mi-parcours - 40% livraison' }
+  void fmt // suppress unused
+  return { lines: [{ label: '50% a la commande', amount: totalTTC * 0.5 }, { label: '50% a la livraison', amount: totalTTC * 0.5 }], conditions: '50% a la commande - 50% a la livraison' }
 }
 
 // ─── Print View ───────────────────────────────────────────────────────────────
@@ -161,7 +175,7 @@ function buildQuoteHtml(quote: Quote, signatureData: { signatureImage?: string; 
     </div>
   `
 
-  const logoUrl = `${window.location.origin}/kameo-logo-light.svg`
+  const logoUrl = `${window.location.origin}/kameo-logo-light.png`
   const clientLogoUrl = quote.clientLogo || (clientDomain ? `https://logo.clearbit.com/${clientDomain}` : '')
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Devis ${quote.number}</title>
@@ -177,14 +191,14 @@ function buildQuoteHtml(quote: Quote, signatureData: { signatureImage?: string; 
 
 <!-- PAGE DE GARDE -->
 <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;page-break-after:always;text-align:center">
-  <img src="${logoUrl}" style="height:56px;margin-bottom:12px" />
+  <img src="${logoUrl}" style="height:56px;width:auto;margin-bottom:12px;image-rendering:high-quality" />
   <div style="color:#6b7280;font-size:14px;margin-bottom:64px;letter-spacing:0.5px">L'expert du site web haut de gamme.</div>
   <div style="display:flex;gap:24px;margin-bottom:64px">
-    <div style="border:1px solid #e5e7eb;border-radius:9999px;padding:10px 24px;font-size:14px;color:#4b5563">+ de 50 entreprises accompagnées.</div>
-    <div style="border:1px solid #e5e7eb;border-radius:9999px;padding:10px 24px;font-size:14px;color:#4b5563">4.5 ★ sur Trustpilot</div>
+    <div style="border:1px solid #e5e7eb;border-radius:9999px;padding:10px 24px;font-size:14px;color:#4b5563"><span style="color:#E14B89;font-weight:700;display:inline">+ de 50</span> entreprises accompagnées.</div>
+    <div style="border:1px solid #e5e7eb;border-radius:9999px;padding:10px 24px;font-size:14px;color:#4b5563"><span style="color:#E14B89;font-weight:700;display:inline">4.5 ★</span> sur Trustpilot</div>
   </div>
   <div style="font-size:48px;font-weight:700;color:#111827;line-height:1.2;margin-bottom:48px">
-    Conception d'un site<br/>internet <span style="color:#F8903C">à votre image.</span>
+    Conception d'un site<br/>internet <span style="color:#E14B89">à votre image.</span>
   </div>
   <div style="color:#6b7280;font-size:18px;margin-bottom:48px">
     Proposition exclusive pour <strong style="color:#111827">${quote.clientName.split('\n')[0]}.</strong>
@@ -197,17 +211,17 @@ function buildQuoteHtml(quote: Quote, signatureData: { signatureImage?: string; 
 <!-- CONTENU DU DEVIS -->
 <div style="max-width:800px;margin:0 auto;padding:40px 48px">
   <!-- Header -->
-  <div style="margin-bottom:40px;padding-bottom:32px;border-bottom:3px solid #F8903C">
+  <div style="margin-bottom:40px;padding-bottom:32px;border-image:linear-gradient(135deg,#E14B89,#F8903C) 1;border-bottom:3px solid">
     <div style="position:relative;margin-bottom:24px">
       <div style="position:absolute;top:0;right:0;text-align:right">
-        <div style="font-size:12px;font-weight:700;color:#E14B89">N° ${quote.number}</div>
+        <div style="font-size:12px;font-weight:700;color:#E14B89;display:inline-block">N° ${quote.number}</div>
         <div style="font-size:10px;color:#9ca3af;margin-top:2px">
           <div>Émis le : ${today}</div>
           ${quote.deliveryDays ? `<div>Délai de livraison : ${quote.deliveryDays} jours</div>` : ''}
           ${quote.validUntil ? `<div>Valide jusqu'au : ${new Date(quote.validUntil).toLocaleDateString('fr-FR')}</div>` : ''}
         </div>
       </div>
-      <img src="${logoUrl}" style="height:36px;display:block;margin:0 auto" />
+      <img src="${logoUrl}" style="height:36px;width:auto;display:block;margin:0 auto;image-rendering:high-quality" />
     </div>
     <div style="text-align:center;margin-bottom:32px">
       <div style="font-size:28px;font-weight:600;letter-spacing:-0.5px;color:#1f2937">Devis</div>
@@ -216,7 +230,7 @@ function buildQuoteHtml(quote: Quote, signatureData: { signatureImage?: string; 
       <div>
         <div style="font-size:14px;font-weight:600;color:#374151;margin-bottom:8px">Agence Kameo</div>
         <div style="font-size:12px;color:#6b7280;line-height:1.8">
-          9 rue des colonnes, 75002<br/>Paris<br/>06 76 23 00 37<br/>contact@agencekameo.fr<br/><span style="padding-top:6px;display:inline-block">SIRET : 980 573 984 00013</span>
+          9 rue des colonnes, 75002<br/>Paris<br/>06 62 37 99 85<br/>contact@agencekameo.fr<br/><span style="padding-top:6px;display:inline-block">SIRET : 980 573 984 00013</span>
         </div>
       </div>
       <div style="text-align:right">
@@ -253,10 +267,9 @@ function buildQuoteHtml(quote: Quote, signatureData: { signatureImage?: string; 
       <div style="margin-top:16px;font-size:11px;color:#6b7280;background:#f9fafb;border-radius:8px;padding:12px 16px;border:1px solid #f3f4f6">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
           <span style="font-weight:600;color:#4b5563">Échéancier prévisionnel</span>
-          ${quote.deliveryDays ? `<span style="font-weight:600;color:#E14B89">Délai : ${quote.deliveryDays} jours</span>` : ''}
+          ${quote.deliveryDays ? `<span style="font-weight:600;background:linear-gradient(135deg,#E14B89,#F8903C);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;color:transparent">Delai : ${quote.deliveryDays} jours</span>` : ''}
         </div>
-        <div style="display:flex;justify-content:space-between"><span>50% à la commande</span><span style="font-weight:500;color:#374151">${fmt(totalTTC * 0.5)}</span></div>
-        <div style="display:flex;justify-content:space-between;margin-top:4px"><span>50% à la livraison</span><span style="font-weight:500;color:#374151">${fmt(totalTTC * 0.5)}</span></div>
+        ${getPaymentSchedule(quote.paymentTerms, totalTTC).lines.map(l => `<div style="display:flex;justify-content:space-between;margin-top:4px"><span>${l.label}</span><span style="font-weight:500;color:#374151">${fmt(l.amount)}</span></div>`).join('')}
       </div>
     </div>
   </div>
@@ -267,18 +280,15 @@ function buildQuoteHtml(quote: Quote, signatureData: { signatureImage?: string; 
     <p style="color:#4b5563;font-size:13px;white-space:pre-line">${quote.notes}</p>
   </div>` : ''}
 
-  <!-- Règlement + Signature + Footer — bloc insécable -->
+  <!-- Reglement + Signature + Footer — bloc insécable -->
   <div style="page-break-inside:avoid;break-inside:avoid">
     <div style="border-top:1px solid #e5e7eb;padding-top:24px;margin-top:8px;display:grid;grid-template-columns:1fr 1fr;gap:40px">
       <div>
-        <div style="font-size:10px;text-transform:uppercase;letter-spacing:2px;color:#9ca3af;margin-bottom:12px;font-weight:700">Règlement</div>
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:2px;color:#9ca3af;margin-bottom:12px;font-weight:700">Reglement</div>
         <div style="font-size:13px;color:#4b5563;line-height:1.6">
-          Mode : Virement Bancaire<br/>Banque : Crédit Agricole
+          Mode : Virement Bancaire<br/>Banque : Credit Agricole
           <div style="font-family:monospace;font-size:11px;margin-top:8px;color:#374151">IBAN : FR76 1310 6005 0030 0406 5882 074</div>
           <div style="font-family:monospace;font-size:11px;color:#374151">BIC : AGRIFRPP831</div>
-        </div>
-        <div style="margin-top:12px;font-size:11px;color:#6b7280;background:#f9fafb;border-radius:4px;padding:8px 12px">
-          <strong>Conditions :</strong> 50% à la commande · 50% à la livraison
         </div>
       </div>
       <div>
@@ -363,14 +373,14 @@ function PrintView({ quote, onClose, onSendSignature }: { quote: Quote; onClose:
         {/* Kameo logo */}
         <div className="mb-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/kameo-logo-light.svg" alt="Kameo" className="h-14 mx-auto" />
+          <img src="/kameo-logo-light.png" alt="Kameo" className="h-14 mx-auto" />
         </div>
         <div className="text-gray-500 text-sm mb-16 tracking-wide">L&apos;expert du site web haut de gamme.</div>
 
         {/* Badges */}
         <div className="flex gap-6 mb-16">
-          <div className="border border-gray-200 rounded-full px-6 py-2.5 text-sm text-gray-600">+ de 50 entreprises accompagnées.</div>
-          <div className="border border-gray-200 rounded-full px-6 py-2.5 text-sm text-gray-600">4.5 ★ sur Trustpilot</div>
+          <div className="border border-gray-200 rounded-full px-6 py-2.5 text-sm text-gray-600"><span className="font-bold bg-gradient-to-r from-[#E14B89] to-[#F8903C] inline-block text-transparent" style={{ WebkitBackgroundClip: 'text' }}>+ de 50</span> entreprises accompagnées.</div>
+          <div className="border border-gray-200 rounded-full px-6 py-2.5 text-sm text-gray-600"><span className="font-bold bg-gradient-to-r from-[#E14B89] to-[#F8903C] inline-block text-transparent" style={{ WebkitBackgroundClip: 'text' }}>4.5 ★</span> sur Trustpilot</div>
         </div>
 
         {/* Big title */}
@@ -380,7 +390,7 @@ function PrintView({ quote, onClose, onSendSignature }: { quote: Quote; onClose:
           </div>
           <div className="text-5xl font-bold leading-tight">
             <span className="text-gray-900">internet </span>
-            <span style={{ color: '#F8903C' }}>à votre image.</span>
+            <span className="bg-gradient-to-r from-[#E14B89] to-[#F8903C] inline-block text-transparent" style={{ WebkitBackgroundClip: 'text' }}>à votre image.</span>
           </div>
         </div>
 
@@ -412,11 +422,11 @@ function PrintView({ quote, onClose, onSendSignature }: { quote: Quote; onClose:
       <div className="max-w-[800px] mx-auto px-12 py-10 text-gray-900">
 
         {/* Header */}
-        <div className="mb-10 pb-8 border-b-[3px]" style={{ borderColor: '#F8903C' }}>
+        <div className="mb-10 pb-8 border-b-[3px]" style={{ borderImage: 'linear-gradient(135deg, #E14B89, #F8903C) 1' }}>
           {/* Quote meta top-right + Logo centered */}
           <div className="relative mb-6">
             <div className="absolute top-0 right-0 text-right">
-              <div className="text-xs font-bold" style={{ color: '#E14B89' }}>N° {quote.number}</div>
+              <div className="text-xs font-bold bg-gradient-to-r from-[#E14B89] to-[#F8903C] inline-block text-transparent" style={{ WebkitBackgroundClip: 'text' }}>N° {quote.number}</div>
               <div className="text-[10px] text-gray-400 mt-0.5 space-y-0">
                 <div>Émis le : {today}</div>
                 {quote.deliveryDays && (
@@ -428,7 +438,7 @@ function PrintView({ quote, onClose, onSendSignature }: { quote: Quote; onClose:
               </div>
             </div>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/kameo-logo-light.svg" alt="Kameo" className="h-9 mx-auto" />
+            <img src="/kameo-logo-light.png" alt="Kameo" className="h-9 mx-auto" />
           </div>
           {/* Devis title centered */}
           <div className="text-center mb-8">
@@ -444,7 +454,7 @@ function PrintView({ quote, onClose, onSendSignature }: { quote: Quote; onClose:
               <div className="text-xs text-gray-500 leading-relaxed space-y-0.5">
                 <div>9 rue des colonnes, 75002</div>
                 <div>Paris</div>
-                <div>06 76 23 00 37</div>
+                <div>06 62 37 99 85</div>
                 <div>contact@agencekameo.fr</div>
                 <div className="pt-1.5">SIRET : 980 573 984 00013</div>
               </div>
@@ -541,16 +551,14 @@ function PrintView({ quote, onClose, onSendSignature }: { quote: Quote; onClose:
             <div className="mt-4 text-xs text-gray-500 space-y-1 bg-gray-50 rounded-lg px-4 py-3 border border-gray-100">
               <div className="flex items-center justify-between mb-1.5">
                 <span className="font-semibold text-gray-600">Échéancier prévisionnel</span>
-                {quote.deliveryDays && <span className="font-semibold" style={{ color: '#E14B89' }}>Délai : {quote.deliveryDays} jours</span>}
+                {quote.deliveryDays && <span className="font-semibold bg-gradient-to-r from-[#E14B89] to-[#F8903C] inline-block text-transparent" style={{ WebkitBackgroundClip: 'text' }}>Delai : {quote.deliveryDays} jours</span>}
               </div>
-              <div className="flex justify-between">
-                <span>50% à la commande</span>
-                <span className="font-medium text-gray-700">{formatCurrency(totalTTC * 0.50)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>50% à la livraison</span>
-                <span className="font-medium text-gray-700">{formatCurrency(totalTTC * 0.50)}</span>
-              </div>
+              {getPaymentSchedule(quote.paymentTerms, totalTTC).lines.map((l, i) => (
+                <div key={i} className="flex justify-between">
+                  <span>{l.label}</span>
+                  <span className="font-medium text-gray-700">{formatCurrency(l.amount)}</span>
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -563,22 +571,17 @@ function PrintView({ quote, onClose, onSendSignature }: { quote: Quote; onClose:
           </div>
         )}
 
-        {/* Règlement + Bon pour accord */}
+        {/* Reglement + Bon pour accord */}
         <div className="border-t border-gray-200 pt-6 mt-2 grid grid-cols-2 gap-10">
-          {/* Paiement */}
           <div>
-            <div className="text-[10px] uppercase tracking-widest text-gray-400 mb-3 font-bold">Règlement</div>
+            <div className="text-[10px] uppercase tracking-widest text-gray-400 mb-3 font-bold">Reglement</div>
             <div className="text-sm text-gray-600 space-y-1">
               <div>Mode : Virement Bancaire</div>
-              <div>Banque : Crédit Agricole</div>
+              <div>Banque : Credit Agricole</div>
               <div className="font-mono text-xs mt-2 text-gray-700">IBAN : FR76 1310 6005 0030 0406 5882 074</div>
               <div className="font-mono text-xs text-gray-700">BIC : AGRIFRPP831</div>
             </div>
-            <div className="mt-3 text-xs text-gray-500 leading-relaxed bg-gray-50 rounded px-3 py-2">
-              <strong>Conditions :</strong> 50% à la commande · 50% à la livraison
-            </div>
           </div>
-
           {/* Bon pour accord */}
           <div>
             <div className="text-[10px] uppercase tracking-widest text-gray-400 mb-3 font-bold">Bon pour accord et signature</div>
@@ -640,7 +643,7 @@ function defaultValidUntil() {
   return d.toISOString().slice(0, 10)
 }
 
-function emptyForm() {
+function emptyForm(defaultPayment = '') {
   return {
     clientId: '',
     clientName: '',
@@ -653,6 +656,7 @@ function emptyForm() {
     notes: '',
     discount: 0,
     discountType: 'PERCENT' as Quote['discountType'],
+    paymentTerms: defaultPayment,
     deliveryDays: '' as string | number,
     items: [] as QuoteItem[],
     showClientName: false,
@@ -667,7 +671,7 @@ export default function DevisPage() {
   const [clients, setClients] = useState<Client[]>([])
   const [templates, setTemplates] = useState<ArticleTemplate[]>([])
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<'EN_ATTENTE' | 'SIGNE' | 'REFUSE'>('EN_ATTENTE')
+  const [tab, setTab] = useState<'EN_ATTENTE' | 'ENVOYE' | 'SIGNE' | 'REFUSE'>('EN_ATTENTE')
 
   // Modal state
   const [showModal, setShowModal] = useState(false)
@@ -679,6 +683,7 @@ export default function DevisPage() {
   const [dragTemplateId, setDragTemplateId] = useState<string | null>(null)
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null)
   const [dragItemId, setDragItemId] = useState<string | null>(null)
+  const [defaultPaymentTerms, setDefaultPaymentTerms] = useState('')
 
   function handleItemDrop(targetId: string) {
     if (!dragItemId || dragItemId === targetId) { setDragItemId(null); return }
@@ -698,7 +703,7 @@ export default function DevisPage() {
   const [printQuote, setPrintQuote] = useState<Quote | null>(null)
 
   // Form
-  const [form, setForm] = useState(emptyForm())
+  const [form, setForm] = useState(emptyForm(defaultPaymentTerms))
   const [useOtherClient, setUseOtherClient] = useState(false)
   const [clientSearch, setClientSearch] = useState('')
   const [clientDropdownOpen, setClientDropdownOpen] = useState(false)
@@ -727,7 +732,7 @@ export default function DevisPage() {
     { label: 'Louison Boutet', email: 'louison.boutet@agence-kameo.fr' },
   ]
   const [signatureModal, setSignatureModal] = useState<Quote | null>(null)
-  const [signatureForm, setSignatureForm] = useState({ firstName: '', lastName: '', email: '', phone: '', senderEmail: '', formule: 'vous_prenom' as string })
+  const [signatureForm, setSignatureForm] = useState({ firstName: '', lastName: '', email: '', phone: '', senderEmail: '', formule: 'vous_prenom' as string, emailSubject: '', scheduled: false, scheduledDate: '', scheduledTime: '' })
   const [signatureSending, setSignatureSending] = useState(false)
   const [signatureResult, setSignatureResult] = useState<{ success?: boolean; message?: string; error?: string } | null>(null)
   const [signatureStep, setSignatureStep] = useState<1 | 2>(1)
@@ -773,6 +778,7 @@ export default function DevisPage() {
       loadQuotes(),
       fetch('/api/clients').then(r => r.json()).then(d => setClients(Array.isArray(d) ? d : [])),
       loadTemplates(),
+      fetch('/api/settings?key=defaultPaymentTerms').then(r => r.json()).then(d => { if (d.value) setDefaultPaymentTerms(d.value) }).catch(() => {}),
     ]).finally(() => setLoading(false))
   }, [loadQuotes, loadTemplates])
 
@@ -780,7 +786,7 @@ export default function DevisPage() {
 
   function openCreate() {
     setEditingQuote(null)
-    setForm(emptyForm())
+    setForm(emptyForm(defaultPaymentTerms))
     setUseOtherClient(false)
     setShowTemplatesPanel(false)
     setShowModal(true)
@@ -808,6 +814,7 @@ export default function DevisPage() {
       notes: q.notes || '',
       discount: q.discount ?? 0,
       discountType: q.discountType || 'PERCENT',
+      paymentTerms: q.paymentTerms || '',
       deliveryDays: q.deliveryDays?.toString() || '',
       items: q.items.map(i => ({ ...i })),
       showClientName: false,
@@ -819,7 +826,7 @@ export default function DevisPage() {
   function closeModal() {
     setShowModal(false)
     setEditingQuote(null)
-    setForm(emptyForm())
+    setForm(emptyForm(defaultPaymentTerms))
     setShowTemplatesPanel(false)
     setClientSearch('')
     setClientDropdownOpen(false)
@@ -925,6 +932,7 @@ export default function DevisPage() {
         notes: form.notes || undefined,
         discount: Number(form.discount) || 0,
         discountType: form.discountType || 'PERCENT',
+        paymentTerms: form.paymentTerms || null,
         deliveryDays: form.deliveryDays || null,
         items: form.items.map(({ id: _id, ...rest }) => ({
           ...rest,
@@ -991,7 +999,7 @@ export default function DevisPage() {
 
   function handleDuplicate(q: Quote) {
     setEditingQuote(null)
-    const f = emptyForm()
+    const f = emptyForm(defaultPaymentTerms)
     setForm({
       ...f,
       clientId: q.clientId || '',
@@ -1005,6 +1013,7 @@ export default function DevisPage() {
       notes: q.notes || '',
       discount: q.discount ?? 0,
       discountType: q.discountType || 'PERCENT',
+      paymentTerms: q.paymentTerms || '',
       deliveryDays: q.deliveryDays?.toString() || '',
       items: q.items.map(i => ({ ...i, id: genTempId() })),
       showClientName: false,
@@ -1022,15 +1031,14 @@ export default function DevisPage() {
 
   function getSignerInfo(q: Quote) {
     // Try to find client record for firstName/lastName
-    const cl = q.clientId ? clients.find(c => c.id === q.clientId) : null
+    const cl = q.clientId
+      ? clients.find(c => c.id === q.clientId)
+      : clients.find(c => c.name?.toLowerCase() === q.clientName?.toLowerCase() || c.company?.toLowerCase() === q.clientName?.toLowerCase())
     if (cl?.firstName || cl?.lastName) {
-      return { firstName: cl.firstName || '', lastName: cl.lastName || '', email: q.clientEmail || '', phone: '' }
+      return { firstName: cl.firstName || '', lastName: cl.lastName || '', email: q.clientEmail || cl.email || '', phone: cl.phone || '' }
     }
-    // Fallback: split from clientName (last line if multiline = contact name)
-    const nameParts = q.clientName.split('\n')
-    const mainName = nameParts[nameParts.length - 1] || nameParts[0] || ''
-    const parts = mainName.trim().split(' ')
-    return { firstName: parts[0] || '', lastName: parts.slice(1).join(' ') || '', email: q.clientEmail || '', phone: '' }
+    // Fallback: empty fields — user must fill manually
+    return { firstName: '', lastName: '', email: q.clientEmail || '', phone: '' }
   }
 
   function getDefaultSender() {
@@ -1044,15 +1052,19 @@ export default function DevisPage() {
     const info = getSignerInfo(q)
     const defaultSender = getDefaultSender()
     setSignatureModal(q)
-    setSignatureForm({ ...info, senderEmail: defaultSender, formule: 'vous_prenom' })
+    setSignatureForm({ ...info, senderEmail: defaultSender, formule: 'vous', emailSubject: q.subject || '', scheduled: false, scheduledDate: '', scheduledTime: '' })
     setSignatureResult(null)
     setSignatureStep(1)
   }
 
-  async function sendSignature(q: Quote, info: { firstName: string; lastName: string; email: string; phone: string; senderEmail: string; formule: string }) {
+  async function sendSignature(q: Quote, info: { firstName: string; lastName: string; email: string; phone: string; senderEmail: string; formule: string; emailSubject: string; scheduled: boolean; scheduledDate: string; scheduledTime: string }) {
     setSignatureSending(true)
     setSignatureResult(null)
     try {
+      let scheduledAt: string | undefined
+      if (info.scheduled && info.scheduledDate && info.scheduledTime) {
+        scheduledAt = new Date(`${info.scheduledDate}T${info.scheduledTime}:00`).toISOString()
+      }
       const res = await fetch(`/api/quotes/${q.id}/send-signature`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1062,13 +1074,22 @@ export default function DevisPage() {
           signerEmail: info.email,
           signerPhone: info.phone || undefined,
           senderEmail: info.senderEmail || undefined,
-          tone: info.formule.startsWith('tu') ? 'tu' : 'vous',
-          nameDisplay: info.formule.endsWith('nom') ? 'nom' : 'prenom',
+          tone: info.formule === 'tu' ? 'tu' : 'vous',
+          nameDisplay: info.formule === 'tu' ? 'prenom' : 'nom',
+          emailSubject: info.emailSubject || undefined,
+          scheduledAt,
         }),
       })
       const data = await res.json()
       if (res.ok) {
-        setSignatureResult({ success: true, message: data.message || 'Envoyé pour signature !' })
+        if (data.scheduled) {
+          const d = new Date(data.scheduledAt)
+          const dateStr = d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
+          const timeStr = d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+          setSignatureResult({ success: true, message: `Signature planifiée pour le ${dateStr} à ${timeStr}` })
+        } else {
+          setSignatureResult({ success: true, message: data.message || 'Envoyé pour signature !' })
+        }
         setQuotes(prev => prev.map(existing => existing.id === q.id ? { ...existing, status: 'ENVOYE' as Quote['status'] } : existing))
       } else {
         setSignatureResult({ error: data.error || 'Erreur lors de l\'envoi' })
@@ -1284,23 +1305,36 @@ export default function DevisPage() {
       {/* Status tabs */}
       {(() => {
         const QUOTE_TABS = [
-          { key: 'EN_ATTENTE' as const, label: 'En attente', dot: 'bg-amber-400', statuses: ['EN_ATTENTE', 'BROUILLON', 'ENVOYE'] },
+          { key: 'EN_ATTENTE' as const, label: 'À envoyer', dot: 'bg-amber-400', statuses: ['EN_ATTENTE', 'BROUILLON'] },
+          { key: 'ENVOYE' as const, label: 'Envoyés', dot: 'bg-blue-400', statuses: ['ENVOYE'] },
           { key: 'SIGNE' as const, label: 'Signés', dot: 'bg-green-400', statuses: ['ACCEPTE'] },
           { key: 'REFUSE' as const, label: 'Refusés', dot: 'bg-red-400', statuses: ['REFUSE', 'EXPIRE'] },
         ]
         return (
-          <div className="flex gap-1 mb-6 bg-[#111118] border border-slate-800 rounded-xl p-1 w-fit overflow-x-auto">
-            {QUOTE_TABS.map(t => {
-              const count = quotes.filter(q => t.statuses.includes(q.status)).length
+          <div className="flex items-center gap-3 mb-6">
+            <div className="flex gap-1 bg-[#111118] border border-slate-800 rounded-xl p-1 w-fit overflow-x-auto">
+              {QUOTE_TABS.map(t => {
+                const count = quotes.filter(q => t.statuses.includes(q.status)).length
+                return (
+                  <button key={t.key} onClick={() => setTab(t.key)}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${tab === t.key ? 'bg-[#E14B89]/10 text-[#E14B89]' : 'text-slate-400 hover:text-white'}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${t.dot}`} />
+                    {t.label}
+                    <span className={`text-xs ${tab === t.key ? 'text-[#E14B89]/60' : 'text-slate-600'}`}>{count}</span>
+                  </button>
+                )
+              })}
+            </div>
+            {(() => {
+              const scheduledCount = quotes.reduce((acc, q) => acc + (q.signatureRequests?.length || 0), 0)
+              if (scheduledCount === 0) return null
               return (
-                <button key={t.key} onClick={() => setTab(t.key)}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${tab === t.key ? 'bg-[#E14B89]/10 text-[#E14B89]' : 'text-slate-400 hover:text-white'}`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${t.dot}`} />
-                  {t.label}
-                  <span className={`text-xs ${tab === t.key ? 'text-[#E14B89]/60' : 'text-slate-600'}`}>{count}</span>
-                </button>
+                <span className="flex items-center gap-1.5 text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 px-3 py-1.5 rounded-full">
+                  <Clock size={12} />
+                  {scheduledCount} envoi{scheduledCount > 1 ? 's' : ''} planifié{scheduledCount > 1 ? 's' : ''}
+                </span>
               )
-            })}
+            })()}
           </div>
         )
       })()}
@@ -1319,7 +1353,7 @@ export default function DevisPage() {
       ) : (
         <div>
           {(() => {
-            const tabStatuses = tab === 'SIGNE' ? ['ACCEPTE'] : tab === 'REFUSE' ? ['REFUSE', 'EXPIRE'] : ['EN_ATTENTE', 'BROUILLON', 'ENVOYE']
+            const tabStatuses = tab === 'ENVOYE' ? ['ENVOYE'] : tab === 'SIGNE' ? ['ACCEPTE'] : tab === 'REFUSE' ? ['REFUSE', 'EXPIRE'] : ['EN_ATTENTE', 'BROUILLON']
             const filteredQuotes = quotes.filter(q => tabStatuses.includes(q.status))
 
             return (
@@ -1340,6 +1374,16 @@ export default function DevisPage() {
                             <button onClick={e => { e.stopPropagation(); handleRefuse(q.id) }}
                               className={`text-[11px] px-2 py-0.5 rounded-full font-medium border flex-shrink-0 ml-2 cursor-pointer hover:bg-red-500/15 hover:text-red-400 hover:border-red-500/20 transition-colors ${STATUS_COLORS[q.status]}`}
                               title="Cliquer pour refuser">
+                              {(q._count?.signatureRequests ?? 0) > 0 ? 'Signature envoyee' : 'Envoye (manuel)'}
+                            </button>
+                          ) : q.status === 'EN_ATTENTE' || q.status === 'BROUILLON' ? (
+                            <button onClick={async e => {
+                              e.stopPropagation()
+                              await fetch(`/api/quotes/${q.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'ENVOYE' }) })
+                              setQuotes(prev => prev.map(x => x.id === q.id ? { ...x, status: 'ENVOYE' as Quote['status'] } : x))
+                            }}
+                              className={`text-[11px] px-2 py-0.5 rounded-full font-medium border flex-shrink-0 ml-2 cursor-pointer hover:bg-blue-500/15 hover:text-blue-400 hover:border-blue-500/20 transition-colors ${STATUS_COLORS[q.status]}`}
+                              title="Cliquer pour passer en envoye">
                               {STATUS_LABELS[q.status]}
                             </button>
                           ) : (
@@ -1348,6 +1392,14 @@ export default function DevisPage() {
                             </span>
                           )}
                         </div>
+                        {q.signatureRequests && q.signatureRequests.length > 0 && (
+                          <div className="flex items-center gap-1.5 mt-1.5">
+                            <Clock size={10} className="text-amber-400" />
+                            <span className="text-amber-400 text-[10px]">
+                              Envoi planifie le {new Date(q.signatureRequests[0].scheduledAt).toLocaleDateString('fr-FR')} a {new Date(q.signatureRequests[0].scheduledAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                        )}
                         <div className="flex items-center justify-between">
                           <span className="text-white font-semibold">{formatCurrency(qTotal)}</span>
                           <div className="flex items-center gap-2 text-slate-500 text-xs">
@@ -1411,6 +1463,16 @@ export default function DevisPage() {
                                 <button onClick={e => { e.stopPropagation(); handleRefuse(q.id) }}
                                   className={`text-xs px-2.5 py-1 rounded-full font-medium border cursor-pointer hover:bg-red-500/15 hover:text-red-400 hover:border-red-500/20 transition-colors ${STATUS_COLORS[q.status]}`}
                                   title="Cliquer pour refuser">
+                                  {(q._count?.signatureRequests ?? 0) > 0 ? 'Signature envoyee' : 'Envoye (manuel)'}
+                                </button>
+                              ) : q.status === 'EN_ATTENTE' || q.status === 'BROUILLON' ? (
+                                <button onClick={async e => {
+                                  e.stopPropagation()
+                                  await fetch(`/api/quotes/${q.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'ENVOYE' }) })
+                                  setQuotes(prev => prev.map(x => x.id === q.id ? { ...x, status: 'ENVOYE' as Quote['status'] } : x))
+                                }}
+                                  className={`text-xs px-2.5 py-1 rounded-full font-medium border cursor-pointer hover:bg-blue-500/15 hover:text-blue-400 hover:border-blue-500/20 transition-colors ${STATUS_COLORS[q.status]}`}
+                                  title="Cliquer pour passer en envoye">
                                   {STATUS_LABELS[q.status]}
                                 </button>
                               ) : (
@@ -1596,38 +1658,36 @@ export default function DevisPage() {
                 {/* ── Line items ───────────────────────────────────────────── */}
                 <div className="flex-1 flex flex-col min-h-0">
                   <div className="flex items-center justify-between mb-2 flex-shrink-0">
-                    <span className="text-slate-300 text-sm font-medium">Lignes de devis</span>
-                    <div className="flex gap-2">
+                    <div className="flex gap-1.5">
                       <button
                         type="button"
                         onClick={() => setShowSettingsPanel(v => !v)}
-                        className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors ${
-                          showSettingsPanel ? 'border-[#E14B89]/40 text-[#E14B89] bg-[#E14B89]/10' : 'border-slate-700 text-slate-400 hover:text-white hover:border-slate-600'
+                        className={`flex items-center gap-1.5 text-[11px] px-2.5 py-1.5 rounded-lg transition-colors ${
+                          showSettingsPanel ? 'text-[#E14B89] bg-[#E14B89]/10' : 'text-slate-500 hover:text-white hover:bg-slate-800/50'
                         }`}
                       >
-                        <Settings size={12} />
-                        Paramètres
+                        <Settings size={11} />
+                        Parametres
                       </button>
                       <button
                         type="button"
                         onClick={() => setShowTemplatesPanel(v => !v)}
-                        className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors
-                          ${showTemplatesPanel
-                            ? 'border-[#E14B89]/40 text-[#E14B89] bg-[#E14B89]/10'
-                            : 'border-slate-700 text-slate-400 hover:text-white hover:border-slate-600'}`}
+                        className={`flex items-center gap-1.5 text-[11px] px-2.5 py-1.5 rounded-lg transition-colors ${
+                          showTemplatesPanel ? 'text-[#E14B89] bg-[#E14B89]/10' : 'text-slate-500 hover:text-white hover:bg-slate-800/50'
+                        }`}
                       >
-                        <FileText size={12} />
-                        Modèles
-                      </button>
-                      <button
-                        type="button"
-                        onClick={addItem}
-                        className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-slate-700 text-slate-400 hover:text-white hover:border-slate-600 transition-colors"
-                      >
-                        <Plus size={12} />
-                        Ligne
+                        <Package size={11} />
+                        Modeles
                       </button>
                     </div>
+                    <button
+                      type="button"
+                      onClick={addItem}
+                      className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-lg bg-slate-800/50 text-slate-300 hover:text-white hover:bg-slate-700/50 transition-colors"
+                    >
+                      <Plus size={11} />
+                      Ajouter une ligne
+                    </button>
                   </div>
 
                   {/* Items table */}
@@ -1817,80 +1877,93 @@ export default function DevisPage() {
 
                 {/* ── Settings panel (validité, remise, notes) ──────────── */}
                 {showSettingsPanel && (
-                  <div className="space-y-3 p-4 bg-[#0d0d14] rounded-xl border border-slate-800">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-slate-300 text-sm font-medium">Paramètres du devis</span>
+                  <div className="p-4 bg-[#0d0d14] rounded-xl border border-slate-800">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-slate-300 text-xs font-medium uppercase tracking-wider">Parametres</span>
                       <button type="button" onClick={() => setShowSettingsPanel(false)} className="text-slate-500 hover:text-white transition-colors">
                         <X size={14} />
                       </button>
                     </div>
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-4 gap-3">
                       <div>
-                        <label className="block text-slate-400 text-xs mb-1.5">Valide jusqu&apos;au *</label>
+                        <label className="block text-slate-500 text-[10px] mb-1">Validite</label>
                         <input
                           type="date"
                           value={form.validUntil}
                           onChange={e => setForm(f => ({ ...f, validUntil: e.target.value }))}
-                          className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
+                          className="w-full bg-[#1a1a24] border border-slate-700/60 rounded-lg px-2.5 py-2 text-white text-xs focus:outline-none focus:border-[#E14B89] transition-colors"
                         />
                       </div>
                       <div>
-                        <label className="block text-slate-400 text-xs mb-1.5">Délai (jours)</label>
+                        <label className="block text-slate-500 text-[10px] mb-1">Delai (jours)</label>
                         <input
                           type="number"
                           min={1}
                           value={form.deliveryDays}
                           onChange={e => setForm(f => ({ ...f, deliveryDays: e.target.value }))}
-                          placeholder="Ex : 45"
-                          className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
+                          placeholder="45"
+                          className="w-full bg-[#1a1a24] border border-slate-700/60 rounded-lg px-2.5 py-2 text-white text-xs focus:outline-none focus:border-[#E14B89] transition-colors"
                         />
                       </div>
                       <div>
-                        <label className="block text-slate-400 text-xs mb-1.5">Remise</label>
-                        <div className="flex gap-2">
+                        <label className="block text-slate-500 text-[10px] mb-1">Remise</label>
+                        <div className="flex gap-1.5">
                           <input
                             type="number"
                             min={0}
                             max={form.discountType === 'PERCENT' ? 100 : undefined}
                             value={form.discount}
                             onChange={e => setForm(f => ({ ...f, discount: parseFloat(e.target.value) || 0 }))}
-                            className="flex-1 bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
+                            className="flex-1 min-w-0 bg-[#1a1a24] border border-slate-700/60 rounded-lg px-2.5 py-2 text-white text-xs focus:outline-none focus:border-[#E14B89] transition-colors"
                           />
                           <button
                             type="button"
                             onClick={() => setForm(f => ({ ...f, discountType: f.discountType === 'PERCENT' ? 'FIXED' : 'PERCENT', discount: 0 }))}
-                            className="shrink-0 w-12 bg-[#1a1a24] border border-slate-700 rounded-xl text-white text-sm font-medium hover:border-[#E14B89] transition-colors"
+                            className="shrink-0 w-9 bg-[#1a1a24] border border-slate-700/60 rounded-lg text-white text-xs font-medium hover:border-[#E14B89] transition-colors"
                           >
                             {form.discountType === 'PERCENT' ? '%' : '\u20AC'}
                           </button>
                         </div>
                       </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-slate-400 text-xs mb-1.5">Logo client (URL)</label>
-                        <div className="flex gap-2">
+                        <label className="block text-slate-500 text-[10px] mb-1">Logo client</label>
+                        <div className="flex gap-1.5">
                           <input
                             value={form.clientLogo}
                             onChange={e => setForm(f => ({ ...f, clientLogo: e.target.value }))}
                             placeholder="https://..."
-                            className="flex-1 bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
+                            className="flex-1 min-w-0 bg-[#1a1a24] border border-slate-700/60 rounded-lg px-2.5 py-2 text-white text-xs focus:outline-none focus:border-[#E14B89] transition-colors"
                           />
                           {form.clientLogo && (
                             // eslint-disable-next-line @next/next/no-img-element
-                            <img src={form.clientLogo} alt="Logo" className="h-10 w-10 rounded-lg object-contain bg-white p-1 flex-shrink-0" />
+                            <img src={form.clientLogo} alt="" className="h-8 w-8 rounded-md object-contain bg-white p-0.5 flex-shrink-0" />
                           )}
                         </div>
                       </div>
-                      <div>
-                        <label className="block text-slate-400 text-xs mb-1.5">Notes internes</label>
-                        <textarea
-                          value={form.notes}
-                          onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-                          rows={1}
-                          placeholder="Conditions, remarques..."
-                          className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors resize-none"
-                        />
+                    </div>
+                    <div className="mt-3">
+                      <label className="block text-slate-500 text-[10px] mb-1">Paiement</label>
+                      <div className="flex gap-1.5 flex-wrap">
+                        {[
+                          { value: '', label: '50/50' },
+                          { value: '100_COMMANDE', label: '100% commande' },
+                          { value: '100_LIVRAISON', label: '100% livraison' },
+                          { value: '30_70', label: '30/70' },
+                          { value: '30_30_40', label: '30/30/40' },
+                        ].map(opt => (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() => setForm(f => ({ ...f, paymentTerms: opt.value }))}
+                            className={`px-3 py-1.5 rounded-lg text-[11px] font-medium transition-colors ${
+                              (form.paymentTerms || '') === opt.value
+                                ? 'bg-[#E14B89]/15 text-[#E14B89] border border-[#E14B89]/30'
+                                : 'bg-[#1a1a24] text-slate-400 border border-slate-700/60 hover:border-slate-600 hover:text-white'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
                       </div>
                     </div>
                   </div>
@@ -2450,6 +2523,15 @@ export default function DevisPage() {
                       className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
                     />
                   </div>
+                  <div>
+                    <label className="block text-slate-400 text-xs mb-1.5">Objet du mail *</label>
+                    <input
+                      value={signatureForm.emailSubject}
+                      onChange={e => setSignatureForm(f => ({ ...f, emailSubject: e.target.value }))}
+                      placeholder="Ex: Proposition commerciale site web"
+                      className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
+                    />
+                  </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="block text-slate-400 text-xs mb-1.5">Expéditeur *</label>
@@ -2470,12 +2552,28 @@ export default function DevisPage() {
                         onChange={e => setSignatureForm(f => ({ ...f, formule: e.target.value }))}
                         className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89] transition-colors"
                       >
-                        <option value="vous_prenom">Vouvoiement + Prénom</option>
-                        <option value="vous_nom">Vouvoiement + M./Mme Nom</option>
-                        <option value="tu_prenom">Tutoiement + Prénom</option>
-                        <option value="tu_nom">Tutoiement + M./Mme Nom</option>
+                        <option value="vous">Vouvoiement</option>
+                        <option value="tu">Tutoiement</option>
                       </select>
                     </div>
+                  </div>
+                  <div className="mt-3">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={signatureForm.scheduled} onChange={e => setSignatureForm(f => ({ ...f, scheduled: e.target.checked }))} className="accent-[#E14B89] rounded" />
+                      <span className="text-slate-400 text-xs flex items-center gap-1.5"><Clock size={13} /> Planifier l&apos;envoi</span>
+                    </label>
+                    {signatureForm.scheduled && (
+                      <div className="grid grid-cols-2 gap-3 mt-2">
+                        <div>
+                          <label className="block text-slate-400 text-xs mb-1">Date</label>
+                          <input type="date" value={signatureForm.scheduledDate} onChange={e => setSignatureForm(f => ({ ...f, scheduledDate: e.target.value }))} min={new Date().toISOString().slice(0,10)} className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89]" />
+                        </div>
+                        <div>
+                          <label className="block text-slate-400 text-xs mb-1">Heure</label>
+                          <input type="time" value={signatureForm.scheduledTime} onChange={e => setSignatureForm(f => ({ ...f, scheduledTime: e.target.value }))} className="w-full bg-[#1a1a24] border border-slate-700 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#E14B89]" />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
                 <button
@@ -2498,15 +2596,14 @@ export default function DevisPage() {
 
                 {/* Email preview */}
                 {(() => {
-                  const isTu = signatureForm.formule.startsWith('tu')
-                  const useNom = signatureForm.formule.endsWith('nom')
-                  const displayName = useNom ? `M. ${signatureForm.lastName}` : signatureForm.firstName
+                  const isTu = signatureForm.formule === 'tu'
+                  const displayName = isTu ? signatureForm.firstName : `M. ${signatureForm.lastName}`
                   return (
                 <div className="bg-white rounded-xl overflow-hidden mb-4 max-h-[320px] overflow-y-auto">
                   <div className="h-1" style={{ background: 'linear-gradient(135deg, #E14B89 0%, #F8903C 100%)' }} />
                   <div className="p-5">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src="/kameo-logo-light.svg" alt="Kameo" className="h-6 mx-auto mb-4" />
+                    <img src="/kameo-logo-light.png" alt="Kameo" className="h-6 mx-auto mb-4" />
                     <h3 className="text-gray-900 font-semibold text-base mb-3">Proposition commerciale</h3>
                     <p className="text-gray-600 text-sm mb-2">
                       Bonjour {displayName},
@@ -2518,7 +2615,7 @@ export default function DevisPage() {
                       }
                     </p>
                     <div className="bg-gray-50 px-4 py-3 rounded-lg mb-4 border-l-4" style={{ borderColor: '#F8903C' }}>
-                      <p className="text-gray-900 font-semibold text-sm">{signatureModal.subject || signatureModal.clientName}</p>
+                      <p className="text-gray-900 font-semibold text-sm">{signatureForm.emailSubject || signatureModal.subject || signatureModal.clientName}</p>
                     </div>
                     <p className="text-gray-600 text-sm mb-4">
                       {isTu
@@ -2551,7 +2648,7 @@ export default function DevisPage() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-500">Objet</span>
-                    <span className="text-slate-300">Devis N {signatureModal.number} - {signatureModal.subject || signatureModal.clientName}</span>
+                    <span className="text-slate-300">Proposition N° {signatureModal.number} — {signatureForm.emailSubject || signatureModal.subject || signatureModal.clientName}</span>
                   </div>
                 </div>
 
@@ -2571,8 +2668,8 @@ export default function DevisPage() {
                   <button
                     onClick={async () => {
                       if (!signatureModal) return
-                      const tone = signatureForm.formule.startsWith('tu') ? 'tu' : 'vous'
-                      const nameDisplay = signatureForm.formule.endsWith('nom') ? 'nom' : 'prenom'
+                      const tone = signatureForm.formule === 'tu' ? 'tu' : 'vous'
+                      const nameDisplay = signatureForm.formule === 'tu' ? 'prenom' : 'nom'
                       try {
                         const res = await fetch(`/api/quotes/${signatureModal.id}/send-signature`, {
                           method: 'POST',
@@ -2583,6 +2680,7 @@ export default function DevisPage() {
                             signerEmail: 'contact@agence-kameo.fr',
                             senderEmail: signatureForm.senderEmail,
                             tone, nameDisplay,
+                            emailSubject: signatureForm.emailSubject || undefined,
                             testMode: true,
                           }),
                         })

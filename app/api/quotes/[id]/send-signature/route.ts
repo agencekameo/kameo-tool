@@ -12,7 +12,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params
   const body = await req.json()
 
-  const { signerFirstName, signerLastName, signerEmail, signerPhone, senderEmail, tone, nameDisplay, testMode } = body
+  const { signerFirstName, signerLastName, signerEmail, signerPhone, senderEmail, tone, nameDisplay, emailSubject, testMode, scheduledAt } = body
   if (!signerFirstName?.trim() || !signerLastName?.trim() || !signerEmail?.trim()) {
     return NextResponse.json({ error: 'Prénom, nom et email sont requis.' }, { status: 400 })
   }
@@ -58,7 +58,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           signerEmail: signerEmail.trim(),
           signerPhone: signerPhone?.trim() || null,
           expiresAt,
+          ...(scheduledAt ? { scheduledAt: new Date(scheduledAt), scheduledSent: false } : {}),
         },
+      })
+    }
+
+    // If scheduled (and not test mode), don't send email now — keep EN_ATTENTE until cron sends it
+    if (scheduledAt && !testMode) {
+      return NextResponse.json({
+        success: true,
+        scheduled: true,
+        scheduledAt,
+        message: 'Signature planifiée',
       })
     }
 
@@ -109,7 +120,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       signerFirstName: signerFirstName.trim(),
       signerLastName: signerLastName.trim(),
       quoteNumber: quote.number,
-      subject: quote.subject || quote.clientName || 'Devis',
+      subject: emailSubject?.trim() || quote.subject || quote.clientName || 'Devis',
       signingUrl,
       expiresAt: expiresFormatted,
       tone: (tone as 'tu' | 'vous') || 'vous',
@@ -123,7 +134,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     await transporter.sendMail({
       from: `"${fromName} - Agence Kameo" <${gmailUser}>`,
       to: signerEmail.trim(),
-      subject: `Proposition commerciale N° ${quote.number} — ${quote.subject || quote.clientName}`,
+      subject: `Proposition commerciale N° ${quote.number} — ${emailSubject?.trim() || quote.subject || quote.clientName}`,
       text: buildSignatureEmailText(emailParams),
       html: buildSignatureEmailHtml(emailParams),
       replyTo: fromEmail || gmailUser,

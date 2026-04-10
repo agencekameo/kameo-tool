@@ -64,6 +64,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (body.notes !== undefined) data.notes = body.notes || null
     if (body.discount !== undefined) data.discount = body.discount || 0
     if (body.discountType !== undefined) data.discountType = body.discountType === 'FIXED' ? 'FIXED' : 'PERCENT'
+    if (body.paymentTerms !== undefined) data.paymentTerms = body.paymentTerms || null
     if (body.deliveryDays !== undefined) data.deliveryDays = body.deliveryDays ? parseInt(body.deliveryDays) : null
     const quote = await prisma.quote.update({
       where: { id },
