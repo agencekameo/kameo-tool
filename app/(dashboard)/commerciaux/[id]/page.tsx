@@ -1588,7 +1588,11 @@ ${buildSignatureBlock(senderId)}
                           setLeadScrapeMessage(`Recherche "${kw}" (${ki + 1}/${keywords.length})...${locLabel}`)
                           setLeadScrapeProgress(10 + Math.round(((ki + 1) / keywords.length) * 30))
                           const searchRes = await api({ step: 'search', keyword: kw, location: loc })
-                          if (searchRes.results) allResults.push(...searchRes.results)
+                          if (searchRes.results?.length > 0) {
+                            allResults.push(...searchRes.results)
+                          } else if (searchRes.error) {
+                            setLeadScrapeMessage(`⚠️ "${kw}": ${searchRes.error}${locLabel}`)
+                          }
                         }
                         // Deduplicate
                         const seen = new Set<string>()
