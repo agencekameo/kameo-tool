@@ -1237,7 +1237,7 @@ ${buildSignatureBlock(senderId)}
                       )}
                       {lead.phone && (
                         <span className="hidden md:flex items-center gap-1.5 text-slate-500 text-xs flex-shrink-0">
-                          <Phone size={12} /> {lead.phone}
+                          <Phone size={12} /> {formatPhone(lead.phone)}
                         </span>
                       )}
                       {lead.email && (

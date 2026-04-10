@@ -37,7 +37,26 @@ export function formatDate(date: Date | string | null | undefined): string {
 }
 
 export function formatPhone(value: string): string {
-  const digits = value.replace(/\D/g, '').slice(0, 10)
+  if (!value) return ''
+  const hasPlus = value.startsWith('+')
+  let digits = value.replace(/\D/g, '')
+
+  // Normalize +33 / 0033 → 0
+  if (digits.startsWith('33') && digits.length >= 11 && (hasPlus || value.startsWith('00'))) {
+    digits = '0' + digits.slice(2)
+  }
+  if (digits.startsWith('0033')) {
+    digits = '0' + digits.slice(4)
+  }
+
+  digits = digits.slice(0, 10)
+
+  // Format: +33 X XX XX XX XX
+  if (digits.length === 10 && digits.startsWith('0')) {
+    return `+33 ${digits[1]} ${digits.slice(2, 4)} ${digits.slice(4, 6)} ${digits.slice(6, 8)} ${digits.slice(8, 10)}`
+  }
+
+  // Fallback: group by 2
   return digits.replace(/(\d{2})(?=\d)/g, '$1 ').trim()
 }
 
