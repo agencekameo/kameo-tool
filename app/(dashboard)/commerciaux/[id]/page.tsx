@@ -1563,13 +1563,14 @@ ${buildSignatureBlock(senderId)}
                     e.preventDefault()
                     if (!leadScrapeKeyword.trim() || leadScrapeLocations.length === 0 || leadScraping) return
                     setLeadScraping(true)
-                    setLeadScrapeProgress(0)
-                    setLeadScrapeMessage('Lancement...')
+                    setLeadScrapeProgress(1)
+                    setLeadScrapeMessage('Lancement du scraping...')
                     let lastSearchId: string | null = null
                     try {
-                      for (const loc of leadScrapeLocations) {
-                        setLeadScrapeMessage(`${loc} : Recherche...`)
-                        setLeadScrapeProgress(0)
+                      for (let li = 0; li < leadScrapeLocations.length; li++) {
+                        const loc = leadScrapeLocations[li]
+                        setLeadScrapeMessage(`${loc} : Envoi de la requête... (${li + 1}/${leadScrapeLocations.length})`)
+                        setLeadScrapeProgress(2)
                         const res = await fetch('/api/leads/search', {
                           method: 'POST', headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({ keyword: leadScrapeKeyword, location: loc, userId: id, filters: leadFilters, listName: leadScrapeName.trim() || undefined }),
@@ -1578,7 +1579,8 @@ ${buildSignatureBlock(senderId)}
                           const errText = await res.text().catch(() => res.statusText)
                           setLeadScrapeMessage(`Erreur ${res.status}: ${errText}`)
                           setLeadScrapeProgress(0)
-                          continue
+                          setLeadScraping(false)
+                          return
                         }
                         const reader = res.body?.getReader()
                         const decoder = new TextDecoder()
