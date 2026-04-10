@@ -175,7 +175,7 @@ export default function CommercialDetailPage() {
   // Email modal
   const [showEmailModal, setShowEmailModal] = useState(false)
   const [emailTarget, setEmailTarget] = useState<Prospect | null>(null)
-  const [emailForm, setEmailForm] = useState({ senderId: 'kameo', senderName: 'Jonathan Derai', subject: '', rawHtml: '', bodyContent: '', scheduled: false, scheduledDate: '', scheduledTime: '' })
+  const [emailForm, setEmailForm] = useState({ senderId: 'jonathan', senderName: 'Jonathan Derai', subject: '', rawHtml: '', bodyContent: '', scheduled: false, scheduledDate: '', scheduledTime: '' })
   const emailBodyRef = useRef<HTMLDivElement>(null)
   const [emailCivilite, setEmailCivilite] = useState<'M.' | 'Mme'>('M.')
   const [emailContactLastName, setEmailContactLastName] = useState('')
@@ -184,7 +184,7 @@ export default function CommercialDetailPage() {
 
   const SENDER_ACCOUNTS = [
     { id: 'benjamin', label: 'Benjamin Dayan' },
-    { id: 'kameo', label: 'Jonathan Derai (contact@agence-kameo.fr)' },
+    { id: 'jonathan', label: 'Jonathan Derai (derai.jonathan@agence-kameo.fr)' },
     { id: 'louison', label: 'Louison Boutet' },
   ]
 
@@ -231,7 +231,7 @@ export default function CommercialDetailPage() {
   ]
 
   function buildSignatureBlock(senderId: string) {
-    const sigName = senderId === 'kameo' ? 'jonathan' : senderId
+    const sigName = senderId
     const sigs = emailSignatures.length > 0 ? emailSignatures : FALLBACK_SIGNATURES
     const sig = sigs.find(s => s.id === sigName || s.name.toLowerCase() === sigName)
     if (!sig) return ''
@@ -719,7 +719,7 @@ ${buildSignatureBlock(senderId)}
     setEmailCivilite('M.')
     setEmailContactLastName(parts.slice(1).join(' ') || parts[0] || '')
     setEmailForm({
-      senderId: 'kameo',
+      senderId: 'jonathan',
       senderName: 'Jonathan Derai',
       subject: '',
       rawHtml: '',

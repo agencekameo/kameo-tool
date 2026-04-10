@@ -2,9 +2,22 @@ import { auth } from '@/lib/auth'
 import { rateLimit } from '@/lib/security'
 import { NextRequest, NextResponse } from 'next/server'
 import nodemailer from 'nodemailer'
+type GmailCreds = { user: string; pass: string; type: 'password' } | { user: string; clientId: string; clientSecret: string; refreshToken: string; type: 'oauth2' }
 
 // Resolve Gmail credentials based on senderId
-function getGmailCredentials(senderId?: string) {
+function getGmailCredentials(senderId?: string): GmailCreds | null {
+  // OAuth2 accounts
+  if (senderId === 'jonathan' && process.env.GMAIL_JONATHAN_USER && process.env.GMAIL_JONATHAN_CLIENT_ID) {
+    return {
+      user: process.env.GMAIL_JONATHAN_USER,
+      clientId: process.env.GMAIL_JONATHAN_CLIENT_ID,
+      clientSecret: process.env.GMAIL_JONATHAN_CLIENT_SECRET!,
+      refreshToken: process.env.GMAIL_JONATHAN_REFRESH_TOKEN!,
+      type: 'oauth2',
+    }
+  }
+
+  // App password accounts
   const accounts: Record<string, { user: string | undefined; pass: string | undefined }> = {
     benjamin: { user: process.env.GMAIL_BENJAMIN_USER, pass: process.env.GMAIL_BENJAMIN_PASSWORD },
     kameo: { user: process.env.GMAIL_KAMEO_USER, pass: process.env.GMAIL_KAMEO_PASSWORD },
@@ -13,18 +26,18 @@ function getGmailCredentials(senderId?: string) {
 
   // Try sender-specific account first
   if (senderId && accounts[senderId]?.user && accounts[senderId]?.pass) {
-    return accounts[senderId]
+    return { user: accounts[senderId].user!, pass: accounts[senderId].pass!, type: 'password' }
   }
 
   // Fallback: try benjamin, then kameo, then generic
   for (const key of ['benjamin', 'kameo']) {
-    if (accounts[key]?.user && accounts[key]?.pass) return accounts[key]
+    if (accounts[key]?.user && accounts[key]?.pass) return { user: accounts[key].user!, pass: accounts[key].pass!, type: 'password' }
   }
 
   // Last resort: generic env vars
   const user = process.env.GMAIL_USER
   const pass = process.env.GMAIL_APP_PASSWORD
-  if (user && pass) return { user, pass }
+  if (user && pass) return { user, pass, type: 'password' }
 
   return null
 }
@@ -53,10 +66,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Gmail non configuré. Ajoutez les variables d\'environnement Gmail.' }, { status: 503 })
   }
 
-  const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: { user: creds.user, pass: creds.pass },
-  })
+  const transporter = nodemailer.createTransport(
+    creds.type === 'oauth2'
+      ? {
+          service: 'gmail',
+          auth: {
+            type: 'OAuth2',
+            user: creds.user,
+            clientId: creds.clientId,
+            clientSecret: creds.clientSecret,
+            refreshToken: creds.refreshToken,
+          },
+        }
+      : {
+          service: 'gmail',
+          auth: { user: creds.user, pass: creds.pass },
+        }
+  )
 
   // Escape HTML to prevent injection
   function escapeHtml(str: string) {
