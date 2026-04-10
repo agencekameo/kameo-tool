@@ -173,7 +173,11 @@ export async function POST(req: NextRequest) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const items: any[] = data.tasks[0].result?.[0]?.items || []
             const mapItems = items.filter((i: { type?: string }) => i.type === 'maps_search')
-            allResults.push(...(mapItems.length > 0 ? mapItems : items))
+            const added = mapItems.length > 0 ? mapItems : items
+            allResults.push(...added)
+            send({ step: 'search', message: `"${kw}" → ${added.length} résultats (total: ${allResults.length})`, progress: 5 + Math.round(((ki + 1) / keywords.length) * 10) })
+          } else {
+            send({ step: 'search', message: `"${kw}" → erreur API (code: ${data.status_code}, task: ${data.tasks?.[0]?.status_code}, msg: ${data.tasks?.[0]?.status_message || 'none'})`, progress: 5 + Math.round(((ki + 1) / keywords.length) * 10) })
           }
         }
 
@@ -189,7 +193,7 @@ export async function POST(req: NextRequest) {
         })
 
         if (allResults.length === 0) {
-          send({ step: 'error', message: 'Aucun résultat trouvé' })
+          send({ step: 'error', message: `Aucun résultat trouvé (${keywords.length} mots-clés testés: ${keywords.join(', ')})` })
           controller.close()
           return
         }
