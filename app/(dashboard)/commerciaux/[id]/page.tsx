@@ -1574,7 +1574,12 @@ ${buildSignatureBlock(senderId)}
                           method: 'POST', headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({ keyword: leadScrapeKeyword, location: loc, userId: id, filters: leadFilters, listName: leadScrapeName.trim() || undefined }),
                         })
-                        if (!res.ok) continue
+                        if (!res.ok) {
+                          const errText = await res.text().catch(() => res.statusText)
+                          setLeadScrapeMessage(`Erreur ${res.status}: ${errText}`)
+                          setLeadScrapeProgress(0)
+                          continue
+                        }
                         const reader = res.body?.getReader()
                         const decoder = new TextDecoder()
                         let needsScraping = false
@@ -1627,7 +1632,7 @@ ${buildSignatureBlock(senderId)}
                       setLeadScrapeKeyword('')
                       setLeadScrapeName('')
                       if (lastSearchId) setActiveLeadSearchId(lastSearchId)
-                    } catch { alert('Erreur lors du scraping') } finally {
+                    } catch (err) { alert('Erreur lors du scraping: ' + (err instanceof Error ? err.message : String(err))) } finally {
                       setLeadScraping(false); setLeadScrapeProgress(0); setLeadScrapeMessage('')
                     }
                   }} className="space-y-4">
