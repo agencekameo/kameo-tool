@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
     const query = `${kw} ${location}`
     const params = new URLSearchParams({
       query,
-      limit: '500',
+      limit: '100',
       language: 'fr',
       region: 'FR',
       async: 'false',
@@ -74,7 +74,11 @@ export async function POST(req: NextRequest) {
       const res = await fetch(`${OUTSCRAPER_API}?${params}`, {
         headers: { 'X-API-KEY': apiKey },
       })
-      const data = await res.json()
+      const text = await res.text()
+      let data
+      try { data = JSON.parse(text) } catch {
+        return NextResponse.json({ results: [], error: `Réponse invalide (${res.status}): ${text.slice(0, 200)}` })
+      }
 
       if (data.data && Array.isArray(data.data) && data.data[0]) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
