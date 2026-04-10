@@ -162,7 +162,7 @@ export async function POST(req: NextRequest) {
         })
 
         if (allResults.length === 0) {
-          send({ step: 'error', message: `Aucun résultat trouvé (${keywords.length} mots-clés testés: ${keywords.join(', ')})` })
+          send({ step: 'error', message: `Aucun résultat trouvé pour "${keyword}"` })
           controller.close()
           return
         }
