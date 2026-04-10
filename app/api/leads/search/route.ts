@@ -1,9 +1,8 @@
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { NextRequest } from 'next/server'
-import Anthropic from '@anthropic-ai/sdk'
 
-export const maxDuration = 300
+export const maxDuration = 10
 
 function getDataForSeoAuth() {
   const login = process.env.DATAFORSEO_LOGIN
@@ -101,30 +100,6 @@ async function scrapeEmail(url: string): Promise<string | null> {
   } catch { return null }
 }
 
-async function generateRelatedKeywords(keyword: string, onlyFreelance = false): Promise<string[]> {
-  try {
-    const anthropic = new Anthropic()
-    const prompt = onlyFreelance
-      ? `Génère 5 à 8 variantes de mots-clés Google Maps pour le terme "${keyword}".
-Ce sont des termes pour trouver des FREELANCES/INDÉPENDANTS/CONSULTANTS.
-Inclus le terme original. Privilégie les termes contenant "freelance", "indépendant", "consultant".
-Réponds UNIQUEMENT en JSON array de strings.`
-      : `Génère 5 à 8 variantes de mots-clés Google Maps pour le terme "${keyword}".
-Ce sont des termes qu'un utilisateur taperait dans Google Maps pour trouver des AGENCES/ENTREPRISES (pas des freelances ou indépendants).
-Inclus le terme original. Privilégie les termes contenant "agence", "cabinet", "société", "studio", "groupe".
-Exclure tout terme lié aux freelances, indépendants, auto-entrepreneurs, consultants solo.
-Réponds UNIQUEMENT en JSON array de strings. Ex: ["agence web","studio web","agence digitale"]`
-    const res = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 200,
-      messages: [{ role: 'user', content: prompt }],
-    })
-    const text = res.content[0].type === 'text' ? res.content[0].text : ''
-    const match = text.match(/\[[\s\S]*\]/)
-    if (match) return JSON.parse(match[0])
-  } catch { /* fallback */ }
-  return [keyword]
-}
 
 export async function POST(req: NextRequest) {
   const session = await auth()
@@ -154,31 +129,25 @@ export async function POST(req: NextRequest) {
       }
 
       try {
-        send({ step: 'keywords', message: 'Génération des mots-clés...', progress: 2 })
-        const keywords = await generateRelatedKeywords(keyword, typeFilter === 'freelance')
-        send({ step: 'keywords', message: `${keywords.length} mots-clés : ${keywords.join(', ')}`, progress: 5 })
-
+        send({ step: 'search', message: `Recherche "${keyword}" sur Google Maps...`, progress: 5 })
+        const res = await fetch('https://api.dataforseo.com/v3/serp/google/maps/live/advanced', {
+          method: 'POST',
+          headers: { 'Authorization': `Basic ${authToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify([{ keyword, location_code: locationCode, language_code: 'fr', device: 'desktop', os: 'windows', depth: 700 }]),
+        })
+        const apiData = await res.json()
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         let allResults: any[] = []
-        for (let ki = 0; ki < keywords.length; ki++) {
-          const kw = keywords[ki]
-          send({ step: 'search', message: `Recherche "${kw}" (${ki + 1}/${keywords.length})...`, progress: 5 + Math.round((ki / keywords.length) * 10) })
-          const res = await fetch('https://api.dataforseo.com/v3/serp/google/maps/live/advanced', {
-            method: 'POST',
-            headers: { 'Authorization': `Basic ${authToken}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify([{ keyword: kw, location_code: locationCode, language_code: 'fr', device: 'desktop', os: 'windows', depth: 700 }]),
-          })
-          const data = await res.json()
-          if (data.status_code === 20000 && data.tasks?.[0]?.status_code === 20000) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const items: any[] = data.tasks[0].result?.[0]?.items || []
-            const mapItems = items.filter((i: { type?: string }) => i.type === 'maps_search')
-            const added = mapItems.length > 0 ? mapItems : items
-            allResults.push(...added)
-            send({ step: 'search', message: `"${kw}" → ${added.length} résultats (total: ${allResults.length})`, progress: 5 + Math.round(((ki + 1) / keywords.length) * 10) })
-          } else {
-            send({ step: 'search', message: `"${kw}" → erreur API (code: ${data.status_code}, task: ${data.tasks?.[0]?.status_code}, msg: ${data.tasks?.[0]?.status_message || 'none'})`, progress: 5 + Math.round(((ki + 1) / keywords.length) * 10) })
-          }
+        if (apiData.status_code === 20000 && apiData.tasks?.[0]?.status_code === 20000) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const items: any[] = apiData.tasks[0].result?.[0]?.items || []
+          const mapItems = items.filter((i: { type?: string }) => i.type === 'maps_search')
+          allResults = mapItems.length > 0 ? mapItems : items
+          send({ step: 'search', message: `${allResults.length} résultats trouvés`, progress: 15 })
+        } else {
+          send({ step: 'error', message: `Erreur DataForSEO (code: ${apiData.status_code}, task: ${apiData.tasks?.[0]?.status_code}, msg: ${apiData.tasks?.[0]?.status_message || 'none'})` })
+          controller.close()
+          return
         }
 
         // Deduplicate within results
@@ -252,61 +221,8 @@ export async function POST(req: NextRequest) {
         })
 
         const heuristicRemoved = uniqueResults.length - heuristicFiltered.length
-        send({ step: 'filter', message: `${heuristicRemoved} retires (filtres). ${typeFilter !== 'all' ? 'Classification IA en cours...' : ''}`, progress: 25 })
-
-        // ═══ CLASSIFICATION IA (agence vs freelance) ═══
-        let filteredResults = heuristicFiltered
-        if (heuristicFiltered.length > 0 && typeFilter !== 'all') {
-          try {
-            const anthropic = new Anthropic()
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const batch = heuristicFiltered.map((r: any, i: number) => ({
-              id: i,
-              name: r.title,
-              category: r.category || '',
-              rating: r.rating?.value ?? null,
-              reviews: r.rating?.votes_count ?? r.reviews_count ?? 0,
-              address: r.address || '',
-            }))
-
-            const targetType = typeFilter === 'freelance' ? 'FREELANCE' : 'AGENCE'
-            const classifRes = await anthropic.messages.create({
-              model: 'claude-sonnet-4-20250514',
-              max_tokens: 1000,
-              messages: [{ role: 'user', content: `Analyse cette liste d'entreprises trouvées sur Google Maps.
-Pour chaque entrée, détermine si c'est une AGENCE/ENTREPRISE ou un FREELANCE/INDÉPENDANT.
-
-Critères FREELANCE/INDÉPENDANT :
-- Le nom contient un prénom + nom de personne sans structure (ex: "Jean Dupont", "Marie Martin Développeur")
-- Le nom contient "freelance", "indépendant", "auto-entrepreneur", "consultant" seul
-- Très peu d'avis (0-1) ET le nom ressemble à un nom de personne
-
-Critères AGENCE/ENTREPRISE :
-- Le nom contient "agence", "cabinet", "studio", "groupe", "société", "SARL", "SAS", "EURL"
-- Nom de marque/entreprise clairement identifiable
-- Nombre d'avis significatif (3+)
-
-Je veux UNIQUEMENT les ${targetType === 'FREELANCE' ? 'FREELANCES/INDÉPENDANTS' : 'AGENCES/ENTREPRISES'}.
-Réponds UNIQUEMENT en JSON array des IDs à GARDER. Ex: [0,1,3,5]
-
-Liste :
-${JSON.stringify(batch)}` }],
-            })
-
-            const classifText = classifRes.content[0].type === 'text' ? classifRes.content[0].text : '[]'
-            const keepMatch = classifText.match(/\[[\s\S]*\]/)
-            if (keepMatch) {
-              const keepIds: number[] = JSON.parse(keepMatch[0])
-              filteredResults = heuristicFiltered.filter((_: unknown, i: number) => keepIds.includes(i))
-            }
-          } catch {
-            filteredResults = heuristicFiltered
-          }
-        }
-
-        const aiRemoved = heuristicFiltered.length - filteredResults.length
-        const totalRemoved = heuristicRemoved + aiRemoved
-        send({ step: 'filter', message: `${totalRemoved} filtres au total. ${filteredResults.length} resultats conserves.`, progress: 30 })
+        const filteredResults = heuristicFiltered
+        send({ step: 'filter', message: `${heuristicRemoved} filtrés. ${filteredResults.length} résultats conservés.`, progress: 30 })
 
         if (filteredResults.length === 0) {
           send({ step: 'done', message: 'Aucune agence trouvée après filtrage', searchId: null, total: 0, withEmail: 0 })
@@ -324,19 +240,16 @@ ${JSON.stringify(batch)}` }],
 
         send({ step: 'saving', message: `Enregistrement de ${filteredResults.length} agences...`, progress: 35 })
 
-        // Create ALL prospects (with and without website) — emails will be scraped in batch later
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        for (const r of [...withoutWebsite, ...withWebsite] as any[]) {
-          await prisma.prospect.create({
-            data: {
-              name: r.title, company: r.title, phone: r.phone || null,
-              firstName: null, lastName: null,
-              website: r.url || null, address: r.address || null,
-              status: 'A_CONTACTER', assignedTo: assignTo, leadSearchId: search.id,
-              source: `scraping:${keyword}`,
-            },
-          })
-        }
+        await prisma.prospect.createMany({
+          data: filteredResults.map((r: any) => ({
+            name: r.title, company: r.title, phone: r.phone || null,
+            firstName: null, lastName: null,
+            website: r.url || null, address: r.address || null,
+            status: 'A_CONTACTER', assignedTo: assignTo, leadSearchId: search.id,
+            source: `scraping:${keyword}`,
+          })),
+        })
 
         send({
           step: 'done', message: `${filteredResults.length} agences enregistrées. Scraping des emails en cours...`,
