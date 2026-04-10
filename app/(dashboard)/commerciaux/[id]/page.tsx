@@ -1039,7 +1039,7 @@ ${buildSignatureBlock(senderId)}
               <button onClick={() => openLeadModal()} className="flex items-center gap-2 border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-white px-4 py-2 rounded-xl text-sm transition-colors">
                 <Plus size={16} /> Ajouter manuellement
               </button>
-              <button onClick={() => { setShowLeadScrapeModal(true); setLeadScrapeMode('scrape') }} className="flex items-center gap-2 bg-gradient-to-r from-[#E14B89] to-[#F8903C] hover:opacity-90 text-white px-4 py-2 rounded-xl text-sm font-medium transition-opacity">
+              <button onClick={() => { setShowLeadScrapeModal(true); setLeadScrapeMode('scrape'); setLeadScrapeMessage(''); setLeadScrapeProgress(0) }} className="flex items-center gap-2 bg-gradient-to-r from-[#E14B89] to-[#F8903C] hover:opacity-90 text-white px-4 py-2 rounded-xl text-sm font-medium transition-opacity">
                 <Plus size={16} /> Nouvelle liste
               </button>
               <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleImportExcel} />
@@ -1708,15 +1708,17 @@ ${buildSignatureBlock(senderId)}
                         </div>
                       </div>
                     </div>
-                    {leadScraping && (
+                    {(leadScraping || leadScrapeMessage) && (
                       <div className="space-y-2">
                         <div className="flex justify-between text-xs">
-                          <span className="text-slate-400 truncate mr-2">{leadScrapeMessage}</span>
-                          <span className="text-white font-medium flex-shrink-0">{leadScrapeProgress}%</span>
+                          <span className={`truncate mr-2 ${leadScrapeMessage.startsWith('❌') ? 'text-red-400' : 'text-slate-400'}`}>{leadScrapeMessage}</span>
+                          {leadScraping && <span className="text-white font-medium flex-shrink-0">{leadScrapeProgress}%</span>}
                         </div>
-                        <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
-                          <div className="h-full rounded-full transition-all duration-500" style={{ width: `${leadScrapeProgress}%`, background: 'linear-gradient(135deg, #E14B89, #F8903C)' }} />
-                        </div>
+                        {leadScraping && (
+                          <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                            <div className="h-full rounded-full transition-all duration-500" style={{ width: `${leadScrapeProgress}%`, background: 'linear-gradient(135deg, #E14B89, #F8903C)' }} />
+                          </div>
+                        )}
                       </div>
                     )}
                     <button type="submit" disabled={leadScraping || !leadScrapeKeyword.trim() || leadScrapeLocations.length === 0}
