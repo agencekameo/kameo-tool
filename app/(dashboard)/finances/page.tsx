@@ -136,10 +136,11 @@ type CurveKey = typeof ALL_CURVES[number]['key']
 
 // ─── Area Chart Component (smooth SVG) ──────────────────────────────────────────
 
-function RevenueChart({ months, monthlyGoal, selectedIdx, onSelectIdx, title, curveKeys, totalExpenses }: {
+function RevenueChart({ months, monthlyGoal, selectedIdx, onSelectIdx, title, curveKeys, expensesPerMonth }: {
   months: MonthData[]; monthlyGoal: number; selectedIdx?: number; onSelectIdx?: (idx: number) => void
-  title?: string; curveKeys?: CurveKey[]; totalExpenses?: number
+  title?: string; curveKeys?: CurveKey[]; expensesPerMonth?: number[]
 }) {
+  const chargesForMonth = (i: number) => (expensesPerMonth?.[i] ?? 0)
   const CURVES = curveKeys
     ? ALL_CURVES.filter(c => curveKeys.includes(c.key))
     : ALL_CURVES.filter(c => ['total', 'objectif'].includes(c.key))
@@ -152,12 +153,12 @@ function RevenueChart({ months, monthlyGoal, selectedIdx, onSelectIdx, title, cu
   // Compute max based on visible curves
   const getMax = () => {
     let max = 0
-    months.forEach(m => {
+    months.forEach((m, i) => {
       if (visible.total) max = Math.max(max, m.totalHT)
       if (visible.recurrent) max = Math.max(max, m.maintenanceHT)
       if (visible.oneshot) max = Math.max(max, m.projectHT)
       if (visible.objectif) max = Math.max(max, monthlyGoal)
-      if (visible.charges) max = Math.max(max, (totalExpenses || 0) + m.freelanceCosts)
+      if (visible.charges) max = Math.max(max, chargesForMonth(i) + m.freelanceCosts)
     })
     return max * 1.25 || 1
   }
@@ -177,13 +178,12 @@ function RevenueChart({ months, monthlyGoal, selectedIdx, onSelectIdx, title, cu
   const baseline = yPos(0)
 
   // Build points for each curve
-  const chargesPerMonth = totalExpenses || 0
   const curveData: Record<string, { x: number; y: number }[]> = {
     total: months.map((m, i) => ({ x: xPos(i), y: yPos(m.totalHT) })),
     recurrent: months.map((m, i) => ({ x: xPos(i), y: yPos(m.maintenanceHT) })),
     oneshot: months.map((m, i) => ({ x: xPos(i), y: yPos(m.projectHT) })),
     objectif: months.map((_, i) => ({ x: xPos(i), y: yPos(monthlyGoal) })),
-    charges: months.map((m, i) => ({ x: xPos(i), y: yPos(chargesPerMonth + m.freelanceCosts) })),
+    charges: months.map((m, i) => ({ x: xPos(i), y: yPos(chargesForMonth(i) + m.freelanceCosts) })),
   }
 
   // Y axis ticks
@@ -375,7 +375,7 @@ function RevenueChart({ months, monthlyGoal, selectedIdx, onSelectIdx, title, cu
                 {visible.charges && (
                   <div className="flex items-center justify-between gap-6">
                     <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-[#FF4040]" />Charges</span>
-                    <span className="text-red-400 font-medium">{formatCurrency((totalExpenses || 0) + months[hovered].freelanceCosts)}</span>
+                    <span className="text-red-400 font-medium">{formatCurrency(chargesForMonth(hovered) + months[hovered].freelanceCosts)}</span>
                   </div>
                 )}
               </div>
@@ -573,13 +573,20 @@ function KpiCard({ label, value, sub, icon: Icon, color, trend }: {
 
 // ─── Month Detail View ──────────────────────────────────────────────────────────
 
-function MonthDetailView({ data, month, expenses, totalExpenses, onGoalUpdate, selectedIdx }: {
-  data: FinanceData; month: MonthData; expenses: Expense[]; totalExpenses: number; onGoalUpdate: (goal: number) => void; selectedIdx: number
+function MonthDetailView({ data, month, expenses, onGoalUpdate, selectedIdx }: {
+  data: FinanceData; month: MonthData; expenses: Expense[]; onGoalUpdate: (goal: number) => void; selectedIdx: number
 }) {
   const goalDiff = month.totalHT - data.monthlyGoal
   const goalPct = data.monthlyGoal > 0 ? Math.min(Math.round((month.totalHT / data.monthlyGoal) * 100), 150) : 0
   const [editingGoal, setEditingGoal] = useState(false)
   const [goalInput, setGoalInput] = useState(String(data.monthlyGoal))
+
+  // Per-month expenses: recurring (applied every month) + ponctuelles for this exact month
+  const recurringExpSum = expenses.filter(e => e.recurring).reduce((s, e) => s + e.amount, 0)
+  const expensesForMonth = (y: number, mo: number) =>
+    recurringExpSum + expenses.filter(e => !e.recurring && e.expenseMonth === mo && e.expenseYear === y).reduce((s, e) => s + e.amount, 0)
+  const monthExpenses = expensesForMonth(month.year, month.month)
+  const monthPonctuelles = monthExpenses - recurringExpSum
 
   // Previous month for comparison (one index before in rolling 12)
   const prevMonth = selectedIdx > 0 ? data.months[selectedIdx - 1] : null
@@ -599,10 +606,10 @@ function MonthDetailView({ data, month, expenses, totalExpenses, onGoalUpdate, s
           icon={DollarSign} color="bg-green-400/10 text-green-400"
           trend={n1Pct !== null ? { value: n1Pct, label: 'vs N-1' } : caPct !== null ? { value: caPct, label: 'vs mois préc.' } : undefined} />
         {(() => {
-          const monthCosts = totalExpenses + month.freelanceCosts
+          const monthCosts = monthExpenses + month.freelanceCosts
           const monthNet = month.totalHT - monthCosts
           const monthMargin = month.totalHT > 0 ? Math.round((monthNet / month.totalHT) * 100) : 0
-          const prevCosts = prevMonth ? totalExpenses + prevMonth.freelanceCosts : 0
+          const prevCosts = prevMonth ? expensesForMonth(prevMonth.year, prevMonth.month) + prevMonth.freelanceCosts : 0
           const prevNet = prevMonth ? prevMonth.totalHT - prevCosts : 0
           const netPct = prevNet !== 0 ? Math.round(((monthNet - prevNet) / Math.abs(prevNet)) * 100) : null
           return (
@@ -613,14 +620,12 @@ function MonthDetailView({ data, month, expenses, totalExpenses, onGoalUpdate, s
           )
         })()}
         {(() => {
-          const recurringExp = expenses.filter(e => e.recurring).reduce((s, e) => s + e.amount, 0)
-          const oneTimeExp = expenses.filter(e => !e.recurring).reduce((s, e) => s + e.amount, 0)
-          const currentCosts = totalExpenses + month.freelanceCosts
-          const prevCosts = prevMonth ? totalExpenses + prevMonth.freelanceCosts : 0
+          const currentCosts = monthExpenses + month.freelanceCosts
+          const prevCosts = prevMonth ? expensesForMonth(prevMonth.year, prevMonth.month) + prevMonth.freelanceCosts : 0
           const costsPct = prevCosts > 0 ? Math.round(((currentCosts - prevCosts) / prevCosts) * 100) : null
           return (
             <KpiCard label="Charges totales" value={formatCurrency(currentCosts)}
-              sub={`Fixes ${formatCurrency(recurringExp)}${oneTimeExp > 0 ? ` · Ponctuelles ${formatCurrency(oneTimeExp)}` : ''} · Freelances ${formatCurrency(month.freelanceCosts)}`}
+              sub={`Fixes ${formatCurrency(recurringExpSum)}${monthPonctuelles > 0 ? ` · Ponctuelles ${formatCurrency(monthPonctuelles)}` : ''} · Freelances ${formatCurrency(month.freelanceCosts)}`}
               icon={TrendingDown} color="bg-red-400/10 text-red-400"
               trend={costsPct !== null ? { value: costsPct, label: 'vs mois préc.' } : undefined} />
           )
@@ -810,9 +815,9 @@ export default function FinancesPage() {
   function fetchData() {
     setLoading(true)
     Promise.all([
-      fetch(`/api/finances?view=${viewMode}`).then(r => r.json()),
-      fetch('/api/expenses').then(r => r.json()),
-      fetch('/api/maintenances').then(r => r.json()),
+      fetch(`/api/finances?view=${viewMode}`, { cache: 'no-store' }).then(r => r.json()),
+      fetch('/api/expenses', { cache: 'no-store' }).then(r => r.json()),
+      fetch('/api/maintenances', { cache: 'no-store' }).then(r => r.json()),
     ]).then(([d, e, m]) => {
       setData(d)
       setExpenses([...e].sort((a: Expense, b: Expense) => b.amount - a.amount))
@@ -823,7 +828,15 @@ export default function FinancesPage() {
   useEffect(() => { fetchData() }, [])
 
   function refreshData() {
-    fetch(`/api/finances?view=${viewMode}`).then(r => r.json()).then(d => setData(d))
+    Promise.all([
+      fetch(`/api/finances?view=${viewMode}`, { cache: 'no-store' }).then(r => r.json()),
+      fetch('/api/expenses', { cache: 'no-store' }).then(r => r.json()),
+      fetch('/api/maintenances', { cache: 'no-store' }).then(r => r.json()),
+    ]).then(([d, e, m]) => {
+      setData(d)
+      setExpenses([...e].sort((a: Expense, b: Expense) => b.amount - a.amount))
+      setMaintenances(m)
+    })
   }
   usePolling(refreshData)
 
@@ -843,6 +856,21 @@ export default function FinancesPage() {
 
   const totalMaintenanceMonthly = maintenanceIncome.reduce((s, m) => s + m.total, 0)
   const totalExpenses = expenses.reduce((s, e) => s + e.amount, 0)
+
+  // Per-month charges: recurring (applied every month) + ponctuelles matching that exact month
+  const recurringExpSum = useMemo(
+    () => expenses.filter(e => e.recurring).reduce((s, e) => s + e.amount, 0),
+    [expenses]
+  )
+  const expensesPerMonth = useMemo(() => {
+    if (!data) return [] as number[]
+    return data.months.map(m => {
+      const ponct = expenses
+        .filter(e => !e.recurring && e.expenseMonth === m.month && e.expenseYear === m.year)
+        .reduce((s, e) => s + e.amount, 0)
+      return recurringExpSum + ponct
+    })
+  }, [data, expenses, recurringExpSum])
 
   // Expense CRUD
   function openModal(item?: Expense) {
@@ -995,7 +1023,7 @@ export default function FinancesPage() {
                       selectedIdx={selectedIdx} onSelectIdx={setSelectedIdx}
                       title="CA Total vs Objectif vs Charges"
                       curveKeys={['total', 'objectif', 'charges']}
-                      totalExpenses={totalExpenses} />
+                      expensesPerMonth={expensesPerMonth} />
                     <RevenueChart months={data.months} monthlyGoal={data.monthlyGoal}
                       selectedIdx={selectedIdx} onSelectIdx={setSelectedIdx}
                       title="Récurrent vs One-shot"
@@ -1003,7 +1031,7 @@ export default function FinancesPage() {
                   </div>
 
                   {/* Month detail */}
-                  <MonthDetailView data={data} month={data.months[selectedIdx]} expenses={expenses} totalExpenses={totalExpenses} onGoalUpdate={handleGoalUpdate} selectedIdx={selectedIdx} />
+                  <MonthDetailView data={data} month={data.months[selectedIdx]} expenses={expenses} onGoalUpdate={handleGoalUpdate} selectedIdx={selectedIdx} />
                 </div>
               ) : (
                 <div className="space-y-6">
@@ -1012,7 +1040,7 @@ export default function FinancesPage() {
                     <RevenueChart months={data.months} monthlyGoal={data.monthlyGoal}
                       title="CA Total vs Objectif vs Charges"
                       curveKeys={['total', 'objectif', 'charges']}
-                      totalExpenses={totalExpenses} />
+                      expensesPerMonth={expensesPerMonth} />
                     <RevenueChart months={data.months} monthlyGoal={data.monthlyGoal}
                       title="Récurrent vs One-shot"
                       curveKeys={['recurrent', 'oneshot']} />
