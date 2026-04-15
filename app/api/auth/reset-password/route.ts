@@ -26,9 +26,17 @@ export async function POST(req: NextRequest) {
       data: { password: hashedPassword },
     })
 
-    // Send email with new password
-    const gmailUser = process.env.GMAIL_USER || process.env.GMAIL_KAMEO_USER
-    const gmailPass = process.env.GMAIL_APP_PASSWORD || process.env.GMAIL_KAMEO_PASSWORD
+    // Send email with new password — try credential pairs in order
+    let gmailUser = process.env.GMAIL_KAMEO_USER
+    let gmailPass = process.env.GMAIL_KAMEO_PASSWORD
+    if (!gmailUser || !gmailPass) {
+      gmailUser = process.env.GMAIL_BENJAMIN_USER
+      gmailPass = process.env.GMAIL_BENJAMIN_PASSWORD
+    }
+    if (!gmailUser || !gmailPass) {
+      gmailUser = process.env.GMAIL_USER
+      gmailPass = process.env.GMAIL_APP_PASSWORD
+    }
     if (!gmailUser || !gmailPass) {
       return NextResponse.json({ error: 'Email non configuré.' }, { status: 503 })
     }
@@ -58,6 +66,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error('[RESET PASSWORD]', err)
-    return NextResponse.json({ error: 'Erreur serveur.' }, { status: 500 })
+    const msg = err instanceof Error ? err.message : 'Erreur serveur.'
+    return NextResponse.json({ error: msg }, { status: 500 })
   }
 }
