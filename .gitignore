@@ -42,3 +42,6 @@ next-env.d.ts
 
 /app/generated/prisma
 .env*.local
+
+# local deploy workflow
+middleware.ts.disabled
