@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
     // Active maintenances for MRR
     prisma.maintenanceContract.findMany({
       where: { ...demoFilter, active: true, priceHT: { not: null } },
-      select: { id: true, clientName: true, type: true, priceHT: true, billing: true },
+      select: { id: true, clientName: true, type: true, priceHT: true, billing: true, startDate: true, endDate: true, createdAt: true },
     }),
     // Maintenance invoices for rolling 12 months + some buffer
     prisma.maintenanceInvoice.findMany({
@@ -124,6 +124,12 @@ export async function GET(req: NextRequest) {
   }
   const totalMRR = Object.values(mrrByType).reduce((s, v) => s + v, 0)
 
+  // MANUEL maintenances: one-shot revenue attributed to endDate (or startDate / createdAt)
+  const manualMaintenances = activeMaintenances.filter(m => m.billing === 'MANUEL')
+  function manualDate(m: { endDate: Date | null; startDate: Date | null; createdAt: Date }): Date {
+    return m.endDate ?? m.startDate ?? m.createdAt
+  }
+
   // Helper: get effective date for a project (signedAt > startDate > createdAt)
   function projectDate(p: { signedAt?: Date | null; startDate: Date | null; createdAt: Date }): Date {
     return p.signedAt ?? p.startDate ?? p.createdAt
@@ -134,8 +140,14 @@ export async function GET(req: NextRequest) {
     const monthIdx = rm.month // 1-indexed
 
     // Récurrent = somme des maintenances actives (prix mensuel), pas les factures
-    const maintenanceHT = totalMRR
-    const maintenanceTTC = totalMRR * 1.2
+    // + MANUEL attribuées au mois de leur endDate (one-shot)
+    const monthManual = manualMaintenances.filter(m => {
+      const d = manualDate(m)
+      return d.getFullYear() === rm.year && d.getMonth() + 1 === rm.month
+    })
+    const manualHT = monthManual.reduce((s, m) => s + (m.priceHT ?? 0), 0)
+    const maintenanceHT = totalMRR + manualHT
+    const maintenanceTTC = maintenanceHT * 1.2
     const maintenanceEstimated = true
 
     // Projects for this month

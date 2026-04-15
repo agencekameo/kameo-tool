@@ -1239,8 +1239,9 @@ export default function FinancesPage() {
             const curYear = new Date().getFullYear()
             const filteredPonctuel = expenses.filter(e => {
               if (e.recurring) return false
-              if (ponctuelViewMode === 'year') return (e.expenseYear || curYear) === curYear
-              return (e.expenseMonth || selectedPonctuelMonth) === selectedPonctuelMonth && (e.expenseYear || curYear) === curYear
+              if (!e.expenseMonth || !e.expenseYear) return false
+              if (ponctuelViewMode === 'year') return e.expenseYear === curYear
+              return e.expenseMonth === selectedPonctuelMonth && e.expenseYear === curYear
             })
             const totalFiltered = filteredPonctuel.reduce((s, e) => s + e.amount, 0)
 
